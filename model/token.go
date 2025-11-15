@@ -25,6 +25,7 @@ type Token struct {
 	ModelLimitsEnabled bool           `json:"model_limits_enabled"`
 	ModelLimits        string         `json:"model_limits" gorm:"type:varchar(1024);default:''"`
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
+		DenyIps            *string        `json:"deny_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
@@ -55,6 +56,27 @@ func (token *Token) GetIpLimitsMap() map[string]any {
 	}
 	return ipLimitsMap
 }
+
+	// GetIpDenyMap 解析 IP 黑名单
+	func (token *Token) GetIpDenyMap() map[string]any {
+		ipDenyMap := make(map[string]any)
+		if token.DenyIps == nil {
+			return ipDenyMap
+		}
+		cleanIps := strings.ReplaceAll(*token.DenyIps, " ", "")
+		if cleanIps == "" {
+			return ipDenyMap
+		}
+		ips := strings.Split(cleanIps, "\n")
+		for _, ip := range ips {
+			ip = strings.TrimSpace(ip)
+			ip = strings.ReplaceAll(ip, ",", "")
+			if common.IsIP(ip) {
+				ipDenyMap[ip] = true
+			}
+		}
+		return ipDenyMap
+	}
 
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
 	var tokens []*Token
@@ -185,7 +207,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group").Updates(token).Error
+			"model_limits_enabled", "model_limits", "allow_ips", "deny_ips", "group").Updates(token).Error
 	return err
 }
 

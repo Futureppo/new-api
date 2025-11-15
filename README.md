@@ -4,13 +4,13 @@
 
 # New API
 
-🍥 **新一代大模型网关与AI资产管理系统**
+🍥 **次世代大規模モデルゲートウェイとAI資産管理システム**
 
 <p align="center">
-  <strong>中文</strong> | 
+  <a href="./README.md">中文</a> | 
   <a href="./README.en.md">English</a> | 
   <a href="./README.fr.md">Français</a> | 
-  <a href="./README.ja.md">日本語</a>
+  <strong>日本語</strong>
 </p>
 
 <p align="center">
@@ -38,31 +38,31 @@
 </p>
 
 <p align="center">
-  <a href="#-快速开始">快速开始</a> •
-  <a href="#-主要特性">主要特性</a> •
-  <a href="#-部署">部署</a> •
-  <a href="#-文档">文档</a> •
-  <a href="#-帮助支持">帮助</a>
+  <a href="#-クイックスタート">クイックスタート</a> •
+  <a href="#-主な機能">主な機能</a> •
+  <a href="#-デプロイ">デプロイ</a> •
+  <a href="#-ドキュメント">ドキュメント</a> •
+  <a href="#-ヘルプサポート">ヘルプ</a>
 </p>
 
 </div>
 
-## 📝 项目说明
+## 📝 プロジェクト説明
 
 > [!NOTE]  
-> 本项目为开源项目，在 [One API](https://github.com/songquanpeng/one-api) 的基础上进行二次开发
+> 本プロジェクトは、[One API](https://github.com/songquanpeng/one-api)をベースに二次開発されたオープンソースプロジェクトです
 
 > [!IMPORTANT]  
-> - 本项目仅供个人学习使用，不保证稳定性，且不提供任何技术支持
-> - 使用者必须在遵循 OpenAI 的 [使用条款](https://openai.com/policies/terms-of-use) 以及**法律法规**的情况下使用，不得用于非法用途
-> - 根据 [《生成式人工智能服务管理暂行办法》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm) 的要求，请勿对中国地区公众提供一切未经备案的生成式人工智能服务
+> - 本プロジェクトは個人学習用のみであり、安定性の保証や技術サポートは提供しません。
+> - ユーザーは、OpenAIの[利用規約](https://openai.com/policies/terms-of-use)および**法律法規**を遵守する必要があり、違法な目的で使用してはいけません。
+> - [《生成式人工智能服务管理暂行办法》](http://www.cac.gov.cn/2023-07/13/c_1690898327029107.htm)の要求に従い、中国地域の公衆に未登録の生成式AI サービスを提供しないでください。
 
 ---
 
-## 🤝 我们信任的合作伙伴
+## 🤝 信頼できるパートナー
 
 <p align="center">
-  <em>排名不分先后</em>
+  <em>順不同</em>
 </p>
 
 <p align="center">
@@ -73,10 +73,10 @@
     <img src="./docs/images/pku.png" alt="北京大学" height="80" />
   </a>
   <a href="https://www.compshare.cn/?ytag=GPU_yy_gh_newapi" target="_blank">
-    <img src="./docs/images/ucloud.png" alt="UCloud 优刻得" height="80" />
+    <img src="./docs/images/ucloud.png" alt="UCloud 優刻得" height="80" />
   </a>
   <a href="https://www.aliyun.com/" target="_blank">
-    <img src="./docs/images/aliyun.png" alt="阿里云" height="80" />
+    <img src="./docs/images/aliyun.png" alt="Alibaba Cloud" height="80" />
   </a>
   <a href="https://io.net/" target="_blank">
     <img src="./docs/images/io-net.png" alt="IO.NET" height="80" />
@@ -85,7 +85,7 @@
 
 ---
 
-## 🙏 特别鸣谢
+## 🙏 特別な感謝
 
 <p align="center">
   <a href="https://www.jetbrains.com/?from=new-api" target="_blank">
@@ -94,42 +94,42 @@
 </p>
 
 <p align="center">
-  <strong>感谢 <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> 为本项目提供免费的开源开发许可证</strong>
+  <strong>感謝 <a href="https://www.jetbrains.com/?from=new-api">JetBrains</a> が本プロジェクトに無料のオープンソース開発ライセンスを提供してくれたことに感謝します</strong>
 </p>
 
 ---
 
-## 🚀 快速开始
+## 🚀 クイックスタート
 
-### 使用 Docker Compose（推荐）
+### Docker Composeを使用（推奨）
 
 ```bash
-# 克隆项目
+# プロジェクトをクローン
 git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
-# 编辑 docker-compose.yml 配置
+# docker-compose.yml 設定を編集
 nano docker-compose.yml
 
-# 启动服务
+# サービスを起動
 docker-compose up -d
 ```
 
 <details>
-<summary><strong>使用 Docker 命令</strong></summary>
+<summary><strong>Dockerコマンドを使用</strong></summary>
 
 ```bash
-# 拉取最新镜像
+# 最新のイメージをプル
 docker pull calciumion/new-api:latest
 
-# 使用 SQLite（默认）
+# SQLiteを使用（デフォルト）
 docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e TZ=Asia/Shanghai \
   -v ./data:/data \
   calciumion/new-api:latest
 
-# 使用 MySQL
+# MySQLを使用
 docker run --name new-api -d --restart always \
   -p 3000:3000 \
   -e SQL_DSN="root:123456@tcp(localhost:3306)/oneapi" \
@@ -138,201 +138,206 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
-> **💡 提示：** `-v ./data:/data` 会将数据保存在当前目录的 `data` 文件夹中，你也可以改为绝对路径如 `-v /your/custom/path:/data`
+> **💡 ヒント:** `-v ./data:/data` は現在のディレクトリの `data` フォルダにデータを保存します。絶対パスに変更することもできます：`-v /your/custom/path:/data`
 
 </details>
 
 ---
 
-🎉 部署完成后，访问 `http://localhost:3000` 即可使用！
+🎉 デプロイが完了したら、`http://localhost:3000` にアクセスして使用を開始してください！
 
-📖 更多部署方式请参考 [部署指南](https://docs.newapi.pro/installation)
+📖 その他のデプロイ方法については[デプロイガイド](https://docs.newapi.pro/installation)を参照してください。
 
 ---
 
-## 📚 文档
+## 📚 ドキュメント
 
 <div align="center">
 
-### 📖 [官方文档](https://docs.newapi.pro/) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
+### 📖 [公式ドキュメント](https://docs.newapi.pro/) | [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/QuantumNous/new-api)
 
 </div>
 
-**快速导航：**
+**クイックナビゲーション:**
 
-| 分类 | 链接 |
+| カテゴリ | リンク |
 |------|------|
-| 🚀 部署指南 | [安装文档](https://docs.newapi.pro/installation) |
-| ⚙️ 环境配置 | [环境变量](https://docs.newapi.pro/installation/environment-variables) |
-| 📡 接口文档 | [API 文档](https://docs.newapi.pro/api) |
-| ❓ 常见问题 | [FAQ](https://docs.newapi.pro/support/faq) |
-| 💬 社区交流 | [交流渠道](https://docs.newapi.pro/support/community-interaction) |
+| 🚀 デプロイガイド | [インストールドキュメント](https://docs.newapi.pro/installation) |
+| ⚙️ 環境設定 | [環境変数](https://docs.newapi.pro/installation/environment-variables) |
+| 📡 APIドキュメント | [APIドキュメント](https://docs.newapi.pro/api) |
+| ❓ よくある質問 | [FAQ](https://docs.newapi.pro/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/support/community-interaction) |
 
 ---
 
-## ✨ 主要特性
+## ✨ 主な機能
 
-> 详细特性请参考 [特性说明](https://docs.newapi.pro/wiki/features-introduction)
+> 詳細な機能については[機能説明](https://docs.newapi.pro/wiki/features-introduction)を参照してください。
 
-### 🎨 核心功能
+### 🎨 コア機能
 
-| 特性 | 说明 |
+| 機能 | 説明 |
 |------|------|
-| 🎨 全新 UI | 现代化的用户界面设计 |
-| 🌍 多语言 | 支持中文、英文、法语、日语 |
-| 🔄 数据兼容 | 完全兼容原版 One API 数据库 |
-| 📈 数据看板 | 可视化控制台与统计分析 |
-| 🔒 权限管理 | 令牌分组、模型限制、用户管理 |
+| 🎨 新しいUI | モダンなユーザーインターフェースデザイン |
+| 🌍 多言語 | 中国語、英語、フランス語、日本語をサポート |
+| 🔄 データ互換性 | オリジナルのOne APIデータベースと完全に互換性あり |
+| 📈 データダッシュボード | ビジュアルコンソールと統計分析 |
+| 🔒 権限管理 | トークングループ化、モデル制限、ユーザー管理 |
 
-### 💰 支付与计费
+### 💰 支払いと課金
 
-- ✅ 在线充值（易支付、Stripe）
-- ✅ 模型按次数收费
-- ✅ 缓存计费支持（OpenAI、Azure、DeepSeek、Claude、Qwen等所有支持的模型）
-- ✅ 灵活的计费策略配置
+- ✅ オンライン充電（EPay、Stripe）
+- ✅ モデルの従量課金
+- ✅ キャッシュ課金サポート（OpenAI、Azure、DeepSeek、Claude、Qwenなどすべてのサポートされているモデル）
+- ✅ 柔軟な課金ポリシー設定
 
-### 🔐 授权与安全
+### 🔐 認証とセキュリティ
 
-- 🤖 LinuxDO 授权登录
-- 📱 Telegram 授权登录
-- 🔑 OIDC 统一认证
-- 🔍 Key 查询使用额度（配合 [neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool)）
+- 🤖 LinuxDO認証ログイン
+- 📱 Telegram認証ログイン
+- 🔑 OIDC統一認証
 
-### 🚀 高级功能
 
-**API 格式支持：**
+
+### 🚀 高度な機能
+
+**APIフォーマットサポート:**
 - ⚡ [OpenAI Responses](https://docs.newapi.pro/api/openai-responses)
-- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/api/openai-realtime)（含 Azure）
+- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/api/openai-realtime)（Azureを含む）
 - ⚡ [Claude Messages](https://docs.newapi.pro/api/anthropic-chat)
 - ⚡ [Google Gemini](https://docs.newapi.pro/api/google-gemini-chat/)
-- 🔄 [Rerank 模型](https://docs.newapi.pro/api/jinaai-rerank)（Cohere、Jina）
+- 🔄 [Rerankモデル](https://docs.newapi.pro/api/jinaai-rerank)
+- ⚡ [OpenAI Realtime API](https://docs.newapi.pro/api/openai-realtime)
+- ⚡ [Claude Messages](https://docs.newapi.pro/api/anthropic-chat)
+- ⚡ [Google Gemini](https://docs.newapi.pro/api/google-gemini-chat/)
+- 🔄 [Rerankモデル](https://docs.newapi.pro/api/jinaai-rerank)（Cohere、Jina）
 
-**智能路由：**
-- ⚖️ 渠道加权随机
-- 🔄 失败自动重试
-- 🚦 用户级别模型限流
+**インテリジェントルーティング:**
+- ⚖️ チャネル重み付けランダム
+- 🔄 失敗自動リトライ
+- 🚦 ユーザーレベルモデルレート制限
 
-**格式转换：**
+**フォーマット変換:**
 - 🔄 OpenAI ⇄ Claude Messages
 - 🔄 OpenAI ⇄ Gemini Chat
-- 🔄 思考转内容功能
+- 🔄 思考からコンテンツへの機能
 
-**Reasoning Effort 支持：**
+**Reasoning Effort サポート:**
 
 <details>
-<summary>查看详细配置</summary>
+<summary>詳細設定を表示</summary>
 
-**OpenAI 系列模型：**
-- `o3-mini-high` - High reasoning effort
-- `o3-mini-medium` - Medium reasoning effort
-- `o3-mini-low` - Low reasoning effort
-- `gpt-5-high` - High reasoning effort
-- `gpt-5-medium` - Medium reasoning effort
-- `gpt-5-low` - Low reasoning effort
+**OpenAIシリーズモデル:**
+- `o3-mini-high` - 高思考努力
+- `o3-mini-medium` - 中思考努力
+- `o3-mini-low` - 低思考努力
+- `gpt-5-high` - 高思考努力
+- `gpt-5-medium` - 中思考努力
+- `gpt-5-low` - 低思考努力
 
-**Claude 思考模型：**
-- `claude-3-7-sonnet-20250219-thinking` - 启用思考模式
+**Claude思考モデル:**
+- `claude-3-7-sonnet-20250219-thinking` - 思考モードを有効にする
 
-**Google Gemini 系列模型：**
-- `gemini-2.5-flash-thinking` - 启用思考模式
-- `gemini-2.5-flash-nothinking` - 禁用思考模式
-- `gemini-2.5-pro-thinking` - 启用思考模式
-- `gemini-2.5-pro-thinking-128` - 启用思考模式，并设置思考预算为128tokens
+**Google Geminiシリーズモデル:**
+- `gemini-2.5-flash-thinking` - 思考モードを有効にする
+- `gemini-2.5-flash-nothinking` - 思考モードを無効にする
+- `gemini-2.5-pro-thinking` - 思考モードを有効にする
+- `gemini-2.5-pro-thinking-128` - 思考モードを有効にし、思考予算を128トークンに設定する
 
 </details>
 
 ---
 
-## 🤖 模型支持
+## 🤖 モデルサポート
 
-> 详情请参考 [接口文档 - 中继接口](https://docs.newapi.pro/api)
+> 詳細については[APIドキュメント - 中継インターフェース](https://docs.newapi.pro/api)
 
-| 模型类型 | 说明 | 文档 |
+| モデルタイプ | 説明 | ドキュメント |
 |---------|------|------|
-| 🤖 OpenAI GPTs | gpt-4-gizmo-* 系列 | - |
-| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [文档](https://docs.newapi.pro/api/midjourney-proxy-image) |
-| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [文档](https://docs.newapi.pro/api/suno-music) |
-| 🔄 Rerank | Cohere、Jina | [文档](https://docs.newapi.pro/api/jinaai-rerank) |
-| 💬 Claude | Messages 格式 | [文档](https://docs.newapi.pro/api/anthropic-chat) |
-| 🌐 Gemini | Google Gemini 格式 | [文档](https://docs.newapi.pro/api/google-gemini-chat/) |
-| 🔧 Dify | ChatFlow 模式 | - |
-| 🎯 自定义 | 支持完整调用地址 | - |
+| 🤖 OpenAI GPTs | gpt-4-gizmo-* シリーズ | - |
+| 🎨 Midjourney-Proxy | [Midjourney-Proxy(Plus)](https://github.com/novicezk/midjourney-proxy) | [ドキュメント](https://docs.newapi.pro/api/midjourney-proxy-image) |
+| 🎵 Suno-API | [Suno API](https://github.com/Suno-API/Suno-API) | [ドキュメント](https://docs.newapi.pro/api/suno-music) |
+| 🔄 Rerank | Cohere、Jina | [ドキュメント](https://docs.newapi.pro/api/jinaai-rerank) |
+| 💬 Claude | Messagesフォーマット | [ドキュメント](https://docs.newapi.pro/api/suno-music) |
+| 🌐 Gemini | Google Geminiフォーマット | [ドキュメント](https://docs.newapi.pro/api/google-gemini-chat/) |
+| 🔧 Dify | ChatFlowモード | - |
+| 🎯 カスタム | 完全な呼び出しアドレスの入力をサポート | - |
 
-### 📡 支持的接口
+### 📡 サポートされているインターフェース
 
 <details>
-<summary>查看完整接口列表</summary>
+<summary>完全なインターフェースリストを表示</summary>
 
-- [聊天接口 (Chat Completions)](https://docs.newapi.pro/api/openai-chat)
-- [响应接口 (Responses)](https://docs.newapi.pro/api/openai-responses)
-- [图像接口 (Image)](https://docs.newapi.pro/api/openai-image)
-- [音频接口 (Audio)](https://docs.newapi.pro/api/openai-audio)
-- [视频接口 (Video)](https://docs.newapi.pro/api/openai-video)
-- [嵌入接口 (Embeddings)](https://docs.newapi.pro/api/openai-embeddings)
-- [重排序接口 (Rerank)](https://docs.newapi.pro/api/jinaai-rerank)
-- [实时对话 (Realtime)](https://docs.newapi.pro/api/openai-realtime)
-- [Claude 聊天](https://docs.newapi.pro/api/anthropic-chat)
-- [Google Gemini 聊天](https://docs.newapi.pro/api/google-gemini-chat)
+- [チャットインターフェース (Chat Completions)](https://docs.newapi.pro/api/openai-chat)
+- [レスポンスインターフェース (Responses)](https://docs.newapi.pro/api/openai-responses)
+- [イメージインターフェース (Image)](https://docs.newapi.pro/api/openai-image)
+- [オーディオインターフェース (Audio)](https://docs.newapi.pro/api/openai-audio)
+- [ビデオインターフェース (Video)](https://docs.newapi.pro/api/openai-video)
+- [エンベッドインターフェース (Embeddings)](https://docs.newapi.pro/api/openai-embeddings)
+- [再ランク付けインターフェース (Rerank)](https://docs.newapi.pro/api/jinaai-rerank)
+- [リアルタイム対話インターフェース (Realtime)](https://docs.newapi.pro/api/openai-realtime)
+- [Claudeチャット](https://docs.newapi.pro/api/anthropic-chat)
+- [Google Geminiチャット](https://docs.newapi.pro/api/google-gemini-chat/)
 
 </details>
 
 ---
 
-## 🚢 部署
+## 🚢 デプロイ
 
 > [!TIP]
-> **最新版 Docker 镜像：** `calciumion/new-api:latest`
+> **最新のDockerイメージ:** `calciumion/new-api:latest`
 
-### 📋 部署要求
+### 📋 デプロイ要件
 
-| 组件 | 要求 |
+| コンポーネント | 要件 |
 |------|------|
-| **本地数据库** | SQLite（Docker 需挂载 `/data` 目录）|
-| **远程数据库** | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
-| **容器引擎** | Docker / Docker Compose |
+| **ローカルデータベース** | SQLite（Dockerは `/data` ディレクトリをマウントする必要があります）|
+| **リモートデータベース** | MySQL ≥ 5.7.8 または PostgreSQL ≥ 9.6 |
+| **コンテナエンジン** | Docker / Docker Compose |
 
-### ⚙️ 环境变量配置
+### ⚙️ 環境変数設定
 
 <details>
-<summary>常用环境变量配置</summary>
+<summary>一般的な環境変数設定</summary>
 
-| 变量名 | 说明 | 默认值 |
+| 変数名 | 説明 | デフォルト値 |
 |--------|------|--------|
-| `SESSION_SECRET` | 会话密钥（多机部署必须） | - |
-| `CRYPTO_SECRET` | 加密密钥（Redis 必须） | - |
-| `SQL_DSN` | 数据库连接字符串 | - |
-| `REDIS_CONN_STRING` | Redis 连接字符串 | - |
-| `STREAMING_TIMEOUT` | 流式超时时间（秒） | `300` |
-| `AZURE_DEFAULT_API_VERSION` | Azure API 版本 | `2025-04-01-preview` |
-| `ERROR_LOG_ENABLED` | 错误日志开关 | `false` |
+| `SESSION_SECRET` | セッションシークレット（マルチマシンデプロイに必須） | - |
+| `CRYPTO_SECRET` | 暗号化シークレット（Redisに必須） | - |
+| `SQL_DSN** | データベース接続文字列 | - |
+| `REDIS_CONN_STRING` | Redis接続文字列 | - |
+| `STREAMING_TIMEOUT` | ストリーミング応答のタイムアウト時間（秒） | `300` |
+| `AZURE_DEFAULT_API_VERSION` | Azure APIバージョン | `2025-04-01-preview` |
+| `ERROR_LOG_ENABLED` | エラーログスイッチ | `false` |
 
-📖 **完整配置：** [环境变量文档](https://docs.newapi.pro/installation/environment-variables)
+📖 **完全な設定:** [環境変数ドキュメント](https://docs.newapi.pro/installation/environment-variables)
 
 </details>
 
-### 🔧 部署方式
+### 🔧 デプロイ方法
 
 <details>
-<summary><strong>方式 1：Docker Compose（推荐）</strong></summary>
+<summary><strong>方法 1: Docker Compose（推奨）</strong></summary>
 
 ```bash
-# 克隆项目
+# プロジェクトをクローン
 git clone https://github.com/QuantumNous/new-api.git
 cd new-api
 
-# 编辑配置
+# 設定を編集
 nano docker-compose.yml
 
-# 启动服务
+# サービスを起動
 docker-compose up -d
 ```
 
 </details>
 
 <details>
-<summary><strong>方式 2：Docker 命令</strong></summary>
+<summary><strong>方法 2: Dockerコマンド</strong></summary>
 
-**使用 SQLite：**
+**SQLiteを使用:**
 ```bash
 docker run --name new-api -d --restart always \
   -p 3000:3000 \
@@ -341,7 +346,7 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
-**使用 MySQL：**
+**MySQLを使用:**
 ```bash
 docker run --name new-api -d --restart always \
   -p 3000:3000 \
@@ -351,84 +356,82 @@ docker run --name new-api -d --restart always \
   calciumion/new-api:latest
 ```
 
-> **💡 路径说明：** 
-> - `./data:/data` - 相对路径，数据保存在当前目录的 data 文件夹
-> - 也可使用绝对路径，如：`/your/custom/path:/data`
+> **💡 パス説明:** 
+> - `./data:/data` - 相対パス、データは現在のディレクトリのdataフォルダに保存されます
+> - 絶対パスを使用することもできます：`/your/custom/path:/data`
 
 </details>
 
 <details>
-<summary><strong>方式 3：宝塔面板</strong></summary>
+<summary><strong>方法 3: 宝塔パネル</strong></summary>
 
-1. 安装宝塔面板（≥ 9.2.0 版本）
-2. 在应用商店搜索 **New-API**
-3. 一键安装
+1. 宝塔パネル（**9.2.0バージョン**以上）をインストールし、アプリケーションストアで**New-API**を検索してインストールします。
 
-📖 [图文教程](./docs/BT.md)
+📖 [画像付きチュートリアル](./docs/BT.md)
 
 </details>
 
-### ⚠️ 多机部署注意事项
+### ⚠️ マルチマシンデプロイの注意事項
 
 > [!WARNING]
-> - **必须设置** `SESSION_SECRET` - 否则登录状态不一致
-> - **公用 Redis 必须设置** `CRYPTO_SECRET` - 否则数据无法解密
+> - **必ず設定する必要があります** `SESSION_SECRET` - そうしないとマルチマシンデプロイ時にログイン状態が不一致になります
+> - **共有Redisは必ず設定する必要があります** `CRYPTO_SECRET` - そうしないとデータを復号化できません
 
-### 🔄 渠道重试与缓存
+### 🔄 チャネルリトライとキャッシュ
 
-**重试配置：** `设置 → 运营设置 → 通用设置 → 失败重试次数`
+**リトライ設定:** `設定 → 運営設定 → 一般設定 → 失敗リトライ回数`
 
-**缓存配置：**
-- `REDIS_CONN_STRING`：Redis 缓存（推荐）
-- `MEMORY_CACHE_ENABLED`：内存缓存
-
----
-
-## 🔗 相关项目
-
-### 上游项目
-
-| 项目 | 说明 |
-|------|------|
-| [One API](https://github.com/songquanpeng/one-api) | 原版项目基础 |
-| [Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy) | Midjourney 接口支持 |
-
-### 配套工具
-
-| 项目 | 说明 |
-|------|------|
-| [neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool) | Key 额度查询工具 |
-| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API 高性能优化版 |
+**キャッシュ設定:**
+- `REDIS_CONN_STRING`：Redisキャッシュ（推奨）
+- `MEMORY_CACHE_ENABLED`：メモリキャッシュ
 
 ---
 
-## 💬 帮助支持
+## 🔗 関連プロジェクト
 
-### 📖 文档资源
+### 上流プロジェクト
 
-| 资源 | 链接 |
+| プロジェクト | 説明 |
 |------|------|
-| 📘 常见问题 | [FAQ](https://docs.newapi.pro/support/faq) |
-| 💬 社区交流 | [交流渠道](https://docs.newapi.pro/support/community-interaction) |
-| 🐛 反馈问题 | [问题反馈](https://docs.newapi.pro/support/feedback-issues) |
-| 📚 完整文档 | [官方文档](https://docs.newapi.pro/support) |
+| [One API](https://github.com/songquanpeng/one-api) | オリジナルプロジェクトベース |
+| [Midjourney-Proxy](https://github.com/novicezk/midjourney-proxy) | Midjourneyインターフェースサポート |
 
-### 🤝 贡献指南
+### 補助ツール
 
-欢迎各种形式的贡献！
-
-- 🐛 报告 Bug
-- 💡 提出新功能
-- 📝 改进文档
-- 🔧 提交代码
+| プロジェクト | 説明 |
+|------|------|
+| [neko-api-key-tool](https://github.com/Calcium-Ion/neko-api-key-tool) | キー使用量クォータ照会ツール |
+| [new-api-horizon](https://github.com/Calcium-Ion/new-api-horizon) | New API高性能最適化版 |
 
 ---
 
-## 🌟 Star History
+## 💬 ヘルプサポート
+
+### 📖 ドキュメントリソース
+
+| リソース | リンク |
+|------|------|
+| 📘 よくある質問 | [FAQ](https://docs.newapi.pro/support/faq) |
+| 💬 コミュニティ交流 | [交流チャネル](https://docs.newapi.pro/support/community-interaction) |
+| 🐛 問題のフィードバック | [問題フィードバック](https://docs.newapi.pro/support/feedback-issues) |
+| 📚 完全なドキュメント | [公式ドキュメント](https://docs.newapi.pro/support) |
+
+### 🤝 貢献ガイド
+
+あらゆる形の貢献を歓迎します！
+
+- 🐛 バグを報告する
+- 💡 新しい機能を提案する
+- 📝 ドキュメントを改善する
+- 🔧 コードを提出する
+
+---
+
+## 🌟 スター履歴
 
 <div align="center">
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
+[![スター履歴チャート](https://api.star-history.com/svg?repos=Calcium-Ion/new-api&type=Date)](https://star-history.com/#Calcium-Ion/new-api&Date)
 
 </div>
 
@@ -436,12 +439,12 @@ docker run --name new-api -d --restart always \
 
 <div align="center">
 
-### 💖 感谢使用 New API
+### 💖 New APIをご利用いただきありがとうございます
 
-如果这个项目对你有帮助，欢迎给我们一个 ⭐️ Star！
+このプロジェクトがあなたのお役に立てたなら、ぜひ ⭐️ スターをください！
 
-**[官方文档](https://docs.newapi.pro/)** • **[问题反馈](https://github.com/Calcium-Ion/new-api/issues)** • **[最新发布](https://github.com/Calcium-Ion/new-api/releases)**
+**[公式ドキュメント](https://docs.newapi.pro/)** • **[問題フィードバック](https://github.com/Calcium-Ion/new-api/issues)** • **[最新リリース](https://github.com/Calcium-Ion/new-api/releases)**
 
-<sub>Built with ❤️ by QuantumNous</sub>
+<sub>❤️ で構築された QuantumNous</sub>
 
 </div>

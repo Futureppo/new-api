@@ -240,9 +240,18 @@ func TokenAuth() func(c *gin.Context) {
 			return
 		}
 
+		denyIpsMap := token.GetIpDenyMap()
 		allowIpsMap := token.GetIpLimitsMap()
+		clientIp := c.ClientIP()
+		// 黑名单优先：在黑名单中直接拒绝
+		if len(denyIpsMap) != 0 {
+			if _, denied := denyIpsMap[clientIp]; denied {
+				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 在令牌黑名单中，禁止访问")
+				return
+			}
+		}
+		// 白名单：若配置了白名单，则未命中白名单拒绝
 		if len(allowIpsMap) != 0 {
-			clientIp := c.ClientIP()
 			if _, ok := allowIpsMap[clientIp]; !ok {
 				abortWithOpenAiMessage(c, http.StatusForbidden, "您的 IP 不在令牌允许访问的列表中")
 				return

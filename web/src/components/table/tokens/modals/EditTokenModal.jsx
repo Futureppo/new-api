@@ -72,6 +72,7 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
+    deny_ips: '',
     group: '',
     tokenCount: 1,
   });
@@ -551,6 +552,18 @@ const EditTokenModal = (props) => {
                       autosize
                       rows={1}
                       extraText={t('请勿过度信任此功能，IP可能被伪造')}
+                      showClear
+                      style={{ width: '100%' }}
+                    />
+                  </Col>
+                  <Col span={24}>
+                    <Form.TextArea
+                      field='deny_ips'
+                      label={t('IP黑名单')}
+                      placeholder={t('禁止的IP，一行一个，不填写则不限制')}
+                      autosize
+                      rows={1}
+                      extraText={t('若与白名单重复，以黑名单为准')}
                       showClear
                       style={{ width: '100%' }}
                     />
