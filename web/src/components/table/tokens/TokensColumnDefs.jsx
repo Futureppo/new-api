@@ -231,7 +231,7 @@ const renderAllowIps = (text, t) => {
   const extraCount = ips.length - displayIps.length;
 
   const ipTags = displayIps.map((ip, idx) => (
-    <Tag key={idx} shape='circle'>
+    <Tag key={idx} shape='circle' color='green'>
       {ip}
     </Tag>
   ));
@@ -244,7 +244,47 @@ const renderAllowIps = (text, t) => {
         position='top'
         showArrow
       >
-        <Tag shape='circle'>{'+' + extraCount}</Tag>
+        <Tag shape='circle' color='green'>{'+' + extraCount}</Tag>
+      </Tooltip>,
+    );
+  }
+
+  return <Space wrap>{ipTags}</Space>;
+};
+
+// Render IP deny list column
+const renderDenyIps = (text, t) => {
+  if (!text || text.trim() === '') {
+    return (
+      <Tag color='white' shape='circle'>
+        {t('无限制')}
+      </Tag>
+    );
+  }
+
+  const ips = text
+    .split('\n')
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+
+  const displayIps = ips.slice(0, 1);
+  const extraCount = ips.length - displayIps.length;
+
+  const ipTags = displayIps.map((ip, idx) => (
+    <Tag key={idx} shape='circle' color='red'>
+      {ip}
+    </Tag>
+  ));
+
+  if (extraCount > 0) {
+    ipTags.push(
+      <Tooltip
+        key='extra'
+        content={ips.slice(1).join(', ')}
+        position='top'
+        showArrow
+      >
+        <Tag shape='circle' color='red'>{'+' + extraCount}</Tag>
       </Tooltip>,
     );
   }
@@ -469,9 +509,14 @@ export const getTokensColumns = ({
       render: (text, record) => renderModelLimits(text, record, t),
     },
     {
-      title: t('IP限制'),
+      title: t('IP白名单'),
       dataIndex: 'allow_ips',
       render: (text) => renderAllowIps(text, t),
+    },
+    {
+      title: t('IP黑名单'),
+      dataIndex: 'deny_ips',
+      render: (text) => renderDenyIps(text, t),
     },
     {
       title: t('创建时间'),
