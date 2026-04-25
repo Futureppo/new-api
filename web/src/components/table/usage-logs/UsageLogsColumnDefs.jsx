@@ -257,6 +257,55 @@ function renderFirstUseTime(type, t) {
   }
 }
 
+function formatTokenSpeed(speed) {
+  if (speed >= 10) {
+    return Math.round(speed).toString();
+  }
+  if (speed >= 1) {
+    return speed.toFixed(1).replace(/\.0$/, '');
+  }
+  return speed.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+}
+
+function renderOutputTokenSpeed(record, other) {
+  const completionTokens = toTokenNumber(record.completion_tokens);
+  const useTimeSeconds = Number(record.use_time);
+  if (
+    completionTokens <= 0 ||
+    !Number.isFinite(useTimeSeconds) ||
+    useTimeSeconds <= 0
+  ) {
+    return null;
+  }
+
+  let durationSeconds = useTimeSeconds;
+  if (record.is_stream) {
+    const firstResponseSeconds = Number(other?.frt) / 1000;
+    if (
+      Number.isFinite(firstResponseSeconds) &&
+      firstResponseSeconds > 0 &&
+      firstResponseSeconds < useTimeSeconds
+    ) {
+      durationSeconds = useTimeSeconds - firstResponseSeconds;
+    }
+  }
+
+  if (durationSeconds <= 0) {
+    return null;
+  }
+
+  const speed = completionTokens / durationSeconds;
+  if (!Number.isFinite(speed) || speed <= 0) {
+    return null;
+  }
+
+  return (
+    <Tag color='white' shape='circle'>
+      {formatTokenSpeed(speed)}t/s
+    </Tag>
+  );
+}
+
 function renderBillingTag(record, t) {
   const other = getLogOther(record.other);
   if (other?.billing_source === 'subscription') {
@@ -702,13 +751,14 @@ export const getLogsColumns = ({
         if (!(record.type === 2 || record.type === 5)) {
           return <></>;
         }
+        let other = getLogOther(record.other);
         if (record.is_stream) {
-          let other = getLogOther(record.other);
           return (
             <>
               <Space>
                 {renderUseTime(text, t)}
                 {renderFirstUseTime(other?.frt, t)}
+                {renderOutputTokenSpeed(record, other)}
                 {renderIsStream(record.is_stream, t, other?.stream_status)}
               </Space>
             </>
@@ -718,6 +768,7 @@ export const getLogsColumns = ({
             <>
               <Space>
                 {renderUseTime(text, t)}
+                {renderOutputTokenSpeed(record, other)}
                 {renderIsStream(record.is_stream, t)}
               </Space>
             </>
