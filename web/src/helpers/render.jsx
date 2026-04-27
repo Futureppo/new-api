@@ -76,6 +76,7 @@ import {
   Gift,
   User,
   Settings,
+  Globe2,
   CircleUser,
   Package,
   Server,
@@ -152,6 +153,8 @@ export function getLucideIcon(key, selected = false) {
       return <CalendarClock {...commonProps} color={iconColor} />;
     case 'setting':
       return <Settings {...commonProps} color={iconColor} />;
+    case 'site':
+      return <Globe2 {...commonProps} color={iconColor} />;
     default:
       return <CircleUser {...commonProps} color={iconColor} />;
   }

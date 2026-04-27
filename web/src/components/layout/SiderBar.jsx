@@ -41,6 +41,7 @@ const routerMap = {
   log: '/console/log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
+  site: '/console/site',
   about: '/about',
   detail: '/console',
   pricing: '/pricing',
@@ -187,6 +188,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('系统设置'),
         itemKey: 'setting',
         to: '/setting',
+        className: isRoot() ? '' : 'tableHiddle',
+      },
+      {
+        text: t('站点管理'),
+        itemKey: 'site',
+        to: '/site',
         className: isRoot() ? '' : 'tableHiddle',
       },
     ];

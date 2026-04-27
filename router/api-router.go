@@ -207,6 +207,13 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		siteRoute := apiRouter.Group("/site")
+		siteRoute.Use(middleware.RootAuth())
+		{
+			siteRoute.GET("/group-transfer/options", controller.GetGroupTransferOptions)
+			siteRoute.GET("/group-transfer/preview", controller.PreviewGroupTransfer)
+			siteRoute.POST("/group-transfer", controller.TransferGroupUsers)
+		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())
 		{
