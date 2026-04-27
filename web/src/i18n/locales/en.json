@@ -1185,6 +1185,8 @@
     "失败后是否重试": "Retry on Failure",
     "失败时自动禁用通道": "Automatically disable channel on failure",
     "失败重试次数": "Failed retry times",
+    "留空继承全局": "Blank inherits global",
+    "留空使用全局失败重试次数，填 0 表示失败后不重试": "Leave blank to use the global failed retry count. Enter 0 to disable retries after failure.",
     "奖励说明": "Reward description",
     "套餐": "Plan",
     "套餐副标题": "Plan Subtitle",

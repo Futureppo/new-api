@@ -12,11 +12,12 @@ import (
 )
 
 type RetryParam struct {
-	Ctx          *gin.Context
-	TokenGroup   string
-	ModelName    string
-	Retry        *int
-	resetNextTry bool
+	Ctx                 *gin.Context
+	TokenGroup          string
+	ModelName           string
+	Retry               *int
+	EffectiveRetryTimes *int
+	resetNextTry        bool
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -43,6 +44,32 @@ func (p *RetryParam) IncreaseRetry() {
 
 func (p *RetryParam) ResetRetryNextTry() {
 	p.resetNextTry = true
+}
+
+func (p *RetryParam) GetEffectiveRetryTimes() int {
+	if p.EffectiveRetryTimes == nil {
+		return common.RetryTimes
+	}
+	return *p.EffectiveRetryTimes
+}
+
+func (p *RetryParam) SetEffectiveRetryTimes(retryTimes int) {
+	if retryTimes < 0 {
+		retryTimes = 0
+	}
+	p.EffectiveRetryTimes = &retryTimes
+}
+
+func (p *RetryParam) SetEffectiveRetryTimesFromChannel(channel *model.Channel) {
+	if channel == nil || channel.RetryTimes == nil {
+		p.EffectiveRetryTimes = nil
+		return
+	}
+	p.SetEffectiveRetryTimes(*channel.RetryTimes)
+}
+
+func (p *RetryParam) GetRemainingRetryTimes() int {
+	return p.GetEffectiveRetryTimes() - p.GetRetry()
 }
 
 // CacheGetRandomSatisfiedChannel tries to get a random channel that satisfies the requirements.
@@ -134,12 +161,12 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 
 			// Prepare state for next retry
 			// 为下一次重试准备状态
-			if crossGroupRetry && priorityRetry >= common.RetryTimes {
+			if crossGroupRetry && priorityRetry >= param.GetEffectiveRetryTimes() {
 				// Current group has exhausted all retries, prepare to switch to next group
 				// This request still uses current group, but next retry will use next group
 				// 当前分组已用完所有重试次数，准备切换到下一个分组
 				// 本次请求仍使用当前分组，但下次重试将使用下一个分组
-				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, common.RetryTimes)
+				logger.LogDebug(param.Ctx, "Current group %s retries exhausted (priorityRetry=%d >= RetryTimes=%d), preparing switch to next group for next retry", autoGroup, priorityRetry, param.GetEffectiveRetryTimes())
 				common.SetContextKey(param.Ctx, constant.ContextKeyAutoGroupIndex, i+1)
 				// Reset retry counter so outer loop can continue for next group
 				// 重置重试计数器，以便外层循环可以为下一个分组继续

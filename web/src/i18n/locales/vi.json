@@ -1169,6 +1169,8 @@
     "失败后是否重试": "Thử lại khi thất bại",
     "失败时自动禁用通道": "Tự động vô hiệu hóa kênh khi thất bại",
     "失败重试次数": "Số lần thử lại thất bại",
+    "留空继承全局": "Để trống dùng toàn cục",
+    "留空使用全局失败重试次数，填 0 表示失败后不重试": "Để trống để dùng số lần thử lại thất bại toàn cục. Nhập 0 để không thử lại sau khi thất bại.",
     "奖励说明": "Mô tả phần thưởng",
     "套餐": "Gói",
     "套餐副标题": "Phụ đề gói",

@@ -186,6 +186,7 @@ const EditChannelModal = (props) => {
     groups: ['default'],
     priority: 0,
     weight: 0,
+    retry_times: null,
     tag: '',
     multi_key_mode: 'random',
     // 渠道额外设置的默认值
@@ -819,6 +820,7 @@ const EditChannelModal = (props) => {
       } else {
         data.groups = data.group.split(',');
       }
+      data.retry_times = data.retry_times ?? null;
       if (data.model_mapping !== '') {
         data.model_mapping = JSON.stringify(
           JSON.parse(data.model_mapping),
@@ -1837,6 +1839,18 @@ const EditChannelModal = (props) => {
     delete localInputs.upstream_model_update_ignored_models;
 
     let res;
+    if (
+      localInputs.retry_times === '' ||
+      localInputs.retry_times === undefined ||
+      localInputs.retry_times === null
+    ) {
+      localInputs.retry_times = null;
+    } else {
+      const parsedRetryTimes = Number(localInputs.retry_times);
+      localInputs.retry_times = Number.isFinite(parsedRetryTimes)
+        ? Math.max(0, Math.trunc(parsedRetryTimes))
+        : null;
+    }
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
     localInputs.models = localInputs.models.join(',');
     localInputs.group = (localInputs.groups || []).join(',');
@@ -2445,7 +2459,7 @@ const EditChannelModal = (props) => {
                   />
 
                   <Row gutter={12}>
-                    <Col span={12}>
+                    <Col xs={24} sm={8}>
                       <Form.InputNumber
                         field='priority'
                         label={t('渠道优先级')}
@@ -2455,7 +2469,7 @@ const EditChannelModal = (props) => {
                         style={{ width: '100%' }}
                       />
                     </Col>
-                    <Col span={12}>
+                    <Col xs={24} sm={8}>
                       <Form.InputNumber
                         field='weight'
                         label={t('渠道权重')}
@@ -2463,6 +2477,25 @@ const EditChannelModal = (props) => {
                         min={0}
                         onNumberChange={(value) => handleInputChange('weight', value)}
                         style={{ width: '100%' }}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <Form.InputNumber
+                        field='retry_times'
+                        label={t('失败重试次数')}
+                        placeholder={t('留空继承全局')}
+                        min={0}
+                        precision={0}
+                        onNumberChange={(value) =>
+                          handleInputChange(
+                            'retry_times',
+                            value === undefined || value === null || value === ''
+                              ? null
+                              : Math.max(0, Math.trunc(value)),
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        extraText={t('留空使用全局失败重试次数，填 0 表示失败后不重试')}
                       />
                     </Col>
                   </Row>

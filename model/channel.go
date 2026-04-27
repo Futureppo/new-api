@@ -42,6 +42,7 @@ type Channel struct {
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
 	Priority          *int64  `json:"priority" gorm:"bigint;default:0"`
 	AutoBan           *int    `json:"auto_ban" gorm:"default:1"`
+	RetryTimes        *int    `json:"retry_times" gorm:"column:retry_times"`
 	OtherInfo         string  `json:"other_info"`
 	Tag               *string `json:"tag" gorm:"index"`
 	Setting           *string `json:"setting" gorm:"type:text"` // 渠道额外设置
@@ -420,6 +421,13 @@ func (channel *Channel) GetWeight() int {
 	return int(*channel.Weight)
 }
 
+func (channel *Channel) GetRetryTimes(fallback int) int {
+	if channel == nil || channel.RetryTimes == nil {
+		return fallback
+	}
+	return *channel.RetryTimes
+}
+
 func (channel *Channel) GetBaseURL() string {
 	if channel.BaseURL == nil {
 		return ""
@@ -522,6 +530,10 @@ func (channel *Channel) UpdateBalance(balance float64) {
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to update balance: channel_id=%d, error=%v", channel.Id, err))
 	}
+}
+
+func UpdateChannelRetryTimes(id int, retryTimes *int) error {
+	return DB.Model(&Channel{}).Where("id = ?", id).Update("retry_times", retryTimes).Error
 }
 
 func (channel *Channel) Delete() error {

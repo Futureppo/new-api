@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -438,6 +439,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
 	}
+	if channel.RetryTimes != nil && *channel.RetryTimes < 0 {
+		return fmt.Errorf("失败重试次数不能小于 0")
+	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
@@ -841,11 +845,22 @@ type PatchChannel struct {
 
 func UpdateChannel(c *gin.Context) {
 	channel := PatchChannel{}
-	err := c.ShouldBindJSON(&channel)
+	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	err = common.Unmarshal(body, &channel)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	retryTimesProvided := false
+	rawBody := map[string]json.RawMessage{}
+	if err := common.Unmarshal(body, &rawBody); err == nil {
+		_, retryTimesProvided = rawBody["retry_times"]
+	}
+	requestedRetryTimes := channel.RetryTimes
 
 	// 使用统一的校验函数
 	if err := validateChannel(&channel.Channel, false); err != nil {
@@ -957,6 +972,13 @@ func UpdateChannel(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	if retryTimesProvided {
+		if err := model.UpdateChannelRetryTimes(channel.Id, requestedRetryTimes); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		channel.RetryTimes = requestedRetryTimes
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()

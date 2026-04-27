@@ -1181,6 +1181,8 @@
     "失败后是否重试": "Réessayer après échec",
     "失败时自动禁用通道": "Désactiver automatiquement le canal en cas d'échec",
     "失败重试次数": "Nombre de tentatives en cas d'échec",
+    "留空继承全局": "Vide = valeur globale",
+    "留空使用全局失败重试次数，填 0 表示失败后不重试": "Laisser vide pour utiliser le nombre global de tentatives. Saisir 0 pour désactiver les nouvelles tentatives après échec.",
     "奖励说明": "Description de la récompense",
     "套餐": "Plan",
     "套餐副标题": "Sous-titre du plan",
