@@ -213,6 +213,8 @@ func SetApiRouter(router *gin.Engine) {
 			siteRoute.GET("/group-transfer/options", controller.GetGroupTransferOptions)
 			siteRoute.GET("/group-transfer/preview", controller.PreviewGroupTransfer)
 			siteRoute.POST("/group-transfer", controller.TransferGroupUsers)
+			siteRoute.GET("/group-balance/preview", controller.PreviewGroupBalance)
+			siteRoute.POST("/group-balance", controller.UpdateGroupBalance)
 		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())

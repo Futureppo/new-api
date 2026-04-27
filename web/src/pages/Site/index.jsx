@@ -24,14 +24,25 @@ import {
   Card,
   Col,
   Form,
+  InputNumber,
   Modal,
+  Radio,
+  RadioGroup,
   Row,
   Select,
   Spin,
   Typography,
 } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
-import { API, showError, showSuccess, showWarning } from '../../helpers';
+import {
+  API,
+  getCurrencyConfig,
+  renderQuota,
+  showError,
+  showSuccess,
+  showWarning,
+} from '../../helpers';
+import { displayAmountToQuota } from '../../helpers/quota';
 
 const { Text } = Typography;
 
@@ -39,12 +50,18 @@ const Site = () => {
   const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [balancePreviewLoading, setBalancePreviewLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [balanceSubmitting, setBalanceSubmitting] = useState(false);
   const [sourceGroups, setSourceGroups] = useState([]);
   const [targetGroups, setTargetGroups] = useState([]);
   const [sourceGroup, setSourceGroup] = useState('');
   const [targetGroup, setTargetGroup] = useState('');
   const [previewCount, setPreviewCount] = useState(null);
+  const [balanceGroup, setBalanceGroup] = useState('');
+  const [balanceMode, setBalanceMode] = useState('add');
+  const [balanceAmount, setBalanceAmount] = useState(null);
+  const [balancePreview, setBalancePreview] = useState(null);
 
   const sourceOptions = useMemo(
     () =>
@@ -63,6 +80,24 @@ const Site = () => {
       })),
     [targetGroups],
   );
+
+  const balanceModeLabels = useMemo(
+    () => ({
+      add: t('增加余额'),
+      subtract: t('减少余额'),
+      override: t('覆盖余额'),
+    }),
+    [t],
+  );
+
+  const validBalanceQuota = useMemo(() => {
+    const value = Number(balanceAmount);
+    if (!Number.isFinite(value) || value <= 0) return 0;
+    const quota = displayAmountToQuota(value);
+    return Number.isInteger(quota) && quota > 0 ? quota : 0;
+  }, [balanceAmount]);
+
+  const formatQuotaValue = (quota) => `${renderQuota(quota)} (${quota})`;
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
@@ -83,6 +118,9 @@ const Site = () => {
       setSourceGroups(nextSourceGroups);
       setTargetGroups(nextTargetGroups);
       setSourceGroup((prev) =>
+        nextSourceGroups.some((item) => item.group === prev) ? prev : '',
+      );
+      setBalanceGroup((prev) =>
         nextSourceGroups.some((item) => item.group === prev) ? prev : '',
       );
       setTargetGroup((prev) => (nextTargetGroups.includes(prev) ? prev : ''));
@@ -142,6 +180,52 @@ const Site = () => {
     };
   }, [sourceGroup, targetGroup]);
 
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadBalancePreview() {
+      if (!balanceGroup || !balanceMode || !validBalanceQuota) {
+        setBalancePreview(null);
+        return;
+      }
+
+      setBalancePreviewLoading(true);
+      try {
+        const res = await API.get('/api/site/group-balance/preview', {
+          params: {
+            group: balanceGroup,
+            mode: balanceMode,
+            quota: validBalanceQuota,
+          },
+          disableDuplicate: true,
+        });
+        const { success, message, data } = res.data;
+        if (ignore) return;
+        if (!success) {
+          setBalancePreview(null);
+          showError(message);
+          return;
+        }
+        setBalancePreview(data);
+      } catch (error) {
+        if (!ignore) {
+          setBalancePreview(null);
+          showError(error);
+        }
+      } finally {
+        if (!ignore) {
+          setBalancePreviewLoading(false);
+        }
+      }
+    }
+
+    loadBalancePreview();
+
+    return () => {
+      ignore = true;
+    };
+  }, [balanceGroup, balanceMode, validBalanceQuota]);
+
   const validationMessage = useMemo(() => {
     if (!sourceGroup || !targetGroup) {
       return t('请选择源分组和目标分组');
@@ -162,6 +246,26 @@ const Site = () => {
     previewCount > 0 &&
     !previewLoading &&
     !submitting;
+
+  const balanceValidationMessage = useMemo(() => {
+    if (!balanceGroup) {
+      return t('请选择分组');
+    }
+    if (!validBalanceQuota) {
+      return t('请输入大于 0 的金额');
+    }
+    if (balancePreview?.affected === 0) {
+      return t('预计影响人数为 0，无法执行修改');
+    }
+    return '';
+  }, [balanceGroup, balancePreview?.affected, t, validBalanceQuota]);
+
+  const canSubmitBalance =
+    balanceGroup &&
+    validBalanceQuota > 0 &&
+    balancePreview?.affected > 0 &&
+    !balancePreviewLoading &&
+    !balanceSubmitting;
 
   const executeTransfer = () => {
     if (!sourceGroup || !targetGroup) {
@@ -218,6 +322,87 @@ const Site = () => {
           showError(error);
         } finally {
           setSubmitting(false);
+        }
+      },
+    });
+  };
+
+  const executeBalanceUpdate = () => {
+    if (!balanceGroup) {
+      showWarning(t('请选择分组'));
+      return;
+    }
+    if (!validBalanceQuota) {
+      showWarning(t('请输入大于 0 的金额'));
+      return;
+    }
+    if (!balancePreview || balancePreview.affected <= 0) {
+      showWarning(t('预计影响人数为 0，无法执行修改'));
+      return;
+    }
+
+    Modal.confirm({
+      title: t('确认批量修改余额'),
+      content: (
+        <div style={{ lineHeight: 1.8 }}>
+          <div>
+            {t('分组')}：<Text strong>{balanceGroup}</Text>
+          </div>
+          <div>
+            {t('操作')}：<Text strong>{balanceModeLabels[balanceMode]}</Text>
+          </div>
+          <div>
+            {t('金额')}：
+            <Text strong>{formatQuotaValue(validBalanceQuota)}</Text>
+          </div>
+          <div>
+            {t('预计影响人数')}：<Text strong>{balancePreview.affected}</Text>
+          </div>
+          <div>
+            {t('预计总变化')}：
+            <Text strong>{formatQuotaValue(balancePreview.total_delta)}</Text>
+          </div>
+        </div>
+      ),
+      okText: t('确认执行'),
+      cancelText: t('取消'),
+      okButtonProps: { type: 'danger', loading: balanceSubmitting },
+      onOk: async () => {
+        setBalanceSubmitting(true);
+        try {
+          const res = await API.post('/api/site/group-balance', {
+            group: balanceGroup,
+            mode: balanceMode,
+            quota: validBalanceQuota,
+          });
+          const { success, message, data } = res.data;
+          if (!success) {
+            showError(message);
+            return;
+          }
+
+          setBalancePreview(data);
+          showSuccess(
+            t('批量修改余额完成，影响 {{count}} 个用户，总变化 {{delta}}', {
+              count: data?.affected ?? 0,
+              delta: renderQuota(data?.total_delta ?? 0),
+            }),
+          );
+          const previewRes = await API.get('/api/site/group-balance/preview', {
+            params: {
+              group: balanceGroup,
+              mode: balanceMode,
+              quota: validBalanceQuota,
+            },
+            disableDuplicate: true,
+          });
+          if (previewRes.data.success) {
+            setBalancePreview(previewRes.data.data);
+          }
+        } catch (error) {
+          showError(error);
+        } finally {
+          setBalanceSubmitting(false);
         }
       },
     });
@@ -288,6 +473,100 @@ const Site = () => {
                 validationMessage ||
                 t('预计将迁移 {{count}} 个未删除用户', {
                   count: previewLoading ? '-' : (previewCount ?? 0),
+                })
+              }
+            />
+          </Form.Section>
+        </Card>
+        <Card style={{ marginTop: 16 }}>
+          <Form.Section
+            text={t('批量修改分组用户余额')}
+            extraText={t('按分组批量增加、减少或覆盖未删除用户的账户余额')}
+          >
+            <Row gutter={[16, 16]}>
+              <Col xs={24} md={8}>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  {t('分组')}
+                </Text>
+                <Select
+                  value={balanceGroup}
+                  optionList={sourceOptions}
+                  placeholder={t('选择分组')}
+                  onChange={(value) => setBalanceGroup(value || '')}
+                  style={{ width: '100%' }}
+                  showClear
+                />
+              </Col>
+              <Col xs={24} md={8}>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  {t('操作')}
+                </Text>
+                <RadioGroup
+                  type='button'
+                  value={balanceMode}
+                  onChange={(event) => setBalanceMode(event.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <Radio value='add'>{balanceModeLabels.add}</Radio>
+                  <Radio value='subtract'>{balanceModeLabels.subtract}</Radio>
+                  <Radio value='override'>{balanceModeLabels.override}</Radio>
+                </RadioGroup>
+              </Col>
+              <Col xs={24} md={4}>
+                <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                  {t('金额')}
+                </Text>
+                <InputNumber
+                  value={balanceAmount}
+                  min={0}
+                  precision={6}
+                  step={0.000001}
+                  prefix={getCurrencyConfig().symbol}
+                  placeholder={t('输入金额')}
+                  onChange={(value) =>
+                    setBalanceAmount(
+                      value === '' || value == null ? null : Number(value),
+                    )
+                  }
+                  style={{ width: '100%' }}
+                  showClear
+                />
+              </Col>
+              <Col xs={24} md={4}>
+                <div
+                  style={{
+                    display: 'flex',
+                    height: '100%',
+                    alignItems: 'end',
+                  }}
+                >
+                  <Button
+                    type='danger'
+                    onClick={executeBalanceUpdate}
+                    disabled={!canSubmitBalance}
+                    loading={balanceSubmitting}
+                    style={{ width: '100%' }}
+                  >
+                    {t('执行修改')}
+                  </Button>
+                </div>
+              </Col>
+            </Row>
+
+            <Banner
+              fullMode={false}
+              type={balanceValidationMessage ? 'warning' : 'info'}
+              closeIcon={null}
+              style={{ marginTop: 16 }}
+              description={
+                balanceValidationMessage ||
+                t('预计影响 {{count}} 个未删除用户，总变化 {{delta}}', {
+                  count: balancePreviewLoading
+                    ? '-'
+                    : (balancePreview?.affected ?? 0),
+                  delta: balancePreviewLoading
+                    ? '-'
+                    : formatQuotaValue(balancePreview?.total_delta ?? 0),
                 })
               }
             />

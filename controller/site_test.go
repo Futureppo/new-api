@@ -36,6 +36,14 @@ type groupTransferOptionsResponseData struct {
 	TargetGroups []string               `json:"target_groups"`
 }
 
+type groupBalanceResponseData struct {
+	Group      string `json:"group"`
+	Mode       string `json:"mode"`
+	Quota      int    `json:"quota"`
+	Affected   int64  `json:"affected"`
+	TotalDelta int64  `json:"total_delta"`
+}
+
 func setupSiteControllerTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 
@@ -110,13 +118,20 @@ func initSiteColumnNames(t *testing.T) {
 func seedSiteUser(t *testing.T, db *gorm.DB, id int, username string, group string, role int) *model.User {
 	t.Helper()
 
+	return seedSiteUserWithQuota(t, db, id, username, group, role, 0, common.UserStatusEnabled)
+}
+
+func seedSiteUserWithQuota(t *testing.T, db *gorm.DB, id int, username string, group string, role int, quota int, status int) *model.User {
+	t.Helper()
+
 	user := &model.User{
 		Id:          id,
 		Username:    username,
 		Password:    "password123",
 		DisplayName: username,
 		Role:        role,
-		Status:      common.UserStatusEnabled,
+		Status:      status,
+		Quota:       quota,
 		Group:       group,
 		AffCode:     fmt.Sprintf("aff%d", id),
 	}
@@ -258,4 +273,126 @@ func TestPreviewGroupTransferCountsActiveUsersOnly(t *testing.T) {
 	response := decodeSiteAPIResponse[groupTransferResponseData](t, recorder)
 	require.True(t, response.Success)
 	require.EqualValues(t, 2, response.Data.Affected)
+}
+
+func TestUpdateGroupBalanceAddsActiveUsersOnly(t *testing.T) {
+	db := setupSiteControllerTestDB(t)
+	seedSiteUser(t, db, 100, "root", "default", common.RoleRootUser)
+	seedSiteUserWithQuota(t, db, 1, "legacy-a", "legacy", common.RoleCommonUser, 100, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 2, "legacy-b", "legacy", common.RoleCommonUser, 200, common.UserStatusEnabled)
+	deletedUser := seedSiteUserWithQuota(t, db, 3, "legacy-deleted", "legacy", common.RoleCommonUser, 300, common.UserStatusEnabled)
+	require.NoError(t, db.Delete(deletedUser).Error)
+
+	ctx, recorder := newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", gin.H{
+		"group": "legacy",
+		"mode":  "add",
+		"quota": 50,
+	})
+	UpdateGroupBalance(ctx)
+
+	response := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, response.Success)
+	require.EqualValues(t, 2, response.Data.Affected)
+	require.EqualValues(t, 100, response.Data.TotalDelta)
+	require.Equal(t, 150, getSiteUserQuota(t, db, 1, false))
+	require.Equal(t, 250, getSiteUserQuota(t, db, 2, false))
+	require.Equal(t, 300, getSiteUserQuota(t, db, 3, true))
+
+	var log model.Log
+	require.NoError(t, db.Where("type = ?", model.LogTypeManage).First(&log).Error)
+	require.Contains(t, log.Content, "legacy")
+	require.Contains(t, log.Other, "total_delta")
+}
+
+func TestUpdateGroupBalanceSubtractFloorsAtZeroAndIncludesDisabled(t *testing.T) {
+	db := setupSiteControllerTestDB(t)
+	seedSiteUserWithQuota(t, db, 1, "legacy-a", "legacy", common.RoleCommonUser, 30, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 2, "legacy-disabled", "legacy", common.RoleCommonUser, 100, common.UserStatusDisabled)
+
+	ctx, recorder := newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", gin.H{
+		"group": "legacy",
+		"mode":  "subtract",
+		"quota": 50,
+	})
+	UpdateGroupBalance(ctx)
+
+	response := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, response.Success)
+	require.EqualValues(t, 2, response.Data.Affected)
+	require.EqualValues(t, -80, response.Data.TotalDelta)
+	require.Equal(t, 0, getSiteUserQuota(t, db, 1, false))
+	require.Equal(t, 50, getSiteUserQuota(t, db, 2, false))
+}
+
+func TestUpdateGroupBalanceOverride(t *testing.T) {
+	db := setupSiteControllerTestDB(t)
+	seedSiteUserWithQuota(t, db, 1, "legacy-a", "legacy", common.RoleCommonUser, 20, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 2, "legacy-b", "legacy", common.RoleCommonUser, 60, common.UserStatusEnabled)
+
+	ctx, recorder := newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", gin.H{
+		"group": "legacy",
+		"mode":  "override",
+		"quota": 100,
+	})
+	UpdateGroupBalance(ctx)
+
+	response := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, response.Success)
+	require.EqualValues(t, 2, response.Data.Affected)
+	require.EqualValues(t, 120, response.Data.TotalDelta)
+	require.Equal(t, 100, getSiteUserQuota(t, db, 1, false))
+	require.Equal(t, 100, getSiteUserQuota(t, db, 2, false))
+}
+
+func TestPreviewGroupBalanceMatchesExecute(t *testing.T) {
+	db := setupSiteControllerTestDB(t)
+	seedSiteUserWithQuota(t, db, 1, "legacy-a", "legacy", common.RoleCommonUser, 100, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 2, "legacy-b", "legacy", common.RoleCommonUser, 20, common.UserStatusEnabled)
+
+	ctx, recorder := newSiteControllerContext(t, http.MethodGet, "/api/site/group-balance/preview?group=legacy&mode=subtract&quota=50", nil)
+	PreviewGroupBalance(ctx)
+	preview := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, preview.Success)
+	require.EqualValues(t, 2, preview.Data.Affected)
+	require.EqualValues(t, -70, preview.Data.TotalDelta)
+
+	ctx, recorder = newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", gin.H{
+		"group": "legacy",
+		"mode":  "subtract",
+		"quota": 50,
+	})
+	UpdateGroupBalance(ctx)
+	executed := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, executed.Success)
+	require.Equal(t, preview.Data, executed.Data)
+}
+
+func TestGroupBalanceRejectsInvalidParams(t *testing.T) {
+	_ = setupSiteControllerTestDB(t)
+
+	tests := []gin.H{
+		{"group": "", "mode": "add", "quota": 100},
+		{"group": "legacy", "mode": "invalid", "quota": 100},
+		{"group": "legacy", "mode": "add", "quota": 0},
+	}
+
+	for _, body := range tests {
+		ctx, recorder := newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", body)
+		UpdateGroupBalance(ctx)
+
+		response := decodeSiteAPIResponse[struct{}](t, recorder)
+		require.False(t, response.Success)
+	}
+}
+
+func getSiteUserQuota(t *testing.T, db *gorm.DB, userID int, unscoped bool) int {
+	t.Helper()
+
+	var user model.User
+	query := db
+	if unscoped {
+		query = query.Unscoped()
+	}
+	require.NoError(t, query.First(&user, userID).Error)
+	return user.Quota
 }
