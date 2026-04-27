@@ -201,6 +201,90 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	return headers, nil
 }
 
+func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL string) string {
+	if customURL := strings.TrimSpace(customModelListURL); customURL != "" {
+		return customURL
+	}
+
+	baseURL = strings.TrimRight(baseURL, "/")
+	switch channelType {
+	case constant.ChannelTypeAli:
+		return fmt.Sprintf("%s/compatible-mode/v1/models", baseURL)
+	case constant.ChannelTypeZhipu_v4:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			return fmt.Sprintf("%s/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
+		}
+		return fmt.Sprintf("%s/api/paas/v4/models", baseURL)
+	case constant.ChannelTypeVolcEngine:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			return fmt.Sprintf("%s/v1/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
+		}
+		return fmt.Sprintf("%s/v1/models", baseURL)
+	case constant.ChannelTypeMoonshot:
+		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
+			return fmt.Sprintf("%s/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
+		}
+		return fmt.Sprintf("%s/v1/models", baseURL)
+	default:
+		return fmt.Sprintf("%s/v1/models", baseURL)
+	}
+}
+
+func fetchOpenAICompatibleModelIDs(channel *model.Channel, fetchURL string, key string) ([]string, error) {
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
+		return nil, err
+	}
+
+	body, err := GetResponseBody(http.MethodGet, fetchURL, channel, headers)
+	if err != nil {
+		return nil, err
+	}
+
+	var result OpenAIModelsResponse
+	if err := common.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(result.Data))
+	for _, item := range result.Data {
+		ids = append(ids, item.ID)
+	}
+
+	return normalizeModelNames(ids), nil
+}
+
+func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
+	if channel == nil {
+		return nil, fmt.Errorf("channel is nil")
+	}
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	customModelListURL = strings.TrimSpace(customModelListURL)
+
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeOllama {
+		models, err := ollama.FetchOllamaModels(baseURL, key)
+		if err != nil {
+			return nil, fmt.Errorf("获取Ollama模型失败: %w", err)
+		}
+		names := make([]string, 0, len(models))
+		for _, modelInfo := range models {
+			names = append(names, modelInfo.Name)
+		}
+		return normalizeModelNames(names), nil
+	}
+
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeGemini {
+		models, err := gemini.FetchGeminiModels(baseURL, key, channel.GetSetting().Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("获取Gemini模型失败: %w", err)
+		}
+		return normalizeModelNames(models), nil
+	}
+
+	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
+	return fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
+}
+
 func FetchUpstreamModels(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
@@ -994,9 +1078,11 @@ func UpdateChannel(c *gin.Context) {
 
 func FetchModels(c *gin.Context) {
 	var req struct {
-		BaseURL string `json:"base_url"`
-		Type    int    `json:"type"`
-		Key     string `json:"key"`
+		BaseURL            string `json:"base_url"`
+		Type               int    `json:"type"`
+		Key                string `json:"key"`
+		HeaderOverride     string `json:"header_override"`
+		CustomModelListURL string `json:"custom_model_list_url"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1016,94 +1102,21 @@ func FetchModels(c *gin.Context) {
 	key := strings.TrimSpace(req.Key)
 	key = strings.Split(key, "\n")[0]
 
-	if req.Type == constant.ChannelTypeOllama {
-		models, err := ollama.FetchOllamaModels(baseURL, key)
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": fmt.Sprintf("获取Ollama模型失败: %s", err.Error()),
-			})
-			return
-		}
-
-		names := make([]string, 0, len(models))
-		for _, modelInfo := range models {
-			names = append(names, modelInfo.Name)
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    names,
-		})
-		return
+	channel := &model.Channel{
+		Type: req.Type,
+		Key:  key,
+	}
+	if req.HeaderOverride != "" {
+		channel.HeaderOverride = common.GetPointer(req.HeaderOverride)
 	}
 
-	if req.Type == constant.ChannelTypeGemini {
-		models, err := gemini.FetchGeminiModels(baseURL, key, "")
-		if err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": fmt.Sprintf("获取Gemini模型失败: %s", err.Error()),
-			})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"data":    models,
-		})
-		return
-	}
-
-	client := &http.Client{}
-	url := fmt.Sprintf("%s/v1/models", baseURL)
-
-	request, err := http.NewRequest("GET", url, nil)
+	models, err := fetchChannelModelIDsWithKey(channel, baseURL, key, req.CustomModelListURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": err.Error(),
 		})
 		return
-	}
-
-	request.Header.Set("Authorization", "Bearer "+key)
-
-	response, err := client.Do(request)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-	//check status code
-	if response.StatusCode != http.StatusOK {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to fetch models",
-		})
-		return
-	}
-	defer response.Body.Close()
-
-	var result struct {
-		Data []struct {
-			ID string `json:"id"`
-		} `json:"data"`
-	}
-
-	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
-		return
-	}
-
-	var models []string
-	for _, model := range result.Data {
-		models = append(models, model.ID)
 	}
 
 	c.JSON(http.StatusOK, gin.H{

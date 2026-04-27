@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -82,4 +85,100 @@ func TestUpdateChannelClearsRetryTimes(t *testing.T) {
 	var reloaded model.Channel
 	require.NoError(t, db.First(&reloaded, channel.Id).Error)
 	require.Nil(t, reloaded.RetryTimes)
+}
+
+func TestResolveFetchModelsURL(t *testing.T) {
+	require.Equal(
+		t,
+		"https://api.example.com/v1/models",
+		resolveFetchModelsURL(constant.ChannelTypeOpenAI, "https://api.example.com/", ""),
+	)
+	require.Equal(
+		t,
+		"https://api.kilo.ai/api/gateway/models",
+		resolveFetchModelsURL(constant.ChannelTypeOpenAI, "https://api.example.com", " https://api.kilo.ai/api/gateway/models "),
+	)
+	require.Equal(
+		t,
+		"https://dashscope.aliyuncs.com/compatible-mode/v1/models",
+		resolveFetchModelsURL(constant.ChannelTypeAli, "https://dashscope.aliyuncs.com", ""),
+	)
+}
+
+func TestFetchModelsUsesCustomModelListURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/api/gateway/models", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":[{"id":"kilo-auto/frontier"},{"id":"kilo-auto/balanced"}]}`))
+	}))
+	defer upstream.Close()
+
+	body := fmt.Sprintf(`{
+		"type": %d,
+		"key": "test-key",
+		"base_url": "https://unused.example.com",
+		"custom_model_list_url": %q
+	}`, constant.ChannelTypeOpenAI, upstream.URL+"/api/gateway/models")
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	FetchModels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Success bool     `json:"success"`
+		Message string   `json:"message"`
+		Data    []string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Success, resp.Message)
+	require.Equal(t, []string{"kilo-auto/frontier", "kilo-auto/balanced"}, resp.Data)
+}
+
+func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/custom/models", r.URL.Path)
+		require.Equal(t, "Bearer saved-key", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":[{"id":"custom/model-a"},{"id":"custom/model-b"}]}`))
+	}))
+	defer upstream.Close()
+
+	settingsBytes, err := common.Marshal(dto.ChannelOtherSettings{
+		CustomModelListURL: upstream.URL + "/custom/models",
+	})
+	require.NoError(t, err)
+
+	channel := model.Channel{
+		Type:          constant.ChannelTypeOpenAI,
+		Key:           "saved-key",
+		Status:        common.ChannelStatusEnabled,
+		Name:          "custom-model-list",
+		Models:        "placeholder",
+		Group:         "default",
+		OtherSettings: string(settingsBytes),
+	}
+	require.NoError(t, db.Create(&channel).Error)
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Params = gin.Params{{Key: "id", Value: strconv.Itoa(channel.Id)}}
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/channel/fetch_models/"+strconv.Itoa(channel.Id), nil)
+
+	FetchUpstreamModels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Success bool     `json:"success"`
+		Message string   `json:"message"`
+		Data    []string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Success, resp.Message)
+	require.Equal(t, []string{"custom/model-a", "custom/model-b"}, resp.Data)
 }
