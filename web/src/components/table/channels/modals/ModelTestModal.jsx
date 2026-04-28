@@ -58,10 +58,14 @@ const ModelTestModal = ({
   t,
 }) => {
   const hasChannel = Boolean(currentTestChannel);
+  const isCohereChannel =
+    currentTestChannel?.type === 34 || currentTestChannel?.channel_type === 34;
   const streamToggleDisabled = [
     'embeddings',
+    'cohere-embeddings',
     'image-generation',
     'jina-rerank',
+    'cohere-rerank',
     'openai-response-compact',
   ].includes(selectedEndpointType);
 
@@ -81,6 +85,22 @@ const ModelTestModal = ({
 
   const endpointTypeOptions = [
     { value: '', label: t('自动检测') },
+    ...(isCohereChannel
+      ? [
+          {
+            value: 'cohere-chat',
+            label: 'Cohere Chat (/v2/chat)',
+          },
+          {
+            value: 'cohere-rerank',
+            label: 'Cohere Rerank (/v2/rerank)',
+          },
+          {
+            value: 'cohere-embeddings',
+            label: 'Cohere Embeddings (/v2/embed)',
+          },
+        ]
+      : []),
     { value: 'openai', label: 'OpenAI (/v1/chat/completions)' },
     { value: 'openai-response', label: 'OpenAI Response (/v1/responses)' },
     {
@@ -199,7 +219,9 @@ const ModelTestModal = ({
                     theme='light'
                     type='warning'
                     icon={<Settings size={12} />}
-                    onClick={() => window.open('/console/setting?tab=ratio', '_blank')}
+                    onClick={() =>
+                      window.open('/console/setting?tab=ratio', '_blank')
+                    }
                     style={{ width: 'fit-content' }}
                   >
                     {t('前往设置')}

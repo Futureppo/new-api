@@ -4181,6 +4181,11 @@
     "默认折叠侧边栏": "Mặc định thu gọn thanh bên",
     "默认测试模型": "Mô hình kiểm tra mặc định",
     "默认用户消息": "Xin chào",
-    "默认补全倍率": "Tỷ lệ hoàn thành mặc định"
+    "默认补全倍率": "Tỷ lệ hoàn thành mặc định",
+    "填写禁用原因": "Nhập lý do vô hiệu hóa",
+    "确认禁用此用户？": "Xác nhận vô hiệu hóa người dùng này?",
+    "请填写禁用原因，用户下次登录时将看到该原因。": "Nhập lý do vô hiệu hóa. Người dùng sẽ thấy lý do này trong lần đăng nhập tiếp theo.",
+    "请输入禁用原因": "Nhập lý do vô hiệu hóa",
+    "禁用原因不能为空": "Lý do vô hiệu hóa không được để trống"
   }
 }

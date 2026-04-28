@@ -128,6 +128,35 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
+	if !useAccessToken {
+		userId, ok := id.(int)
+		if !ok {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid),
+			})
+			c.Abort()
+			return
+		}
+		userCache, err := model.GetUserCache(userId)
+		if err != nil {
+			common.SysLog(fmt.Sprintf("authHelper GetUserCache error for user %d: %v", userId, err))
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+			})
+			c.Abort()
+			return
+		}
+		if userCache.Status == common.UserStatusDisabled {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+			})
+			c.Abort()
+			return
+		}
+	}
 	if role.(int) < minRole {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -196,6 +225,30 @@ func TokenOrUserAuth() func(c *gin.Context) {
 		// Try session auth first (dashboard users)
 		session := sessions.Default(c)
 		if id := session.Get("id"); id != nil {
+			if userId, ok := id.(int); ok {
+				userCache, err := model.GetUserCache(userId)
+				if err != nil {
+					common.SysLog(fmt.Sprintf("TokenOrUserAuth GetUserCache error for user %d: %v", userId, err))
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"success": false,
+						"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
+					})
+					c.Abort()
+					return
+				}
+				if userCache.Status == common.UserStatusEnabled {
+					c.Set("id", id)
+					c.Next()
+					return
+				} else if userCache.Status == common.UserStatusDisabled {
+					c.JSON(http.StatusForbidden, gin.H{
+						"success": false,
+						"message": common.TranslateMessage(c, i18n.MsgAuthUserBanned),
+					})
+					c.Abort()
+					return
+				}
+			}
 			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
 				c.Set("id", id)
 				c.Next()

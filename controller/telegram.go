@@ -95,6 +95,10 @@ func TelegramLogin(c *gin.Context) {
 		})
 		return
 	}
+	if user.Status != common.UserStatusEnabled {
+		respondUserDisabled(c, &user)
+		return
+	}
 	setupLogin(&user, c)
 }
 

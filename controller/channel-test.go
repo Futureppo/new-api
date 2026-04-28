@@ -48,6 +48,15 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeCohere {
+		if common.IsCohereRerankModel(modelName) {
+			return string(constant.EndpointTypeCohereRerank)
+		}
+		if common.IsCohereEmbeddingModel(modelName) {
+			return string(constant.EndpointTypeCohereEmbeddings)
+		}
+		return string(constant.EndpointTypeCohereChat)
+	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
 	}
@@ -174,7 +183,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if endpointType != "" {
 		// 根据指定的端点类型设置 relayFormat
 		switch constant.EndpointType(endpointType) {
-		case constant.EndpointTypeOpenAI:
+		case constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
 			relayFormat = types.RelayFormatOpenAI
 		case constant.EndpointTypeOpenAIResponse:
 			relayFormat = types.RelayFormatOpenAIResponses
@@ -184,11 +193,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatClaude
 		case constant.EndpointTypeGemini:
 			relayFormat = types.RelayFormatGemini
-		case constant.EndpointTypeJinaRerank:
+		case constant.EndpointTypeJinaRerank, constant.EndpointTypeCohereRerank:
 			relayFormat = types.RelayFormatRerank
 		case constant.EndpointTypeImageGeneration:
 			relayFormat = types.RelayFormatOpenAIImage
-		case constant.EndpointTypeEmbeddings:
+		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
 		default:
 			relayFormat = types.RelayFormatOpenAI
@@ -685,12 +694,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
-		case constant.EndpointTypeEmbeddings:
+		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			// 返回 EmbeddingRequest
-			return &dto.EmbeddingRequest{
-				Model: model,
-				Input: []any{"hello world"},
-			}
+			return buildTestEmbeddingRequest(model, channel)
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
 			return &dto.ImageRequest{
@@ -699,7 +705,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				N:      lo.ToPtr(uint(1)),
 				Size:   "1024x1024",
 			}
-		case constant.EndpointTypeJinaRerank:
+		case constant.EndpointTypeJinaRerank, constant.EndpointTypeCohereRerank:
 			// 返回 RerankRequest
 			return &dto.RerankRequest{
 				Model:     model,
@@ -720,7 +726,7 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Model: model,
 				Input: testResponsesInput,
 			}
-		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI:
+		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
 			// 返回 GeneralOpenAIRequest
 			maxTokens := uint(16)
 			if constant.EndpointType(endpointType) == constant.EndpointTypeGemini {
@@ -756,13 +762,11 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 
 	// 先判断是否为 Embedding 模型
 	if strings.Contains(strings.ToLower(model), "embedding") ||
-		strings.HasPrefix(model, "m3e") ||
-		strings.Contains(model, "bge-") {
+		strings.HasPrefix(strings.ToLower(model), "m3e") ||
+		strings.Contains(strings.ToLower(model), "bge-") ||
+		strings.Contains(strings.ToLower(model), "embed") {
 		// 返回 EmbeddingRequest
-		return &dto.EmbeddingRequest{
-			Model: model,
-			Input: []any{"hello world"},
-		}
+		return buildTestEmbeddingRequest(model, channel)
 	}
 
 	// Responses compaction models (must use /v1/responses/compact)
@@ -810,6 +814,18 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	}
 
 	return testRequest
+}
+
+func buildTestEmbeddingRequest(modelName string, channel *model.Channel) *dto.EmbeddingRequest {
+	request := &dto.EmbeddingRequest{
+		Model: modelName,
+		Input: []any{"hello world"},
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeCohere {
+		request.InputType = "search_document"
+		request.EmbeddingTypes = []string{"float"}
+	}
+	return request
 }
 
 func TestChannel(c *gin.Context) {

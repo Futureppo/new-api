@@ -57,3 +57,13 @@ func IsOpenAITextModel(modelName string) bool {
 	}
 	return false
 }
+
+func IsCohereRerankModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return strings.Contains(modelName, "rerank")
+}
+
+func IsCohereEmbeddingModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return strings.Contains(modelName, "embed") || strings.Contains(modelName, "embedding")
+}

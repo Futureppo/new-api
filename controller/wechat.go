@@ -113,10 +113,7 @@ func WeChatAuth(c *gin.Context) {
 	}
 
 	if user.Status != common.UserStatusEnabled {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "用户已被封禁",
-			"success": false,
-		})
+		respondUserDisabled(c, &user)
 		return
 	}
 	setupLogin(&user, c)

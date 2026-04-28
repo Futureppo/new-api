@@ -3792,6 +3792,12 @@
     "见上方动态计费详情": "See dynamic pricing details above",
     "含时间条件": "Time rules",
     "含请求条件": "Request rules",
-    "（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）": "(Currently only supports Epay interface, the default callback address is the server address above!)"
+    "（当前仅支持易支付接口，默认使用上方服务器地址作为回调地址！）": "(Currently only supports Epay interface, the default callback address is the server address above!)",
+    "填写禁用原因": "Enter disable reason",
+    "确认禁用此用户？": "Confirm disabling this user?",
+    "请填写禁用原因，用户下次登录时将看到该原因。": "Enter the disable reason. The user will see it the next time they log in.",
+    "请输入禁用原因": "Enter disable reason",
+    "禁用原因不能为空": "Disable reason cannot be empty",
+    "用户 ID": "User ID"
   }
 }

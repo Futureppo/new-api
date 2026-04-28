@@ -5,7 +5,9 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
@@ -68,4 +70,30 @@ func TestBuildTestLogOtherInjectsTieredInfo(t *testing.T) {
 	require.Equal(t, "tiered_expr", other["billing_mode"])
 	require.Equal(t, "base", other["matched_tier"])
 	require.NotEmpty(t, other["expr_b64"])
+}
+
+func TestNormalizeChannelTestEndpointCohereModels(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeCohere}
+
+	require.Equal(t, string(constant.EndpointTypeCohereChat), normalizeChannelTestEndpoint(channel, "command-a-03-2025", ""))
+	require.Equal(t, string(constant.EndpointTypeCohereRerank), normalizeChannelTestEndpoint(channel, "rerank-v3.5", ""))
+	require.Equal(t, string(constant.EndpointTypeCohereEmbeddings), normalizeChannelTestEndpoint(channel, "embed-v4.0", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(channel, "embed-v4.0", string(constant.EndpointTypeOpenAI)))
+}
+
+func TestBuildTestRequestCohereEmbeddingIncludesInputType(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeCohere}
+
+	request := buildTestRequest("embed-v4.0", string(constant.EndpointTypeCohereEmbeddings), channel, false)
+	embeddingRequest, ok := request.(*dto.EmbeddingRequest)
+	require.True(t, ok)
+	require.Equal(t, "embed-v4.0", embeddingRequest.Model)
+	require.Equal(t, "search_document", embeddingRequest.InputType)
+	require.Equal(t, []string{"float"}, embeddingRequest.EmbeddingTypes)
+
+	autoRequest := buildTestRequest("embed-v4.0", "", channel, false)
+	autoEmbeddingRequest, ok := autoRequest.(*dto.EmbeddingRequest)
+	require.True(t, ok)
+	require.Equal(t, "search_document", autoEmbeddingRequest.InputType)
+	require.Equal(t, []string{"float"}, autoEmbeddingRequest.EmbeddingTypes)
 }

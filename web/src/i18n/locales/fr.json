@@ -3647,6 +3647,12 @@
     "默认折叠侧边栏": "Réduire la barre latérale par défaut",
     "默认测试模型": "Modèle de test par défaut",
     "默认用户消息": "Bonjour",
-    "默认补全倍率": "Taux de complétion par défaut"
+    "默认补全倍率": "Taux de complétion par défaut",
+    "填写禁用原因": "Saisir le motif de désactivation",
+    "确认禁用此用户？": "Confirmer la désactivation de cet utilisateur ?",
+    "请填写禁用原因，用户下次登录时将看到该原因。": "Saisissez le motif de désactivation. L’utilisateur le verra lors de sa prochaine connexion.",
+    "请输入禁用原因": "Saisissez le motif de désactivation",
+    "禁用原因不能为空": "Le motif de désactivation ne peut pas être vide",
+    "用户 ID": "ID utilisateur"
   }
 }

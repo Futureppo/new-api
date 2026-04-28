@@ -17,8 +17,12 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
-import { Modal } from '@douyinfe/semi-ui';
+import React, { useEffect, useState } from 'react';
+import { Modal, Space, TextArea, Typography } from '@douyinfe/semi-ui';
+
+const { Text, Paragraph } = Typography;
+
+const MAX_DISABLE_REASON_LENGTH = 255;
 
 const EnableDisableUserModal = ({
   visible,
@@ -29,16 +33,92 @@ const EnableDisableUserModal = ({
   t,
 }) => {
   const isDisable = action === 'disable';
+  const [step, setStep] = useState('reason');
+  const [reason, setReason] = useState('');
+
+  useEffect(() => {
+    if (visible) {
+      setStep(isDisable ? 'reason' : 'confirm');
+      setReason('');
+    }
+  }, [visible, isDisable, user?.id]);
+
+  const trimmedReason = reason.trim();
+
+  const handleOk = () => {
+    if (!isDisable) {
+      onConfirm();
+      return;
+    }
+    if (step === 'reason') {
+      if (!trimmedReason) {
+        return;
+      }
+      setReason(trimmedReason);
+      setStep('confirm');
+      return;
+    }
+    onConfirm(trimmedReason);
+  };
+
+  const title = isDisable
+    ? step === 'reason'
+      ? t('填写禁用原因')
+      : t('确认禁用此用户？')
+    : t('确定要启用此用户吗？');
+
+  const renderDisableReasonStep = () => (
+    <Space vertical align='start' className='w-full'>
+      <Text>{t('请填写禁用原因，用户下次登录时将看到该原因。')}</Text>
+      <TextArea
+        value={reason}
+        rows={4}
+        maxLength={MAX_DISABLE_REASON_LENGTH}
+        placeholder={t('请输入禁用原因')}
+        onChange={(value) => setReason(value)}
+        showClear
+        style={{ width: '100%' }}
+      />
+      <Text type={trimmedReason ? 'tertiary' : 'danger'} size='small'>
+        {trimmedReason
+          ? `${reason.length}/${MAX_DISABLE_REASON_LENGTH}`
+          : t('禁用原因不能为空')}
+      </Text>
+    </Space>
+  );
+
+  const renderDisableConfirmStep = () => (
+    <Space vertical align='start' className='w-full'>
+      <Paragraph>{t('此操作将禁用用户账户')}</Paragraph>
+      <div>
+        <Text strong>{t('用户 ID')}：</Text>
+        <Text>{user?.id}</Text>
+      </div>
+      <div>
+        <Text strong>{t('禁用原因')}：</Text>
+        <Text>{trimmedReason}</Text>
+      </div>
+    </Space>
+  );
 
   return (
     <Modal
-      title={isDisable ? t('确定要禁用此用户吗？') : t('确定要启用此用户吗？')}
+      title={title}
       visible={visible}
       onCancel={onCancel}
-      onOk={onConfirm}
+      onOk={handleOk}
       type='warning'
+      okText={isDisable && step === 'reason' ? t('下一步') : t('确认')}
+      cancelText={t('取消')}
+      okButtonProps={{
+        disabled: isDisable && step === 'reason' && !trimmedReason,
+      }}
     >
-      {isDisable ? t('此操作将禁用用户账户') : t('此操作将启用用户账户')}
+      {isDisable
+        ? step === 'reason'
+          ? renderDisableReasonStep()
+          : renderDisableConfirmStep()
+        : t('此操作将启用用户账户')}
     </Modal>
   );
 };
