@@ -43,10 +43,13 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if info.RelayMode == constant.RelayModeRerank {
-		return fmt.Sprintf("%s/v1/rerank", info.ChannelBaseUrl), nil
-	} else {
-		return fmt.Sprintf("%s/v1/chat", info.ChannelBaseUrl), nil
+	switch info.RelayMode {
+	case constant.RelayModeRerank:
+		return fmt.Sprintf("%s/v2/rerank", info.ChannelBaseUrl), nil
+	case constant.RelayModeEmbeddings:
+		return fmt.Sprintf("%s/v2/embed", info.ChannelBaseUrl), nil
+	default:
+		return fmt.Sprintf("%s/v2/chat", info.ChannelBaseUrl), nil
 	}
 }
 
@@ -57,7 +60,7 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
-	return requestOpenAI2Cohere(*request), nil
+	return requestOpenAI2Cohere(*request)
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
@@ -74,12 +77,13 @@ func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dt
 }
 
 func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	return requestConvertEmbedding2Cohere(request)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
-	if info.RelayMode == constant.RelayModeRerank {
+	if info.RelayMode == constant.RelayModeEmbeddings {
+		usage, err = cohereEmbeddingHandler(c, resp, info)
+	} else if info.RelayMode == constant.RelayModeRerank {
 		usage, err = cohereRerankHandler(c, resp, info)
 	} else {
 		if info.IsStream {

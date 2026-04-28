@@ -139,6 +139,73 @@ func TestFetchModelsUsesCustomModelListURL(t *testing.T) {
 	require.Equal(t, []string{"kilo-auto/frontier", "kilo-auto/balanced"}, resp.Data)
 }
 
+func TestFetchModelsParsesCohereCustomModelListURL(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/cohere/models", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"models":[{"name":"command-a-03-2025"},{"name":"embed-v4.0"}]}`))
+	}))
+	defer upstream.Close()
+
+	body := fmt.Sprintf(`{
+		"type": %d,
+		"key": "test-key",
+		"base_url": "https://unused.example.com",
+		"custom_model_list_url": %q
+	}`, constant.ChannelTypeCohere, upstream.URL+"/cohere/models")
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/fetch_models", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	FetchModels(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var resp struct {
+		Success bool     `json:"success"`
+		Message string   `json:"message"`
+		Data    []string `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp))
+	require.True(t, resp.Success, resp.Message)
+	require.Equal(t, []string{"command-a-03-2025", "embed-v4.0"}, resp.Data)
+}
+
+func TestFetchCohereModelsPaginatesEndpointsAndSorts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/v1/models", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		require.Equal(t, "1000", r.URL.Query().Get("page_size"))
+
+		switch r.URL.Query().Get("endpoint") + ":" + r.URL.Query().Get("page_token") {
+		case "chat:":
+			_, _ = w.Write([]byte(`{"models":[{"name":"command-r-plus"}],"next_page_token":"next-chat"}`))
+		case "chat:next-chat":
+			_, _ = w.Write([]byte(`{"models":[{"name":"command-a-03-2025"}]}`))
+		case "rerank:":
+			_, _ = w.Write([]byte(`{"models":[{"name":"rerank-v4.0"}]}`))
+		case "embed:":
+			_, _ = w.Write([]byte(`{"models":[{"name":"embed-v4.0"},{"name":"command-a-03-2025"}]}`))
+		default:
+			t.Fatalf("unexpected cohere models query: %s", r.URL.RawQuery)
+		}
+	}))
+	defer upstream.Close()
+
+	channel := &model.Channel{
+		Type: constant.ChannelTypeCohere,
+		Key:  "test-key",
+	}
+
+	models, err := fetchChannelModelIDsWithKey(channel, upstream.URL, "test-key", "")
+	require.NoError(t, err)
+	require.Equal(t, []string{"command-a-03-2025", "command-r-plus", "embed-v4.0", "rerank-v4.0"}, models)
+}
+
 func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {
 	db := openChannelRetryControllerTestDB(t)
 

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
+	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/service"
@@ -241,17 +244,98 @@ func fetchOpenAICompatibleModelIDs(channel *model.Channel, fetchURL string, key 
 		return nil, err
 	}
 
-	var result OpenAIModelsResponse
-	if err := common.Unmarshal(body, &result); err != nil {
+	ids, parsed := parseModelIDsFromResponseBody(body)
+	if parsed {
+		return normalizeModelNames(ids), nil
+	}
+
+	return nil, fmt.Errorf("failed to parse model list response")
+}
+
+func parseModelIDsFromResponseBody(body []byte) ([]string, bool) {
+	var envelope map[string]json.RawMessage
+	if err := common.Unmarshal(body, &envelope); err != nil {
+		return nil, false
+	}
+
+	if _, exists := envelope["data"]; exists {
+		var result OpenAIModelsResponse
+		if err := common.Unmarshal(body, &result); err != nil {
+			return nil, false
+		}
+		ids := make([]string, 0, len(result.Data))
+		for _, item := range result.Data {
+			ids = append(ids, item.ID)
+		}
+		return ids, true
+	}
+
+	if _, exists := envelope["models"]; exists {
+		var cohereResult cohere.CohereModelsResponse
+		if err := common.Unmarshal(body, &cohereResult); err != nil {
+			return nil, false
+		}
+		ids := make([]string, 0, len(cohereResult.Models))
+		for _, item := range cohereResult.Models {
+			ids = append(ids, item.Name)
+		}
+		return ids, true
+	}
+
+	return nil, false
+}
+
+func buildCohereModelsURL(baseURL string, endpoint string, pageToken string) (string, error) {
+	u, err := url.Parse(fmt.Sprintf("%s/v1/models", strings.TrimRight(baseURL, "/")))
+	if err != nil {
+		return "", err
+	}
+	query := u.Query()
+	query.Set("page_size", "1000")
+	query.Set("endpoint", endpoint)
+	if pageToken != "" {
+		query.Set("page_token", pageToken)
+	}
+	u.RawQuery = query.Encode()
+	return u.String(), nil
+}
+
+func fetchCohereModelIDs(channel *model.Channel, baseURL string, key string) ([]string, error) {
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
 		return nil, err
 	}
 
-	ids := make([]string, 0, len(result.Data))
-	for _, item := range result.Data {
-		ids = append(ids, item.ID)
+	models := make([]string, 0)
+	for _, endpoint := range []string{"chat", "rerank", "embed"} {
+		pageToken := ""
+		for {
+			fetchURL, err := buildCohereModelsURL(baseURL, endpoint, pageToken)
+			if err != nil {
+				return nil, err
+			}
+			body, err := GetResponseBody(http.MethodGet, fetchURL, channel, headers)
+			if err != nil {
+				return nil, err
+			}
+
+			var result cohere.CohereModelsResponse
+			if err := common.Unmarshal(body, &result); err != nil {
+				return nil, err
+			}
+			for _, item := range result.Models {
+				models = append(models, item.Name)
+			}
+			if result.NextPageToken == "" {
+				break
+			}
+			pageToken = result.NextPageToken
+		}
 	}
 
-	return normalizeModelNames(ids), nil
+	models = normalizeModelNames(models)
+	sort.Strings(models)
+	return models, nil
 }
 
 func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
@@ -279,6 +363,14 @@ func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key str
 			return nil, fmt.Errorf("获取Gemini模型失败: %w", err)
 		}
 		return normalizeModelNames(models), nil
+	}
+
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeCohere {
+		models, err := fetchCohereModelIDs(channel, baseURL, key)
+		if err != nil {
+			return nil, fmt.Errorf("fetch Cohere models failed: %w", err)
+		}
+		return models, nil
 	}
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
