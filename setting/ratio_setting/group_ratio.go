@@ -1,7 +1,6 @@
 package ratio_setting
 
 import (
-	"encoding/json"
 	"errors"
 
 	"github.com/QuantumNous/new-api/common"
@@ -25,6 +24,14 @@ var defaultGroupGroupRatio = map[string]map[string]float64{
 
 var groupGroupRatioMap = types.NewRWMap[string, map[string]float64]()
 
+var defaultGroupDisplay = map[string]bool{
+	"default": true,
+	"vip":     true,
+	"svip":    true,
+}
+
+var groupDisplayMap = types.NewRWMap[string, bool]()
+
 var defaultGroupSpecialUsableGroup = map[string]map[string]string{
 	"vip": {
 		"append_1":   "vip_special_group_1",
@@ -35,6 +42,7 @@ var defaultGroupSpecialUsableGroup = map[string]map[string]string{
 type GroupRatioSetting struct {
 	GroupRatio              *types.RWMap[string, float64]            `json:"group_ratio"`
 	GroupGroupRatio         *types.RWMap[string, map[string]float64] `json:"group_group_ratio"`
+	GroupDisplay            *types.RWMap[string, bool]               `json:"group_display"`
 	GroupSpecialUsableGroup *types.RWMap[string, map[string]string]  `json:"group_special_usable_group"`
 }
 
@@ -46,11 +54,13 @@ func init() {
 
 	groupRatioMap.AddAll(defaultGroupRatio)
 	groupGroupRatioMap.AddAll(defaultGroupGroupRatio)
+	groupDisplayMap.AddAll(defaultGroupDisplay)
 
 	groupRatioSetting = GroupRatioSetting{
 		GroupSpecialUsableGroup: groupSpecialUsableGroup,
 		GroupRatio:              groupRatioMap,
 		GroupGroupRatio:         groupGroupRatioMap,
+		GroupDisplay:            groupDisplayMap,
 	}
 
 	config.GlobalConfig.Register("group_ratio_setting", &groupRatioSetting)
@@ -60,6 +70,10 @@ func GetGroupRatioSetting() *GroupRatioSetting {
 	if groupRatioSetting.GroupSpecialUsableGroup == nil {
 		groupRatioSetting.GroupSpecialUsableGroup = types.NewRWMap[string, map[string]string]()
 		groupRatioSetting.GroupSpecialUsableGroup.AddAll(defaultGroupSpecialUsableGroup)
+	}
+	if groupRatioSetting.GroupDisplay == nil {
+		groupRatioSetting.GroupDisplay = types.NewRWMap[string, bool]()
+		groupRatioSetting.GroupDisplay.AddAll(defaultGroupDisplay)
 	}
 	return &groupRatioSetting
 }
@@ -110,9 +124,31 @@ func UpdateGroupGroupRatioByJSONString(jsonStr string) error {
 	return types.LoadFromJsonString(groupGroupRatioMap, jsonStr)
 }
 
+func GetGroupDisplayCopy() map[string]bool {
+	return GetGroupRatioSetting().GroupDisplay.ReadAll()
+}
+
+func IsGroupDisplayed(name string) bool {
+	display, ok := GetGroupRatioSetting().GroupDisplay.Get(name)
+	return ok && display
+}
+
+func GroupDisplay2JSONString() string {
+	return GetGroupRatioSetting().GroupDisplay.MarshalJSONString()
+}
+
+func UpdateGroupDisplayByJSONString(jsonStr string) error {
+	return types.LoadFromJsonString(GetGroupRatioSetting().GroupDisplay, jsonStr)
+}
+
+func CheckGroupDisplay(jsonStr string) error {
+	checkGroupDisplay := make(map[string]bool)
+	return common.Unmarshal([]byte(jsonStr), &checkGroupDisplay)
+}
+
 func CheckGroupRatio(jsonStr string) error {
 	checkGroupRatio := make(map[string]float64)
-	err := json.Unmarshal([]byte(jsonStr), &checkGroupRatio)
+	err := common.Unmarshal([]byte(jsonStr), &checkGroupRatio)
 	if err != nil {
 		return err
 	}

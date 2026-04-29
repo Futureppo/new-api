@@ -25,13 +25,15 @@ function parseJSON(str, fallback) {
   }
 }
 
-function buildRows(groupRatioStr, userUsableGroupsStr) {
+function buildRows(groupRatioStr, userUsableGroupsStr, groupDisplayStr) {
   const ratioMap = parseJSON(groupRatioStr, {});
   const usableMap = parseJSON(userUsableGroupsStr, {});
+  const displayMap = parseJSON(groupDisplayStr, {});
 
   const allNames = new Set([
     ...Object.keys(ratioMap),
     ...Object.keys(usableMap),
+    ...Object.keys(displayMap),
   ]);
 
   return Array.from(allNames).map((name) => ({
@@ -39,6 +41,7 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
     name,
     ratio: ratioMap[name] ?? 1,
     selectable: name in usableMap,
+    display: displayMap[name] === true,
     description: usableMap[name] ?? '',
   }));
 }
@@ -46,10 +49,12 @@ function buildRows(groupRatioStr, userUsableGroupsStr) {
 export function serializeGroupTable(rows) {
   const groupRatio = {};
   const userUsableGroups = {};
+  const groupDisplay = {};
 
   rows.forEach((row) => {
     if (!row.name) return;
     groupRatio[row.name] = row.ratio;
+    groupDisplay[row.name] = !!row.display;
     if (row.selectable) {
       userUsableGroups[row.name] = row.description;
     }
@@ -58,14 +63,20 @@ export function serializeGroupTable(rows) {
   return {
     GroupRatio: JSON.stringify(groupRatio, null, 2),
     UserUsableGroups: JSON.stringify(userUsableGroups, null, 2),
+    'group_ratio_setting.group_display': JSON.stringify(groupDisplay, null, 2),
   };
 }
 
-export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
+export default function GroupTable({
+  groupRatio,
+  userUsableGroups,
+  groupDisplay,
+  onChange,
+}) {
   const { t } = useTranslation();
 
   const [rows, setRows] = useState(() =>
-    buildRows(groupRatio, userUsableGroups),
+    buildRows(groupRatio, userUsableGroups, groupDisplay),
   );
 
   // Use functional setRows to keep updateRow/addRow/removeRow referentially
@@ -107,6 +118,7 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
           name: newName,
           ratio: 1,
           selectable: true,
+          display: false,
           description: '',
         },
       ];
@@ -181,6 +193,19 @@ export default function GroupTable({ groupRatio, userUsableGroups, onChange }) {
             onChange={(e) =>
               updateRow(record._id, 'selectable', e.target.checked)
             }
+          />
+        ),
+      },
+      {
+        title: t('模型广场展示'),
+        dataIndex: 'display',
+        key: 'display',
+        width: 110,
+        align: 'center',
+        render: (_, record) => (
+          <Checkbox
+            checked={record.display}
+            onChange={(e) => updateRow(record._id, 'display', e.target.checked)}
           />
         ),
       },
