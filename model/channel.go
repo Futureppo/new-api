@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -37,6 +38,9 @@ type Channel struct {
 	Models             string  `json:"models"`
 	Group              string  `json:"group" gorm:"type:varchar(64);default:'default'"`
 	UsedQuota          int64   `json:"used_quota" gorm:"bigint;default:0"`
+	DailySuccessLimit  int     `json:"daily_success_limit" gorm:"default:0"`
+	DailySuccessCount  int     `json:"daily_success_count" gorm:"default:0"`
+	DailySuccessDate   string  `json:"daily_success_date" gorm:"type:varchar(10);default:''"`
 	ModelMapping       *string `json:"model_mapping" gorm:"type:text"`
 	//MaxInputTokens     *int    `json:"max_input_tokens" gorm:"default:0"`
 	StatusCodeMapping *string `json:"status_code_mapping" gorm:"type:varchar(1024);default:''"`
@@ -534,6 +538,74 @@ func (channel *Channel) UpdateBalance(balance float64) {
 
 func UpdateChannelRetryTimes(id int, retryTimes *int) error {
 	return DB.Model(&Channel{}).Where("id = ?", id).Update("retry_times", retryTimes).Error
+}
+
+const ChannelDailySuccessLimitExceededMessage = "当前渠道已到达每日限额，请联系管理员或者等待次日恢复"
+
+var ErrChannelDailySuccessLimitExceeded = errors.New(ChannelDailySuccessLimitExceededMessage)
+
+type ChannelDailySuccessReservation struct {
+	ChannelId int
+	Date      string
+	Counted   bool
+}
+
+func channelDailySuccessDate() string {
+	return time.Now().Format("2006-01-02")
+}
+
+func NormalizeChannelDailySuccess(channel *Channel) {
+	if channel == nil {
+		return
+	}
+	if channel.DailySuccessDate != channelDailySuccessDate() {
+		channel.DailySuccessCount = 0
+	}
+}
+
+func ReserveChannelDailySuccess(channel *Channel) (*ChannelDailySuccessReservation, error) {
+	if channel == nil || channel.Id <= 0 || channel.DailySuccessLimit <= 0 {
+		return nil, nil
+	}
+
+	today := channelDailySuccessDate()
+	result := DB.Model(&Channel{}).
+		Where("id = ? AND daily_success_limit > 0 AND (COALESCE(daily_success_date, '') <> ? OR COALESCE(daily_success_count, 0) < daily_success_limit)", channel.Id, today).
+		Updates(map[string]interface{}{
+			"daily_success_date":  today,
+			"daily_success_count": gorm.Expr("CASE WHEN COALESCE(daily_success_date, '') = ? THEN COALESCE(daily_success_count, 0) + ? ELSE ? END", today, 1, 1),
+		})
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return nil, ErrChannelDailySuccessLimitExceeded
+	}
+
+	return &ChannelDailySuccessReservation{
+		ChannelId: channel.Id,
+		Date:      today,
+		Counted:   true,
+	}, nil
+}
+
+func ReleaseChannelDailySuccess(reservation *ChannelDailySuccessReservation) {
+	if reservation == nil || !reservation.Counted || reservation.ChannelId <= 0 || reservation.Date == "" {
+		return
+	}
+	err := DB.Model(&Channel{}).
+		Where("id = ? AND daily_success_limit > 0 AND daily_success_date = ? AND daily_success_count > 0", reservation.ChannelId, reservation.Date).
+		Update("daily_success_count", gorm.Expr("daily_success_count - ?", 1)).Error
+	if err != nil {
+		common.SysLog(fmt.Sprintf("failed to release channel daily success reservation: channel_id=%d, date=%s, error=%v", reservation.ChannelId, reservation.Date, err))
+	}
+}
+
+func UpdateChannelDailySuccessLimit(id int, limit int) error {
+	if limit < 0 {
+		limit = 0
+	}
+	return DB.Model(&Channel{}).Where("id = ?", id).Update("daily_success_limit", limit).Error
 }
 
 func (channel *Channel) Delete() error {

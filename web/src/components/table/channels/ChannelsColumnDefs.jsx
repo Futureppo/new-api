@@ -527,6 +527,20 @@ export const getChannelsColumns = ({
       title: t('已用/剩余'),
       dataIndex: 'expired_time',
       render: (text, record, index) => {
+        const dailySuccessLimit = Number(record.daily_success_limit || 0);
+        const dailySuccessCount = Number(record.daily_success_count || 0);
+        const dailySuccessTag =
+          dailySuccessLimit > 0 ? (
+            <Tooltip content={t('今日成功次数/每日成功次数限额')}>
+              <Tag
+                color={dailySuccessCount >= dailySuccessLimit ? 'orange' : 'white'}
+                type={dailySuccessCount >= dailySuccessLimit ? 'light' : 'ghost'}
+                shape='circle'
+              >
+                {dailySuccessCount}/{dailySuccessLimit}
+              </Tag>
+            </Tooltip>
+          ) : null;
         if (record.children === undefined) {
           return (
             <div>
@@ -558,16 +572,20 @@ export const getChannelsColumns = ({
                       : renderQuotaWithAmount(record.balance)}
                   </Tag>
                 </Tooltip>
+                {dailySuccessTag}
               </Space>
             </div>
           );
         } else {
           return (
-            <Tooltip content={t('已用额度')}>
-              <Tag color='white' type='ghost' shape='circle'>
-                {renderQuota(record.used_quota)}
-              </Tag>
-            </Tooltip>
+            <Space spacing={1}>
+              <Tooltip content={t('已用额度')}>
+                <Tag color='white' type='ghost' shape='circle'>
+                  {renderQuota(record.used_quota)}
+                </Tag>
+              </Tooltip>
+              {dailySuccessTag}
+            </Space>
           );
         }
       },

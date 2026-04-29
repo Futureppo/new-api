@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+const channelDailySuccessLimitSkippedIDsKey = "channel_daily_success_limit_skipped_ids"
+
 type RetryParam struct {
 	Ctx                 *gin.Context
 	TokenGroup          string
@@ -18,6 +20,48 @@ type RetryParam struct {
 	Retry               *int
 	EffectiveRetryTimes *int
 	resetNextTry        bool
+}
+
+func MarkChannelDailySuccessLimitSkipped(c *gin.Context, channelId int) {
+	if c == nil || channelId <= 0 {
+		return
+	}
+	skipped := GetChannelDailySuccessLimitSkippedIDs(c)
+	skipped[channelId] = true
+	c.Set(channelDailySuccessLimitSkippedIDsKey, skipped)
+}
+
+func IsChannelDailySuccessLimitSkipped(c *gin.Context, channelId int) bool {
+	if c == nil || channelId <= 0 {
+		return false
+	}
+	skipped := GetChannelDailySuccessLimitSkippedIDs(c)
+	return skipped[channelId]
+}
+
+func HasChannelDailySuccessLimitSkipped(c *gin.Context) bool {
+	return len(GetChannelDailySuccessLimitSkippedIDs(c)) > 0
+}
+
+func GetChannelDailySuccessLimitSkippedIDs(c *gin.Context) map[int]bool {
+	if c == nil {
+		return map[int]bool{}
+	}
+	value, ok := c.Get(channelDailySuccessLimitSkippedIDsKey)
+	if !ok {
+		return map[int]bool{}
+	}
+	source, ok := value.(map[int]bool)
+	if !ok {
+		return map[int]bool{}
+	}
+	target := make(map[int]bool, len(source))
+	for id, skipped := range source {
+		if skipped {
+			target[id] = true
+		}
+	}
+	return target
 }
 
 func (p *RetryParam) GetRetry() int {
@@ -112,6 +156,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
+	excludedChannelIDs := GetChannelDailySuccessLimitSkippedIDs(param.Ctx)
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {
@@ -142,7 +187,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannel(autoGroup, param.ModelName, priorityRetry)
+			channel, _ = model.GetRandomSatisfiedChannelWithExclusions(autoGroup, param.ModelName, priorityRetry, excludedChannelIDs)
 			if channel == nil {
 				// Current group has no available channel for this model, try next group
 				// 当前分组没有该模型的可用渠道，尝试下一个分组
@@ -180,7 +225,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannel(param.TokenGroup, param.ModelName, param.GetRetry())
+		channel, err = model.GetRandomSatisfiedChannelWithExclusions(param.TokenGroup, param.ModelName, param.GetRetry(), excludedChannelIDs)
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

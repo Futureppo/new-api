@@ -3,6 +3,7 @@ package relay
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +25,29 @@ import (
 
 	"github.com/gin-gonic/gin"
 )
+
+func reserveMidjourneyDailySuccess(c *gin.Context) (*model.ChannelDailySuccessReservation, *dto.MidjourneyResponse) {
+	channelID := c.GetInt("channel_id")
+	channel, err := model.CacheGetChannel(channelID)
+	if err != nil || channel == nil {
+		channel, err = model.GetChannelById(channelID, true)
+	}
+	if err != nil {
+		return nil, service.MidjourneyErrorWrapper(constant.MjRequestError, "get_channel_info_failed")
+	}
+	reservation, err := model.ReserveChannelDailySuccess(channel)
+	if err == nil {
+		return reservation, nil
+	}
+	if errors.Is(err, model.ErrChannelDailySuccessLimitExceeded) {
+		return nil, service.MidjourneyErrorWrapper(constant.MjRequestError, model.ChannelDailySuccessLimitExceededMessage)
+	}
+	return nil, service.MidjourneyErrorWrapper(constant.MjRequestError, "reserve_channel_daily_success_failed")
+}
+
+func isMidjourneySubmitSuccess(statusCode int, responseCode int) bool {
+	return statusCode == http.StatusOK && (responseCode == 1 || responseCode == 21 || responseCode == 22)
+}
 
 func RelayMidjourneyImage(c *gin.Context) {
 	taskId := c.Param("id")
@@ -215,6 +239,16 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
+	reservation, dailyErr := reserveMidjourneyDailySuccess(c)
+	if dailyErr != nil {
+		return dailyErr
+	}
+	dailySuccess := false
+	defer func() {
+		if !dailySuccess {
+			model.ReleaseChannelDailySuccess(reservation)
+		}
+	}()
 	requestURL := getMjRequestPath(c.Request.URL.String())
 	baseURL := c.GetString("base_url")
 	fullRequestURL := fmt.Sprintf("%s%s", baseURL, requestURL)
@@ -247,6 +281,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		}
 	}()
 	midjResponse := &mjResp.Response
+	dailySuccess = isMidjourneySubmitSuccess(mjResp.StatusCode, midjResponse.Code)
 	midjourneyTask := &model.Midjourney{
 		UserId:      info.UserId,
 		Code:        midjResponse.Code,
@@ -523,6 +558,17 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
+	reservation, dailyErr := reserveMidjourneyDailySuccess(c)
+	if dailyErr != nil {
+		return dailyErr
+	}
+	dailySuccess := false
+	defer func() {
+		if !dailySuccess {
+			model.ReleaseChannelDailySuccess(reservation)
+		}
+	}()
+
 	midjResponseWithStatus, responseBody, err := service.DoMidjourneyHttpRequest(c, time.Second*60, fullRequestURL)
 	if err != nil {
 		return &midjResponseWithStatus.Response
@@ -593,6 +639,8 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		//非1-提交成功,21-任务已存在和22-排队中，则记录错误原因
 		midjourneyTask.FailReason = midjResponse.Description
 		consumeQuota = false
+	} else if isMidjourneySubmitSuccess(midjResponseWithStatus.StatusCode, midjResponse.Code) {
+		dailySuccess = true
 	}
 
 	if midjResponse.Code == 21 { //21-任务已存在（处理中或者有结果了）

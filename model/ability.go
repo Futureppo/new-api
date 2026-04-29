@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -104,21 +105,32 @@ func getChannelQuery(group string, model string, retry int) (*gorm.DB, error) {
 }
 
 func GetChannel(group string, model string, retry int) (*Channel, error) {
+	return GetChannelWithExclusions(group, model, retry, nil)
+}
+
+func GetChannelWithExclusions(group string, model string, retry int, excludedChannelIDs map[int]bool) (*Channel, error) {
 	var abilities []Ability
 
 	var err error = nil
-	channelQuery, err := getChannelQuery(group, model, retry)
-	if err != nil {
-		return nil, err
-	}
-	if common.UsingSQLite || common.UsingPostgreSQL {
-		err = channelQuery.Order("weight DESC").Find(&abilities).Error
+	if len(excludedChannelIDs) > 0 {
+		err = DB.Where(commonGroupCol+" = ? and model = ? and enabled = ?", group, model, true).
+			Order("priority DESC, weight DESC").
+			Find(&abilities).Error
 	} else {
+		channelQuery, queryErr := getChannelQuery(group, model, retry)
+		if queryErr != nil {
+			return nil, queryErr
+		}
 		err = channelQuery.Order("weight DESC").Find(&abilities).Error
 	}
 	if err != nil {
 		return nil, err
 	}
+
+	if len(excludedChannelIDs) > 0 {
+		abilities = filterExcludedAbilitiesForRetry(abilities, retry, excludedChannelIDs)
+	}
+
 	channel := Channel{}
 	if len(abilities) > 0 {
 		// Randomly choose one
@@ -141,6 +153,51 @@ func GetChannel(group string, model string, retry int) (*Channel, error) {
 	}
 	err = DB.First(&channel, "id = ?", channel.Id).Error
 	return &channel, err
+}
+
+func filterExcludedAbilitiesForRetry(abilities []Ability, retry int, excludedChannelIDs map[int]bool) []Ability {
+	if len(abilities) == 0 {
+		return abilities
+	}
+	filtered := make([]Ability, 0, len(abilities))
+	for _, ability := range abilities {
+		if excludedChannelIDs[ability.ChannelId] {
+			continue
+		}
+		filtered = append(filtered, ability)
+	}
+	if len(filtered) == 0 {
+		return filtered
+	}
+
+	uniquePriorities := make(map[int]bool)
+	for _, ability := range filtered {
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
+		}
+		uniquePriorities[int(priority)] = true
+	}
+	priorities := make([]int, 0, len(uniquePriorities))
+	for priority := range uniquePriorities {
+		priorities = append(priorities, priority)
+	}
+	sort.Sort(sort.Reverse(sort.IntSlice(priorities)))
+	if retry >= len(priorities) {
+		retry = len(priorities) - 1
+	}
+	targetPriority := int64(priorities[retry])
+	target := make([]Ability, 0, len(filtered))
+	for _, ability := range filtered {
+		priority := int64(0)
+		if ability.Priority != nil {
+			priority = *ability.Priority
+		}
+		if priority == targetPriority {
+			target = append(target, ability)
+		}
+	}
+	return target
 }
 
 func (channel *Channel) AddAbilities(tx *gorm.DB) error {

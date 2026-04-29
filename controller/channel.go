@@ -149,6 +149,7 @@ func GetAllChannels(c *gin.Context) {
 	}
 
 	for _, datum := range channelData {
+		model.NormalizeChannelDailySuccess(datum)
 		clearChannelInfo(datum)
 	}
 
@@ -520,6 +521,7 @@ func SearchChannels(c *gin.Context) {
 	pagedData := channelData[startIdx:endIdx]
 
 	for _, datum := range pagedData {
+		model.NormalizeChannelDailySuccess(datum)
 		clearChannelInfo(datum)
 	}
 
@@ -547,6 +549,7 @@ func GetChannel(c *gin.Context) {
 		return
 	}
 	if channel != nil {
+		model.NormalizeChannelDailySuccess(channel)
 		clearChannelInfo(channel)
 	}
 	c.JSON(http.StatusOK, gin.H{
@@ -617,6 +620,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	}
 	if channel.RetryTimes != nil && *channel.RetryTimes < 0 {
 		return fmt.Errorf("失败重试次数不能小于 0")
+	}
+	if channel.DailySuccessLimit < 0 {
+		return fmt.Errorf("每日成功次数限额不能小于 0")
 	}
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
@@ -821,6 +827,8 @@ func AddChannel(c *gin.Context) {
 		}
 		localChannel := addChannelRequest.Channel
 		localChannel.Key = key
+		localChannel.DailySuccessCount = 0
+		localChannel.DailySuccessDate = ""
 		if addChannelRequest.BatchAddSetKeyPrefix2Name && len(keys) > 1 {
 			keyPrefix := localChannel.Key
 			if len(localChannel.Key) > 8 {
@@ -1032,11 +1040,14 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 	retryTimesProvided := false
+	dailySuccessLimitProvided := false
 	rawBody := map[string]json.RawMessage{}
 	if err := common.Unmarshal(body, &rawBody); err == nil {
 		_, retryTimesProvided = rawBody["retry_times"]
+		_, dailySuccessLimitProvided = rawBody["daily_success_limit"]
 	}
 	requestedRetryTimes := channel.RetryTimes
+	requestedDailySuccessLimit := channel.DailySuccessLimit
 
 	// 使用统一的校验函数
 	if err := validateChannel(&channel.Channel, false); err != nil {
@@ -1058,6 +1069,8 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	channel.DailySuccessCount = originChannel.DailySuccessCount
+	channel.DailySuccessDate = originChannel.DailySuccessDate
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {
@@ -1155,6 +1168,13 @@ func UpdateChannel(c *gin.Context) {
 			return
 		}
 		channel.RetryTimes = requestedRetryTimes
+	}
+	if dailySuccessLimitProvided {
+		if err := model.UpdateChannelDailySuccessLimit(channel.Id, requestedDailySuccessLimit); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		channel.DailySuccessLimit = requestedDailySuccessLimit
 	}
 	model.InitChannelCache()
 	service.ResetProxyClientCache()
@@ -1318,6 +1338,8 @@ func CopyChannel(c *gin.Context) {
 	clone.Name = origin.Name + suffix
 	clone.TestTime = 0
 	clone.ResponseTime = 0
+	clone.DailySuccessCount = 0
+	clone.DailySuccessDate = ""
 	if resetBalance {
 		clone.Balance = 0
 		clone.UsedQuota = 0

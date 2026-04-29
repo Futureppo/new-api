@@ -88,7 +88,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			if !isChannelDailySuccessLimitError(newAPIError) {
+				newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
+			}
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -194,8 +196,17 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = channelErr
 			break
 		}
-		retryParam.SetEffectiveRetryTimesFromChannel(channel)
 
+		reservation, reserveErr := reserveChannelDailySuccess(channel)
+		if reserveErr != nil {
+			if isChannelDailySuccessLimitError(reserveErr) && shouldSkipDailyLimitedChannel(c, channel) {
+				continue
+			}
+			newAPIError = reserveErr
+			break
+		}
+
+		retryParam.SetEffectiveRetryTimesFromChannel(channel)
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -205,6 +216,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			} else {
 				newAPIError = types.NewErrorWithStatusCode(bodyErr, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 			}
+			model.ReleaseChannelDailySuccess(reservation)
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
@@ -224,6 +236,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			relayInfo.LastError = nil
 			return
 		}
+		model.ReleaseChannelDailySuccess(reservation)
 
 		newAPIError = service.NormalizeViolationFeeError(newAPIError)
 		relayInfo.LastError = newAPIError
@@ -254,6 +267,48 @@ func addUsedChannel(c *gin.Context, channelId int) {
 	useChannel := c.GetStringSlice("use_channel")
 	useChannel = append(useChannel, fmt.Sprintf("%d", channelId))
 	c.Set("use_channel", useChannel)
+}
+
+func newChannelDailySuccessLimitError() *types.NewAPIError {
+	return types.NewErrorWithStatusCode(
+		model.ErrChannelDailySuccessLimitExceeded,
+		types.ErrorCodeChannelDailySuccessLimitExceeded,
+		http.StatusTooManyRequests,
+		types.ErrOptionWithSkipRetry(),
+		types.ErrOptionWithNoRecordErrorLog(),
+	)
+}
+
+func reserveChannelDailySuccess(channel *model.Channel) (*model.ChannelDailySuccessReservation, *types.NewAPIError) {
+	reservation, err := model.ReserveChannelDailySuccess(channel)
+	if err == nil {
+		return reservation, nil
+	}
+	if errors.Is(err, model.ErrChannelDailySuccessLimitExceeded) {
+		return nil, newChannelDailySuccessLimitError()
+	}
+	return nil, types.NewError(err, types.ErrorCodeUpdateDataError, types.ErrOptionWithSkipRetry())
+}
+
+func isChannelDailySuccessLimitError(err *types.NewAPIError) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, model.ErrChannelDailySuccessLimitExceeded) || err.GetErrorCode() == types.ErrorCodeChannelDailySuccessLimitExceeded
+}
+
+func isSpecificChannelRequest(c *gin.Context) bool {
+	_, ok := c.Get(string(constant.ContextKeyTokenSpecificChannelId))
+	return ok
+}
+
+func shouldSkipDailyLimitedChannel(c *gin.Context, channel *model.Channel) bool {
+	if channel == nil || channel.Id <= 0 || isSpecificChannelRequest(c) {
+		return false
+	}
+	service.MarkChannelDailySuccessLimitSkipped(c, channel.Id)
+	logger.LogInfo(c, fmt.Sprintf("channel #%d reached daily success limit, trying another channel", channel.Id))
+	return true
 }
 
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
@@ -293,15 +348,20 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			autoBanInt = 0
 		}
 		channelId := c.GetInt("channel_id")
-		if channel, err := model.CacheGetChannel(channelId); err == nil && channel != nil {
-			return channel, nil
+		if !service.IsChannelDailySuccessLimitSkipped(c, channelId) || isSpecificChannelRequest(c) {
+			if channel, err := model.CacheGetChannel(channelId); err == nil && channel != nil {
+				return channel, nil
+			}
+			if channel, err := model.GetChannelById(channelId, true); err == nil && channel != nil {
+				return channel, nil
+			}
+			return &model.Channel{
+				Id:      channelId,
+				Type:    c.GetInt("channel_type"),
+				Name:    c.GetString("channel_name"),
+				AutoBan: &autoBanInt,
+			}, nil
 		}
-		return &model.Channel{
-			Id:      channelId,
-			Type:    c.GetInt("channel_type"),
-			Name:    c.GetString("channel_name"),
-			AutoBan: &autoBanInt,
-		}, nil
 	}
 	channel, selectGroup, err := service.CacheGetRandomSatisfiedChannel(retryParam)
 
@@ -311,6 +371,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	if channel == nil {
+		if service.HasChannelDailySuccessLimitSkipped(c) {
+			return nil, newChannelDailySuccessLimitError()
+		}
 		return nil, types.NewError(fmt.Errorf("分组 %s 下模型 %s 的可用渠道不存在（retry）", selectGroup, info.OriginModelName), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 
@@ -428,6 +491,15 @@ func RelayMidjourney(c *gin.Context) {
 	//err = relayMidjourneySubmit(c, relayMode)
 	log.Println(mjErr)
 	if mjErr != nil {
+		if mjErr.Description == model.ChannelDailySuccessLimitExceededMessage {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"description": model.ChannelDailySuccessLimitExceededMessage,
+				"type":        "new_api_error",
+				"code":        string(types.ErrorCodeChannelDailySuccessLimitExceeded),
+			})
+			logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", c.GetInt("channel_id"), http.StatusTooManyRequests, model.ChannelDailySuccessLimitExceededMessage))
+			return
+		}
 		statusCode := http.StatusBadRequest
 		if mjErr.Code == 30 {
 			mjErr.Result = "当前分组负载已饱和，请稍后再试，或升级账户以提升服务质量。"
@@ -515,9 +587,11 @@ func RelayTask(c *gin.Context) {
 
 	for retryParam.GetRetry() <= retryParam.GetEffectiveRetryTimes() {
 		var channel *model.Channel
+		lockedChannel := false
 
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
 			channel = lockedCh
+			lockedChannel = true
 			if retryParam.GetRetry() > 0 {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
@@ -529,12 +603,25 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				if isChannelDailySuccessLimitError(channelErr) {
+					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, string(types.ErrorCodeChannelDailySuccessLimitExceeded), http.StatusTooManyRequests)
+				} else {
+					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
+				}
 				break
 			}
 		}
-		retryParam.SetEffectiveRetryTimesFromChannel(channel)
 
+		reservation, reserveErr := reserveChannelDailySuccess(channel)
+		if reserveErr != nil {
+			if isChannelDailySuccessLimitError(reserveErr) && !lockedChannel && shouldSkipDailyLimitedChannel(c, channel) {
+				continue
+			}
+			taskErr = service.TaskErrorWrapperLocal(reserveErr.Err, string(reserveErr.GetErrorCode()), reserveErr.StatusCode)
+			break
+		}
+
+		retryParam.SetEffectiveRetryTimesFromChannel(channel)
 		addUsedChannel(c, channel.Id)
 		bodyStorage, bodyErr := common.GetBodyStorage(c)
 		if bodyErr != nil {
@@ -543,6 +630,7 @@ func RelayTask(c *gin.Context) {
 			} else {
 				taskErr = service.TaskErrorWrapperLocal(bodyErr, "read_request_body_failed", http.StatusBadRequest)
 			}
+			model.ReleaseChannelDailySuccess(reservation)
 			break
 		}
 		c.Request.Body = io.NopCloser(bodyStorage)
@@ -551,6 +639,7 @@ func RelayTask(c *gin.Context) {
 		if taskErr == nil {
 			break
 		}
+		model.ReleaseChannelDailySuccess(reservation)
 
 		if !taskErr.LocalError {
 			processChannelError(c,
@@ -606,7 +695,7 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
-	if taskErr.StatusCode == http.StatusTooManyRequests {
+	if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Code != string(types.ErrorCodeChannelDailySuccessLimitExceeded) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)

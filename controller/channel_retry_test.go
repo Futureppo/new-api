@@ -87,6 +87,50 @@ func TestUpdateChannelClearsRetryTimes(t *testing.T) {
 	require.Nil(t, reloaded.RetryTimes)
 }
 
+func TestUpdateChannelClearsDailySuccessLimit(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+
+	autoBan := 1
+	channel := model.Channel{
+		Type:              1,
+		Key:               "test-key",
+		Status:            common.ChannelStatusEnabled,
+		Name:              "daily-limit-test",
+		Models:            "gpt-4o",
+		Group:             "default",
+		AutoBan:           &autoBan,
+		DailySuccessLimit: 5,
+		DailySuccessCount: 3,
+		DailySuccessDate:  "2026-04-29",
+	}
+	require.NoError(t, db.Create(&channel).Error)
+
+	body := fmt.Sprintf(`{
+		"id": %d,
+		"type": 1,
+		"key": "test-key",
+		"status": %d,
+		"name": "daily-limit-test",
+		"models": "gpt-4o",
+		"group": "default",
+		"auto_ban": 1,
+		"daily_success_limit": 0
+	}`, channel.Id, common.ChannelStatusEnabled)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/channel/", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateChannel(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var reloaded model.Channel
+	require.NoError(t, db.First(&reloaded, channel.Id).Error)
+	require.Equal(t, 0, reloaded.DailySuccessLimit)
+	require.Equal(t, 3, reloaded.DailySuccessCount)
+	require.Equal(t, "2026-04-29", reloaded.DailySuccessDate)
+}
+
 func TestResolveFetchModelsURL(t *testing.T) {
 	require.Equal(
 		t,

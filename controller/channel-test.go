@@ -422,6 +422,21 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 
+	reservation, reserveErr := reserveChannelDailySuccess(channel)
+	if reserveErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    reserveErr.Err,
+			newAPIError: reserveErr,
+		}
+	}
+	testSucceeded := false
+	defer func() {
+		if !testSucceeded {
+			model.ReleaseChannelDailySuccess(reservation)
+		}
+	}()
+
 	requestBody := bytes.NewBuffer(jsonData)
 	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
 	resp, err := adaptor.DoRequest(c, info, requestBody)
@@ -507,6 +522,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	testSucceeded = true
 	return testResult{
 		context:     c,
 		localErr:    nil,
@@ -861,7 +877,11 @@ func TestChannel(c *gin.Context) {
 		if result.newAPIError != nil {
 			resp["error_code"] = result.newAPIError.GetErrorCode()
 		}
-		c.JSON(http.StatusOK, resp)
+		statusCode := http.StatusOK
+		if isChannelDailySuccessLimitError(result.newAPIError) {
+			statusCode = result.newAPIError.StatusCode
+		}
+		c.JSON(statusCode, resp)
 		return
 	}
 	tok := time.Now()
@@ -869,7 +889,11 @@ func TestChannel(c *gin.Context) {
 	go channel.UpdateResponseTime(milliseconds)
 	consumedTime := float64(milliseconds) / 1000.0
 	if result.newAPIError != nil {
-		c.JSON(http.StatusOK, gin.H{
+		statusCode := http.StatusOK
+		if isChannelDailySuccessLimitError(result.newAPIError) {
+			statusCode = result.newAPIError.StatusCode
+		}
+		c.JSON(statusCode, gin.H{
 			"success":    false,
 			"message":    result.newAPIError.Error(),
 			"time":       consumedTime,

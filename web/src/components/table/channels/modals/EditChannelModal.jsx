@@ -187,6 +187,7 @@ const EditChannelModal = (props) => {
     priority: 0,
     weight: 0,
     retry_times: null,
+    daily_success_limit: 0,
     tag: '',
     multi_key_mode: 'random',
     // 渠道额外设置的默认值
@@ -822,6 +823,7 @@ const EditChannelModal = (props) => {
         data.groups = data.group.split(',');
       }
       data.retry_times = data.retry_times ?? null;
+      data.daily_success_limit = data.daily_success_limit ?? 0;
       if (data.model_mapping !== '') {
         data.model_mapping = JSON.stringify(
           JSON.parse(data.model_mapping),
@@ -1020,6 +1022,7 @@ const EditChannelModal = (props) => {
         (data.remark && data.remark.trim()) ||
         (data.priority && data.priority !== 0) ||
         (data.weight && data.weight !== 0) ||
+        (data.daily_success_limit && data.daily_success_limit !== 0) ||
         (data.proxy && data.proxy.trim()) ||
         (data.system_prompt && data.system_prompt.trim()) ||
         data.thinking_to_content ||
@@ -1868,6 +1871,18 @@ const EditChannelModal = (props) => {
         ? Math.max(0, Math.trunc(parsedRetryTimes))
         : null;
     }
+    if (
+      localInputs.daily_success_limit === '' ||
+      localInputs.daily_success_limit === undefined ||
+      localInputs.daily_success_limit === null
+    ) {
+      localInputs.daily_success_limit = 0;
+    } else {
+      const parsedDailySuccessLimit = Number(localInputs.daily_success_limit);
+      localInputs.daily_success_limit = Number.isFinite(parsedDailySuccessLimit)
+        ? Math.max(0, Math.trunc(parsedDailySuccessLimit))
+        : 0;
+    }
     localInputs.auto_ban = localInputs.auto_ban ? 1 : 0;
     localInputs.models = localInputs.models.join(',');
     localInputs.group = (localInputs.groups || []).join(',');
@@ -2476,7 +2491,7 @@ const EditChannelModal = (props) => {
                   />
 
                   <Row gutter={12}>
-                    <Col xs={24} sm={8}>
+                    <Col xs={24} sm={6}>
                       <Form.InputNumber
                         field='priority'
                         label={t('渠道优先级')}
@@ -2486,7 +2501,7 @@ const EditChannelModal = (props) => {
                         style={{ width: '100%' }}
                       />
                     </Col>
-                    <Col xs={24} sm={8}>
+                    <Col xs={24} sm={6}>
                       <Form.InputNumber
                         field='weight'
                         label={t('渠道权重')}
@@ -2496,7 +2511,7 @@ const EditChannelModal = (props) => {
                         style={{ width: '100%' }}
                       />
                     </Col>
-                    <Col xs={24} sm={8}>
+                    <Col xs={24} sm={6}>
                       <Form.InputNumber
                         field='retry_times'
                         label={t('失败重试次数')}
@@ -2513,6 +2528,25 @@ const EditChannelModal = (props) => {
                         }
                         style={{ width: '100%' }}
                         extraText={t('留空使用全局失败重试次数，填 0 表示失败后不重试')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={6}>
+                      <Form.InputNumber
+                        field='daily_success_limit'
+                        label={t('每日成功次数限额')}
+                        placeholder={t('每日成功次数限额')}
+                        min={0}
+                        precision={0}
+                        onNumberChange={(value) =>
+                          handleInputChange(
+                            'daily_success_limit',
+                            value === undefined || value === null || value === ''
+                              ? 0
+                              : Math.max(0, Math.trunc(value)),
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        extraText={t('填 0 或留空表示无限额')}
                       />
                     </Col>
                   </Row>
