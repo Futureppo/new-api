@@ -36,6 +36,62 @@ import Text from '@douyinfe/semi-ui/lib/es/typography/text';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
+const UPDATE_REPOSITORY = 'Futureppo/new-api';
+const UPDATE_BRANCH = 'main';
+const GITHUB_API_BASE_URL = `https://api.github.com/repos/${UPDATE_REPOSITORY}`;
+const GITHUB_REPOSITORY_URL = `https://github.com/${UPDATE_REPOSITORY}`;
+const GITHUB_LATEST_RELEASE_URL = `${GITHUB_API_BASE_URL}/releases/latest`;
+const GITHUB_COMMITS_URL = `${GITHUB_API_BASE_URL}/commits?sha=${UPDATE_BRANCH}&per_page=5`;
+
+const escapeHtml = (value = '') =>
+  String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const fetchGitHubJson = async (url) => {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+    },
+  });
+
+  if (!response.ok) {
+    const error = new Error(`GitHub API request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+
+  return response.json();
+};
+
+const renderCommitUpdates = (commits) => {
+  const items = commits
+    .map((item) => {
+      const sha = item.sha?.slice(0, 7) || 'unknown';
+      const message =
+        item.commit?.message?.split('\n')[0] || 'No commit message';
+      const author =
+        item.commit?.author?.name || item.author?.login || 'unknown';
+      const date = item.commit?.author?.date
+        ? new Date(item.commit.author.date).toLocaleString()
+        : '';
+      const url =
+        item.html_url ||
+        `${GITHUB_REPOSITORY_URL}/commit/${encodeURIComponent(item.sha)}`;
+
+      return `<li><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(
+        sha,
+      )}</a> ${escapeHtml(date)} ${escapeHtml(author)} - ${escapeHtml(message)}</li>`;
+    })
+    .join('');
+
+  return `<p>当前 fork 暂无 Release，以下为 ${escapeHtml(
+    UPDATE_REPOSITORY,
+  )} ${escapeHtml(UPDATE_BRANCH)} 分支最新提交：</p><ul>${items}</ul>`;
+};
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -55,6 +111,7 @@ const OtherSetting = () => {
   const [updateData, setUpdateData] = useState({
     tag_name: '',
     content: '',
+    detailUrl: '',
   });
 
   const updateOption = async (key, value) => {
@@ -234,37 +291,40 @@ const OtherSetting = () => {
         ...loadingInput,
         CheckUpdate: true,
       }));
-      // Use a CORS proxy to avoid direct cross-origin requests to GitHub API
-      // Option 1: Use a public CORS proxy service
-      // const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
-      // const res = await API.get(
-      //   `${proxyUrl}https://api.github.com/repos/Calcium-Ion/new-api/releases/latest`,
-      // );
 
-      // Option 2: Use the JSON proxy approach which often works better with GitHub API
-      const res = await fetch(
-        'https://api.github.com/repos/Calcium-Ion/new-api/releases/latest',
-        {
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            // Adding User-Agent which is often required by GitHub API
-            'User-Agent': 'new-api-update-checker',
-          },
-        },
-      ).then((response) => response.json());
+      let res;
+      try {
+        res = await fetchGitHubJson(GITHUB_LATEST_RELEASE_URL);
+      } catch (error) {
+        if (error.status !== 404) {
+          throw error;
+        }
+      }
 
-      // Option 3: Use a local proxy endpoint
-      // Create a cached version of the response to avoid frequent GitHub API calls
-      // const res = await API.get('/api/status/github-latest-release');
-
-      const { tag_name, body } = res;
+      const { tag_name, body, html_url } = res || {};
       if (tag_name === statusState?.status?.version) {
         showSuccess(`已是最新版本：${tag_name}`);
-      } else {
+      } else if (tag_name) {
         setUpdateData({
           tag_name: tag_name,
-          content: marked.parse(body),
+          content: marked.parse(body || ''),
+          detailUrl:
+            html_url ||
+            `${GITHUB_REPOSITORY_URL}/releases/tag/${encodeURIComponent(tag_name)}`,
+        });
+        setShowUpdateModal(true);
+      } else {
+        const commits = await fetchGitHubJson(GITHUB_COMMITS_URL);
+        if (!Array.isArray(commits) || commits.length === 0) {
+          throw new Error('No commits found for update check');
+        }
+        const latestCommit = commits[0];
+        setUpdateData({
+          tag_name: latestCommit.sha?.slice(0, 7) || UPDATE_BRANCH,
+          content: renderCommitUpdates(commits),
+          detailUrl:
+            latestCommit.html_url ||
+            `${GITHUB_REPOSITORY_URL}/commits/${UPDATE_BRANCH}`,
         });
         setShowUpdateModal(true);
       }
@@ -302,10 +362,7 @@ const OtherSetting = () => {
 
   // Function to open GitHub release page
   const openGitHubRelease = () => {
-    window.open(
-      `https://github.com/Calcium-Ion/new-api/releases/tag/${updateData.tag_name}`,
-      '_blank',
-    );
+    window.open(updateData.detailUrl || GITHUB_REPOSITORY_URL, '_blank');
   };
 
   const getStartTimeString = () => {
