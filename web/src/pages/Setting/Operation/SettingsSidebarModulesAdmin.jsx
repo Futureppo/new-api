@@ -193,6 +193,11 @@ export default function SettingsSidebarModulesAdmin(props) {
         },
         { key: 'user', title: t('用户管理'), description: t('用户账户管理') },
         {
+          key: 'enhancements',
+          title: t('增强管理'),
+          description: t('增强统计、审计、风控与系统工具'),
+        },
+        {
           key: 'setting',
           title: t('系统设置'),
           description: t('系统参数配置'),

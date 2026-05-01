@@ -3804,6 +3804,26 @@
     "whsec_xxx 的 Webhook 签名密钥，敏感信息不显示": "whsec_xxx のWebhook署名シークレット。機密情報は表示されません",
     "Worker地址": "Workerアドレス",
     "Worker密钥": "WorkerAPIキー",
-    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": ""
+    "X 也可以小于 1，当折扣用。想做\"只给输出加价\"或\"额外加固定费用\"，请直接写完整计费公式。": "",
+    "增强功能": "Enhancements",
+    "增强管理": "Enhancement Management",
+    "增强统计、审计、风控与系统工具": "Enhanced analytics, auditing, risk controls, and system tools",
+    "增强仪表盘": "Enhanced Dashboard",
+    "兑换码增强": "Redemption Enhancements",
+    "用户增强": "User Enhancements",
+    "今日请求次数": "今日のリクエスト数",
+    "今日已用 Token": "今日の使用済み Token",
+    "令牌审计": "Token Audit",
+    "风控中心": "Risk Center",
+    "日志分析": "Log Analytics",
+    "模型状态": "Model Status",
+    "自动分组": "Auto Group",
+    "AI 封禁": "AI Ban",
+    "系统工具": "System Tools",
+    "生成兑换码": "Generate Redemption Codes",
+    "确认生成兑换码？": "Generate redemption codes?",
+    "生成": "Generate",
+    "生成成功": "Generated successfully",
+    "刷新": "Refresh"
   }
 }

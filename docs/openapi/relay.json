@@ -2342,11 +2342,11 @@
         "properties": {
           "prompt_tokens": {
             "type": "integer",
-            "description": "提示词 Token 数"
+            "description": "输入 Token 数"
           },
           "completion_tokens": {
             "type": "integer",
-            "description": "补全 Token 数"
+            "description": "输出 Token数"
           },
           "total_tokens": {
             "type": "integer",
@@ -2725,7 +2725,7 @@
           },
           "max_completion_tokens": {
             "type": "integer",
-            "description": "最大补全 Token 数"
+            "description": "最大输出 Token数"
           },
           "presence_penalty": {
             "type": "number",

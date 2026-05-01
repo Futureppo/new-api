@@ -46,6 +46,21 @@ func SetApiRouter(router *gin.Engine) {
 		apiRouter.GET("/oauth/:provider", middleware.CriticalRateLimit(), controller.HandleOAuth)
 		apiRouter.GET("/ratio_config", middleware.CriticalRateLimit(), controller.GetRatioConfig)
 
+		enhancementEmbedRoute := apiRouter.Group("/enhancements/model-status/embed")
+		{
+			controller.RegisterEnhancementModelStatusEmbedRoutes(enhancementEmbedRoute)
+		}
+		enhancementRoute := apiRouter.Group("/enhancements")
+		enhancementRoute.Use(middleware.AdminAuth())
+		{
+			controller.RegisterEnhancementRoutes(enhancementRoute)
+		}
+		enhancementRootRoute := apiRouter.Group("/enhancements")
+		enhancementRootRoute.Use(middleware.RootAuth())
+		{
+			controller.RegisterEnhancementRootRoutes(enhancementRootRoute)
+		}
+
 		apiRouter.POST("/stripe/webhook", controller.StripeWebhook)
 		apiRouter.POST("/creem/webhook", controller.CreemWebhook)
 		apiRouter.POST("/waffo/webhook", controller.WaffoWebhook)

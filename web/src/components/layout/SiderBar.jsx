@@ -50,6 +50,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
+  enhancements: '/console/enhancements/dashboard',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -196,6 +197,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/site',
         className: isRoot() ? '' : 'tableHiddle',
       },
+      {
+        text: t('增强管理'),
+        itemKey: 'enhancements',
+        to: '/console/enhancements/dashboard',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
     ];
 
     // 根据配置过滤项目
@@ -293,6 +300,10 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       } else {
         matchingKey = 'chat';
       }
+    }
+
+    if (!matchingKey && currentPath.startsWith('/console/enhancements/')) {
+      matchingKey = 'enhancements';
     }
 
     // 如果找到匹配的键，更新选中的键

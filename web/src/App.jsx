@@ -18,7 +18,13 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
-import { Route, Routes, useLocation, useParams } from 'react-router-dom';
+import {
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
 import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers';
@@ -46,6 +52,7 @@ import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
 import Site from './pages/Site';
+import Enhancements from './pages/Enhancements';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -266,6 +273,18 @@ function App() {
                 <Site />
               </Suspense>
             </RootRoute>
+          }
+        />
+        <Route
+          path='/console/enhancements'
+          element={<Navigate to='/console/enhancements/dashboard' replace />}
+        />
+        <Route
+          path='/console/enhancements/:section'
+          element={
+            <AdminRoute>
+              <Enhancements />
+            </AdminRoute>
           }
         />
         <Route

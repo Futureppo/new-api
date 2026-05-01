@@ -59,10 +59,13 @@ const PageLayout = () => {
     '/console/midjourney',
     '/console/task',
     '/console/models',
+    '/console/enhancements/dashboard',
     '/pricing',
   ];
 
-  const shouldHideFooter = cardProPages.includes(location.pathname);
+  const shouldHideFooter =
+    cardProPages.includes(location.pathname) ||
+    location.pathname.startsWith('/console/enhancements');
 
   const shouldInnerPadding =
     location.pathname.includes('/console') &&
