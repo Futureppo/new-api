@@ -453,6 +453,9 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		"public_embed_enabled":          {},
 		"model_status_time_window_mins": {},
 		"model_status_refresh_seconds":  {},
+		"model_status_slot_minutes":     {},
+		"model_status_green_threshold":  {},
+		"model_status_yellow_threshold": {},
 		"model_status_theme":            {},
 		"model_status_sort_mode":        {},
 		"model_status_site_title":       {},
@@ -468,13 +471,27 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		}
 	case "model_status_time_window_mins":
 		minutes, err := strconv.Atoi(value)
-		if err != nil || minutes < 1 || minutes > int(MaxAdminQueryWindow.Minutes()) {
-			return fmt.Errorf("time window must be between 1 and %d minutes", int(MaxAdminQueryWindow.Minutes()))
+		if err != nil {
+			value = strconv.Itoa(ModelStatusWindowToMinutes(value))
+			minutes, err = strconv.Atoi(value)
+		}
+		if err != nil || !IsAllowedModelStatusWindowMinutes(minutes) {
+			return errors.New("time window must be today, 24h, 7d, or 30d")
 		}
 	case "model_status_refresh_seconds":
 		seconds, err := strconv.Atoi(value)
-		if err != nil || seconds < 5 || seconds > 3600 {
-			return errors.New("refresh interval must be between 5 and 3600 seconds")
+		if err != nil || seconds < 60 || seconds > 24*60*60 {
+			return errors.New("refresh interval must be between 1 and 1440 minutes")
+		}
+	case "model_status_slot_minutes":
+		minutes, err := strconv.Atoi(value)
+		if err != nil || minutes < 5 || minutes > 24*60 {
+			return errors.New("slot granularity must be between 5 and 1440 minutes")
+		}
+	case "model_status_green_threshold", "model_status_yellow_threshold":
+		threshold, err := strconv.ParseFloat(value, 64)
+		if err != nil || threshold <= 0 || threshold > 100 {
+			return errors.New("status threshold must be between 0 and 100")
 		}
 	case "model_status_theme":
 		if value != "light" && value != "dark" && value != "system" {
@@ -492,9 +509,7 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 	if err := model.UpdateOption("enhancement_setting."+key, value); err != nil {
 		return err
 	}
-	audit(operatorId, "enhancements.model_status", "save_option", map[string]interface{}{
-		"key": key,
-	})
+	ClearModelStatusPublicCache()
 	return nil
 }
 

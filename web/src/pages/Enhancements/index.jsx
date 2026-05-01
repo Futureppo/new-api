@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -102,6 +102,10 @@ const MODEL_STATUS_WINDOWS = [
   { label: '24h', value: '24h' },
   { label: '7天', value: '7d' },
   { label: '30天', value: '30d' },
+];
+const MODEL_STATUS_SORT_OPTIONS = [
+  { label: '请求次数降序', value: 'requests_desc' },
+  { label: '成功率升序', value: 'success_rate_asc' },
 ];
 
 const MODEL_STATUS_META = {
@@ -328,6 +332,46 @@ function getModelStatusPublicUrl(config = {}) {
     .replace(/\/+$/, '');
   const origin = base || window.location.origin;
   return `${origin}${config.public_url_path || MODEL_STATUS_PUBLIC_PATH}`;
+}
+
+function getModelStatusConfigWindow(config = {}) {
+  return config.current_window || config.default_window || '24h';
+}
+
+function getModelStatusRefreshMinutes(config = {}) {
+  const explicit = Number(config.refresh_interval_minutes);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return Math.min(1440, Math.max(1, Math.round(explicit)));
+  }
+  const seconds = Number(config.refresh_interval || 60);
+  if (!Number.isFinite(seconds) || seconds <= 0) return 1;
+  return Math.min(1440, Math.max(1, Math.round(seconds / 60)));
+}
+
+function getModelStatusSlotMinutes(config = {}) {
+  const minutes = Number(config.slot_minutes || 30);
+  if (!Number.isFinite(minutes)) return 30;
+  return Math.min(1440, Math.max(5, Math.round(minutes)));
+}
+
+function getModelStatusThreshold(config = {}, key, fallback) {
+  const value = Number(config[key]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(100, Math.max(1, value));
+}
+
+function modelStatusWindowToMinutes(windowValue) {
+  switch (windowValue) {
+    case 'today':
+      return 0;
+    case '7d':
+      return 7 * 24 * 60;
+    case '30d':
+      return 30 * 24 * 60;
+    case '24h':
+    default:
+      return 24 * 60;
+  }
 }
 
 function modelStatusOverview(statuses = []) {
@@ -2237,11 +2281,49 @@ function ModelStatusStat({ icon: Icon, label, value, hint }) {
   );
 }
 
+function ModelStatusTimeline({ status }) {
+  const { t } = useTranslation();
+  const slots = Array.isArray(status?.slot_data) ? status.slot_data : [];
+  const groupName = status?.group_name || status?.group || 'default';
+  const modelName = status?.model_name || '-';
+
+  return (
+    <div className='space-y-1.5'>
+      <div className='flex h-6 w-full items-stretch gap-[3px] overflow-hidden rounded-sm'>
+        {slots.length > 0 ? (
+          slots.map((slot) => {
+            const slotMeta = getModelStatusMeta(slot.status);
+            const title = `${dayjs.unix(slot.start_time).format('MM-DD HH:mm')} - ${dayjs
+              .unix(slot.end_time)
+              .format('MM-DD HH:mm')} · ${formatStatusPercent(
+              slot.success_rate,
+            )} · ${formatNumber(Number(slot.total_requests || 0))}`;
+            return (
+              <div
+                key={`${groupName}-${modelName}-${slot.slot}`}
+                className={`min-w-[3px] flex-1 rounded-[1px] ${slotMeta.barClass}`}
+                title={title}
+              />
+            );
+          })
+        ) : (
+          <div className='h-full flex-1 rounded-sm bg-semi-color-fill-1' />
+        )}
+      </div>
+      <div className='flex items-center justify-between text-[10px] uppercase tracking-wide text-semi-color-text-2'>
+        <span>{t('过去')}</span>
+        <span>{t('现在')}</span>
+      </div>
+    </div>
+  );
+}
+
 function ModelStatusCard({ status }) {
   const { t } = useTranslation();
   const meta = getModelStatusMeta(status?.current_status);
   const Icon = meta.icon;
-  const slots = Array.isArray(status?.slot_data) ? status.slot_data : [];
+  const groupName = status?.group_name || status?.group || 'default';
+  const modelName = status?.model_name || '-';
 
   return (
     <Card className='!rounded-lg'>
@@ -2249,11 +2331,18 @@ function ModelStatusCard({ status }) {
         <div className='flex items-start justify-between gap-3'>
           <div className='min-w-0'>
             <div className='truncate text-base font-semibold text-semi-color-text-0'>
-              {status?.display_name || status?.model_name || '-'}
+              {status?.display_name || modelName}
+            </div>
+            <div className='mt-2 grid grid-cols-1 gap-1 text-xs text-semi-color-text-2 sm:grid-cols-2'>
+              <div className='truncate'>
+                {t('分组')}：{groupName}
+              </div>
+              <div className='truncate'>
+                {t('模型')}：{modelName}
+              </div>
             </div>
             <div className='mt-1 text-xs text-semi-color-text-2'>
-              {formatNumber(Number(status?.total_requests || 0))}{' '}
-              {t('总请求')}
+              {formatNumber(Number(status?.total_requests || 0))} {t('总请求')}
             </div>
           </div>
           <Tag color={meta.color}>
@@ -2285,27 +2374,7 @@ function ModelStatusCard({ status }) {
           </div>
         </div>
 
-        <div className='flex h-3 w-full gap-1 overflow-hidden rounded-full bg-semi-color-fill-0'>
-          {slots.length > 0 ? (
-            slots.map((slot) => {
-              const slotMeta = getModelStatusMeta(slot.status);
-              const title = `${dayjs.unix(slot.start_time).format('MM-DD HH:mm')} - ${dayjs
-                .unix(slot.end_time)
-                .format('MM-DD HH:mm')} · ${formatStatusPercent(
-                slot.success_rate,
-              )} · ${formatNumber(Number(slot.total_requests || 0))}`;
-              return (
-                <div
-                  key={`${status?.model_name}-${slot.slot}`}
-                  className={`h-full min-w-1 flex-1 ${slotMeta.barClass}`}
-                  title={title}
-                />
-              );
-            })
-          ) : (
-            <div className='h-full flex-1 bg-semi-color-fill-1' />
-          )}
-        </div>
+        <ModelStatusTimeline status={status} />
       </div>
     </Card>
   );
@@ -2318,6 +2387,8 @@ function ModelStatusBoard({
   onWindowChange,
   lastUpdated,
   toolbar,
+  extraControls,
+  showWindowSelect = true,
 }) {
   const { t } = useTranslation();
   const items = Array.isArray(statuses) ? statuses : [];
@@ -2338,11 +2409,14 @@ function ModelStatusBoard({
           </Text>
         </div>
         <Space wrap>
+          {extraControls}
           {toolbar}
-          <ModelStatusWindowSelect
-            value={windowValue}
-            onChange={onWindowChange}
-          />
+          {showWindowSelect ? (
+            <ModelStatusWindowSelect
+              value={windowValue}
+              onChange={onWindowChange}
+            />
+          ) : null}
         </Space>
       </div>
 
@@ -2379,7 +2453,10 @@ function ModelStatusBoard({
         {items.length > 0 ? (
           <div className='grid grid-cols-1 gap-3 xl:grid-cols-2'>
             {items.map((item) => (
-              <ModelStatusCard key={item.model_name} status={item} />
+              <ModelStatusCard
+                key={`${item.group || item.group_name || 'default'}:${item.model_name}`}
+                status={item}
+              />
             ))}
           </div>
         ) : (
@@ -2396,8 +2473,19 @@ function ModelStatusPanel({ data }) {
   const { t } = useTranslation();
   const [config, setConfig] = useState(data?.config || {});
   const [statuses, setStatuses] = useState(data?.statuses || []);
-  const [windowValue, setWindowValue] = useState(
-    data?.config?.default_window || '24h',
+  const [windowValue, setWindowValue] = useState(getModelStatusConfigWindow(data?.config));
+  const [publicEnabled, setPublicEnabled] = useState(!!data?.config?.public_embed_enabled);
+  const [refreshMinutes, setRefreshMinutes] = useState(
+    getModelStatusRefreshMinutes(data?.config),
+  );
+  const [slotMinutes, setSlotMinutes] = useState(
+    getModelStatusSlotMinutes(data?.config),
+  );
+  const [greenThreshold, setGreenThreshold] = useState(
+    getModelStatusThreshold(data?.config, 'green_threshold', 95),
+  );
+  const [yellowThreshold, setYellowThreshold] = useState(
+    getModelStatusThreshold(data?.config, 'yellow_threshold', 80),
   );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2432,25 +2520,65 @@ function ModelStatusPanel({ data }) {
   };
 
   useEffect(() => {
-    setConfig(data?.config || {});
+    const nextConfig = data?.config || {};
+    setConfig(nextConfig);
     setStatuses(data?.statuses || []);
+    setWindowValue(getModelStatusConfigWindow(nextConfig));
+    setPublicEnabled(!!nextConfig.public_embed_enabled);
+    setRefreshMinutes(getModelStatusRefreshMinutes(nextConfig));
+    setSlotMinutes(getModelStatusSlotMinutes(nextConfig));
+    setGreenThreshold(
+      getModelStatusThreshold(nextConfig, 'green_threshold', 95),
+    );
+    setYellowThreshold(
+      getModelStatusThreshold(nextConfig, 'yellow_threshold', 80),
+    );
     setLastUpdated(data?.statuses ? new Date() : null);
   }, [data]);
 
-  const handleWindowChange = (nextWindow) => {
-    setWindowValue(nextWindow);
-    loadStatuses(nextWindow);
-  };
-
-  const handlePublicToggle = async (checked) => {
+  const handleSaveSettings = async () => {
     setSaving(true);
     try {
-      await API.put('/api/enhancements/model-status/config/public-embed', {
-        value: checked,
-      }).then(unwrap);
-      setConfig((prev) => ({ ...prev, public_embed_enabled: checked }));
+      const minutes = Math.min(1440, Math.max(1, Number(refreshMinutes || 1)));
+      const nextSlotMinutes = Math.min(
+        1440,
+        Math.max(5, Number(slotMinutes || 30)),
+      );
+      const nextGreenThreshold = Math.min(
+        100,
+        Math.max(1, Number(greenThreshold || 95)),
+      );
+      const nextYellowThreshold = Math.min(
+        100,
+        Math.max(1, Number(yellowThreshold || 80)),
+      );
+      if (nextGreenThreshold < nextYellowThreshold) {
+        showError(t('绿色阈值不能低于黄色阈值'));
+        return;
+      }
+      await Promise.all([
+        API.put('/api/enhancements/model-status/config/public-embed', {
+          value: publicEnabled,
+        }).then(unwrap),
+        API.put('/api/enhancements/model-status/config/time-window', {
+          value: windowValue,
+        }).then(unwrap),
+        API.put('/api/enhancements/model-status/config/refresh-interval', {
+          value: minutes * 60,
+        }).then(unwrap),
+        API.put('/api/enhancements/model-status/config/slot-granularity', {
+          value: nextSlotMinutes,
+        }).then(unwrap),
+        API.put('/api/enhancements/model-status/config/threshold-green', {
+          value: nextGreenThreshold,
+        }).then(unwrap),
+        API.put('/api/enhancements/model-status/config/threshold-yellow', {
+          value: nextYellowThreshold,
+        }).then(unwrap),
+      ]);
       showSuccess(t('配置已保存'));
       await loadConfig();
+      await loadStatuses(windowValue);
     } catch (error) {
       showError(error.message);
     } finally {
@@ -2483,12 +2611,64 @@ function ModelStatusPanel({ data }) {
               </div>
             </div>
             <Switch
-              checked={!!config.public_embed_enabled}
-              loading={saving}
-              onChange={handlePublicToggle}
+              checked={publicEnabled}
+              onChange={setPublicEnabled}
               checkedText={t('开启')}
               uncheckedText={t('关闭')}
             />
+          </div>
+
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5'>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('时间范围')}</Text>
+              <ModelStatusWindowSelect
+                value={windowValue}
+                onChange={setWindowValue}
+                className='w-full'
+              />
+            </label>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('刷新间隔（分钟）')}</Text>
+              <InputNumber
+                min={1}
+                max={1440}
+                value={refreshMinutes}
+                onChange={(value) => setRefreshMinutes(value || 1)}
+                style={{ width: '100%' }}
+              />
+            </label>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('状态粒度（分钟）')}</Text>
+              <InputNumber
+                min={5}
+                max={1440}
+                value={slotMinutes}
+                onChange={(value) => setSlotMinutes(value || 30)}
+                style={{ width: '100%' }}
+              />
+            </label>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('绿色阈值（%）')}</Text>
+              <InputNumber
+                min={1}
+                max={100}
+                precision={1}
+                value={greenThreshold}
+                onChange={(value) => setGreenThreshold(value || 95)}
+                style={{ width: '100%' }}
+              />
+            </label>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('黄色阈值（%）')}</Text>
+              <InputNumber
+                min={1}
+                max={100}
+                precision={1}
+                value={yellowThreshold}
+                onChange={(value) => setYellowThreshold(value || 80)}
+                style={{ width: '100%' }}
+              />
+            </label>
           </div>
 
           <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]'>
@@ -2502,16 +2682,24 @@ function ModelStatusPanel({ data }) {
               <Button
                 icon={<CopyIcon size={16} />}
                 onClick={handleCopy}
-                disabled={!config.public_embed_enabled}
+                disabled={!publicEnabled}
               >
                 {t('复制地址')}
               </Button>
               <Button
                 icon={<ExternalLink size={16} />}
                 onClick={() => window.open(publicUrl, '_blank', 'noopener')}
-                disabled={!config.public_embed_enabled}
+                disabled={!publicEnabled}
               >
                 {t('打开页面')}
+              </Button>
+              <Button
+                type='primary'
+                icon={<Save size={16} />}
+                loading={saving}
+                onClick={handleSaveSettings}
+              >
+                {t('保存设置')}
               </Button>
             </Space>
           </div>
@@ -2522,8 +2710,9 @@ function ModelStatusPanel({ data }) {
         statuses={statuses}
         loading={loading}
         windowValue={windowValue}
-        onWindowChange={handleWindowChange}
+        onWindowChange={setWindowValue}
         lastUpdated={lastUpdated}
+        showWindowSelect={false}
         toolbar={
           <Button
             icon={<RefreshCw size={16} />}
@@ -2542,19 +2731,18 @@ export function ModelStatusPublicPage() {
   const { t } = useTranslation();
   const [config, setConfig] = useState(null);
   const [statuses, setStatuses] = useState([]);
-  const [windowValue, setWindowValue] = useState('24h');
+  const [groupFilter, setGroupFilter] = useState('');
+  const [sortMode, setSortMode] = useState('requests_desc');
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
 
-  const loadPublicStatus = async (nextWindow = windowValue) => {
+  const loadPublicStatus = useCallback(async () => {
     setLoading(true);
     try {
       const [nextConfig, nextStatuses] = await Promise.all([
         API.get('/api/enhancements/model-status/embed/config').then(unwrap),
-        API.get('/api/enhancements/model-status/embed/status/all', {
-          params: { window: nextWindow },
-        }).then(unwrap),
+        API.get('/api/enhancements/model-status/embed/status/all').then(unwrap),
       ]);
       setConfig(nextConfig || {});
       setStatuses(nextStatuses || []);
@@ -2567,16 +2755,52 @@ export function ModelStatusPublicPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    loadPublicStatus(windowValue);
   }, []);
 
-  const handleWindowChange = (nextWindow) => {
-    setWindowValue(nextWindow);
-    loadPublicStatus(nextWindow);
-  };
+  useEffect(() => {
+    loadPublicStatus();
+  }, [loadPublicStatus]);
+
+  useEffect(() => {
+    if (!available || !config) return undefined;
+    const intervalMs = getModelStatusRefreshMinutes(config) * 60 * 1000;
+    const timer = window.setInterval(() => {
+      loadPublicStatus();
+    }, intervalMs);
+    return () => window.clearInterval(timer);
+  }, [available, config, loadPublicStatus]);
+
+  const groupOptions = useMemo(() => {
+    const groups = Array.from(
+      new Set(
+        statuses
+          .map((item) => item.group_name || item.group || 'default')
+          .filter(Boolean),
+      ),
+    ).sort();
+    return [
+      { label: t('全部分组'), value: '' },
+      ...groups.map((group) => ({ label: group, value: group })),
+    ];
+  }, [statuses, t]);
+
+  const visibleStatuses = useMemo(() => {
+    const items = statuses.filter((item) => {
+      if (!groupFilter) return true;
+      return (item.group_name || item.group || 'default') === groupFilter;
+    });
+    return [...items].sort((a, b) => {
+      if (sortMode === 'success_rate_asc') {
+        const rateDiff = Number(a.success_rate || 0) - Number(b.success_rate || 0);
+        if (rateDiff !== 0) return rateDiff;
+        return Number(b.total_requests || 0) - Number(a.total_requests || 0);
+      }
+      const requestDiff =
+        Number(b.total_requests || 0) - Number(a.total_requests || 0);
+      if (requestDiff !== 0) return requestDiff;
+      return String(a.model_name || '').localeCompare(String(b.model_name || ''));
+    });
+  }, [groupFilter, sortMode, statuses]);
 
   if (!available && !loading) {
     return (
@@ -2597,31 +2821,32 @@ export function ModelStatusPublicPage() {
   return (
     <div className='min-h-screen bg-[#f6f8fb] px-4 py-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-5'>
-        <div className='flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
-          <div>
-            <div className='mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-sm text-blue-700'>
-              <Globe2 size={15} />
-              {t('公开展示')}
-            </div>
-            <Title heading={2} className='!mb-1'>
-              {config?.site_title || t('全站模型状态')}
-            </Title>
-          </div>
-          <Button
-            icon={<RefreshCw size={16} />}
-            loading={loading}
-            onClick={() => loadPublicStatus(windowValue)}
-          >
-            {t('刷新')}
-          </Button>
-        </div>
-
         <ModelStatusBoard
-          statuses={statuses}
+          statuses={visibleStatuses}
           loading={loading}
-          windowValue={windowValue}
-          onWindowChange={handleWindowChange}
+          windowValue={getModelStatusConfigWindow(config || {})}
+          onWindowChange={() => {}}
           lastUpdated={lastUpdated}
+          showWindowSelect={false}
+          extraControls={
+            <>
+              <Select
+                value={groupFilter}
+                onChange={(value) => setGroupFilter(value || '')}
+                optionList={groupOptions}
+                className='w-40'
+              />
+              <Select
+                value={sortMode}
+                onChange={setSortMode}
+                optionList={MODEL_STATUS_SORT_OPTIONS.map((item) => ({
+                  value: item.value,
+                  label: t(item.label),
+                }))}
+                className='w-44'
+              />
+            </>
+          }
         />
       </div>
     </div>
@@ -2720,14 +2945,12 @@ async function fetchSection(section) {
       return { coverage, sharedIPs, tokenMultiIPs };
     }
     case 'model-status': {
-      const [config, statuses] = await Promise.all([
-        API.get('/api/enhancements/model-status/config/time-window').then(
-          unwrap,
-        ),
-        API.get('/api/enhancements/model-status/status/all', {
-          params: { window: '24h' },
-        }).then(unwrap),
-      ]);
+      const config = await API.get(
+        '/api/enhancements/model-status/config/time-window',
+      ).then(unwrap);
+      const statuses = await API.get('/api/enhancements/model-status/status/all', {
+        params: { window: getModelStatusConfigWindow(config) },
+      }).then(unwrap);
       return { config, statuses };
     }
     case 'auto-group': {

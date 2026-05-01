@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -623,6 +624,18 @@ type modelStatusWindow struct {
 	Minutes     int
 }
 
+type modelStatusTarget struct {
+	Group string
+	Model string
+}
+
+var modelStatusPublicCache = struct {
+	sync.Mutex
+	key       string
+	expiresAt int64
+	data      []ModelStatus
+}{}
+
 func AvailableModels(public bool) ([]string, error) {
 	if public {
 		if err := requirePublicEmbedEnabled(); err != nil {
@@ -630,21 +643,15 @@ func AvailableModels(public bool) ([]string, error) {
 		}
 	}
 
-	var models []string
-	err := model.DB.Model(&model.Ability{}).
-		Joins("JOIN channels ON channels.id = abilities.channel_id").
-		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
-		Distinct("abilities.model").
-		Order("abilities.model ASC").
-		Pluck("abilities.model", &models).Error
+	targets, err := availableModelStatusTargets()
 	if err != nil {
 		return nil, err
 	}
 
-	modelsSet := make(map[string]struct{}, len(models))
-	out := make([]string, 0, len(models))
-	for _, name := range models {
-		name = strings.TrimSpace(name)
+	modelsSet := make(map[string]struct{}, len(targets))
+	out := make([]string, 0, len(targets))
+	for _, target := range targets {
+		name := strings.TrimSpace(target.Model)
 		if name == "" {
 			continue
 		}
@@ -656,6 +663,46 @@ func AvailableModels(public bool) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func availableModelStatusTargets() ([]modelStatusTarget, error) {
+	var abilities []model.Ability
+	err := model.DB.Model(&model.Ability{}).
+		Joins("JOIN channels ON channels.id = abilities.channel_id").
+		Where("abilities.enabled = ? AND channels.status = ?", true, common.ChannelStatusEnabled).
+		Find(&abilities).Error
+	if err != nil {
+		return nil, err
+	}
+
+	targetSet := make(map[string]struct{}, len(abilities))
+	targets := make([]modelStatusTarget, 0, len(abilities))
+	for _, ability := range abilities {
+		group := strings.TrimSpace(ability.Group)
+		if group == "" {
+			group = "default"
+		}
+		modelName := strings.TrimSpace(ability.Model)
+		if modelName == "" {
+			continue
+		}
+		key := group + "\x00" + modelName
+		if _, ok := targetSet[key]; ok {
+			continue
+		}
+		targetSet[key] = struct{}{}
+		targets = append(targets, modelStatusTarget{
+			Group: group,
+			Model: modelName,
+		})
+	}
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].Group == targets[j].Group {
+			return targets[i].Model < targets[j].Model
+		}
+		return targets[i].Group < targets[j].Group
+	})
+	return targets, nil
 }
 
 func ModelStatusTimeWindows() []map[string]interface{} {
@@ -695,15 +742,79 @@ func ModelStatusWindowFromMinutes(minutes int) string {
 	}
 }
 
+func ModelStatusConfigWindowFromMinutes(minutes int) string {
+	if minutes == 0 {
+		return ModelStatusWindowToday
+	}
+	return ModelStatusWindowFromMinutes(minutes)
+}
+
+func ModelStatusConfiguredWindow() string {
+	return ModelStatusConfigWindowFromMinutes(setting.GetEnhancementSetting().ModelStatusTimeWindowMins)
+}
+
+func ModelStatusWindowToMinutes(window string) int {
+	switch NormalizeModelStatusWindow(window) {
+	case ModelStatusWindowToday:
+		return 0
+	case ModelStatusWindow7d:
+		return 7 * 24 * 60
+	case ModelStatusWindow30d:
+		return 30 * 24 * 60
+	default:
+		return 24 * 60
+	}
+}
+
+func IsAllowedModelStatusWindowMinutes(minutes int) bool {
+	switch minutes {
+	case 0, 24 * 60, 7 * 24 * 60, 30 * 24 * 60:
+		return true
+	default:
+		return false
+	}
+}
+
+func ModelStatusSlotMinutes() int {
+	minutes := setting.GetEnhancementSetting().ModelStatusSlotMinutes
+	if minutes <= 0 {
+		minutes = 30
+	}
+	if minutes < 5 {
+		return 5
+	}
+	if minutes > 24*60 {
+		return 24 * 60
+	}
+	return minutes
+}
+
+func ModelStatusThresholds() (float64, float64) {
+	cfg := setting.GetEnhancementSetting()
+	green := cfg.ModelStatusGreenThreshold
+	yellow := cfg.ModelStatusYellowThreshold
+	if green <= 0 || green > 100 {
+		green = 95
+	}
+	if yellow <= 0 || yellow > 100 {
+		yellow = 80
+	}
+	if green < yellow {
+		green = yellow
+	}
+	return green, yellow
+}
+
 func resolveModelStatusWindow(window string) modelStatusWindow {
 	now := time.Now()
 	end := now.Unix()
+	slotSeconds := int64(ModelStatusSlotMinutes() * 60)
 	key := NormalizeModelStatusWindow(window)
 	switch key {
 	case ModelStatusWindowToday:
 		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 		seconds := end - startOfDay
-		slotCount := int((seconds + int64(time.Hour/time.Second) - 1) / int64(time.Hour/time.Second))
+		slotCount := int((seconds + slotSeconds - 1) / slotSeconds)
 		if slotCount < 1 {
 			slotCount = 1
 		}
@@ -713,47 +824,51 @@ func resolveModelStatusWindow(window string) modelStatusWindow {
 			Start:       startOfDay,
 			End:         end,
 			SlotCount:   slotCount,
-			SlotSeconds: int64(time.Hour / time.Second),
+			SlotSeconds: slotSeconds,
 			Minutes:     int(math.Max(1, math.Ceil(float64(seconds)/60))),
 		}
 	case ModelStatusWindow7d:
+		start := now.AddDate(0, 0, -7).Unix()
 		return modelStatusWindow{
 			Key:         key,
 			Label:       "7天",
-			Start:       now.AddDate(0, 0, -7).Unix(),
+			Start:       start,
 			End:         end,
-			SlotCount:   7,
-			SlotSeconds: int64((24 * time.Hour) / time.Second),
+			SlotCount:   int((end - start + slotSeconds - 1) / slotSeconds),
+			SlotSeconds: slotSeconds,
 			Minutes:     7 * 24 * 60,
 		}
 	case ModelStatusWindow30d:
+		start := now.AddDate(0, 0, -30).Unix()
 		return modelStatusWindow{
 			Key:         key,
 			Label:       "30天",
-			Start:       now.AddDate(0, 0, -30).Unix(),
+			Start:       start,
 			End:         end,
-			SlotCount:   30,
-			SlotSeconds: int64((24 * time.Hour) / time.Second),
+			SlotCount:   int((end - start + slotSeconds - 1) / slotSeconds),
+			SlotSeconds: slotSeconds,
 			Minutes:     30 * 24 * 60,
 		}
 	default:
+		start := now.Add(-24 * time.Hour).Unix()
 		return modelStatusWindow{
 			Key:         ModelStatusWindow24h,
 			Label:       "24h",
-			Start:       now.Add(-24 * time.Hour).Unix(),
+			Start:       start,
 			End:         end,
-			SlotCount:   24,
-			SlotSeconds: int64(time.Hour / time.Second),
+			SlotCount:   int((end - start + slotSeconds - 1) / slotSeconds),
+			SlotSeconds: slotSeconds,
 			Minutes:     24 * 60,
 		}
 	}
 }
 
 func modelStatusColor(successRate float64, total int64) string {
+	greenThreshold, yellowThreshold := ModelStatusThresholds()
 	switch {
-	case total == 0 || successRate >= 95:
+	case total == 0 || successRate >= greenThreshold:
 		return "green"
-	case successRate >= 80:
+	case successRate >= yellowThreshold:
 		return "yellow"
 	default:
 		return "red"
@@ -784,16 +899,40 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
+func modelStatusForTarget(target modelStatusTarget, window string, public bool) (ModelStatus, error) {
+	groupName := strings.TrimSpace(target.Group)
+	if groupName == "" {
+		groupName = "default"
+	}
+	modelName := strings.TrimSpace(target.Model)
+	return buildModelStatus(groupName, modelName, window, public)
+}
+
 func ModelStatusForWindow(modelName string, window string, public bool) (ModelStatus, error) {
+	return buildModelStatus("", modelName, window, public)
+}
+
+func ModelStatusForGroupWindow(groupName string, modelName string, window string, public bool) (ModelStatus, error) {
+	return buildModelStatus(groupName, modelName, window, public)
+}
+
+func buildModelStatus(groupName string, modelName string, window string, public bool) (ModelStatus, error) {
 	if public {
 		if err := requirePublicEmbedEnabled(); err != nil {
 			return ModelStatus{}, err
 		}
 	}
+	groupName = strings.TrimSpace(groupName)
+	if groupName == "" {
+		groupName = "default"
+	}
+	modelName = strings.TrimSpace(modelName)
 
 	resolved := resolveModelStatusWindow(window)
 	status := ModelStatus{
 		ModelName:         modelName,
+		Group:             groupName,
+		GroupName:         groupName,
 		DisplayName:       modelName,
 		TimeWindow:        resolved.Key,
 		CurrentStatus:     "green",
@@ -821,9 +960,17 @@ func ModelStatusForWindow(modelName string, window string, public bool) (ModelSt
 	}
 
 	var rows []model.Log
-	if err := model.LOG_DB.Model(&model.Log{}).
-		Where("model_name = ? AND created_at >= ? AND created_at <= ? AND type IN ?", modelName, resolved.Start, resolved.End, []int{model.LogTypeConsume, model.LogTypeError}).
-		Find(&rows).Error; err != nil {
+	query := model.LOG_DB.Model(&model.Log{}).
+		Where("model_name = ? AND created_at >= ? AND created_at <= ? AND type IN ?", modelName, resolved.Start, resolved.End, []int{model.LogTypeConsume, model.LogTypeError})
+	if groupName != "" {
+		query = query.Where("`group` = ?", groupName)
+		if common.UsingPostgreSQL {
+			query = model.LOG_DB.Model(&model.Log{}).
+				Where("model_name = ? AND created_at >= ? AND created_at <= ? AND type IN ?", modelName, resolved.Start, resolved.End, []int{model.LogTypeConsume, model.LogTypeError}).
+				Where(`"group" = ?`, groupName)
+		}
+	}
+	if err := query.Find(&rows).Error; err != nil {
 		return status, err
 	}
 
@@ -893,23 +1040,31 @@ func ModelStatusesForWindow(modelNames []string, window string, public bool) ([]
 			return nil, err
 		}
 	}
-	if len(modelNames) == 0 {
-		models, err := AvailableModels(public)
-		if err != nil {
-			return nil, err
-		}
-		modelNames = models
-	} else {
-		var err error
+	targets, err := availableModelStatusTargets()
+	if err != nil {
+		return nil, err
+	}
+	if len(modelNames) > 0 {
 		modelNames, err = validateModelList(modelNames, public)
 		if err != nil {
 			return nil, err
 		}
+		modelSet := make(map[string]struct{}, len(modelNames))
+		for _, name := range modelNames {
+			modelSet[name] = struct{}{}
+		}
+		filtered := make([]modelStatusTarget, 0, len(targets))
+		for _, target := range targets {
+			if _, ok := modelSet[target.Model]; ok {
+				filtered = append(filtered, target)
+			}
+		}
+		targets = filtered
 	}
 
-	out := make([]ModelStatus, 0, len(modelNames))
-	for _, name := range modelNames {
-		status, err := ModelStatusForWindow(name, window, public)
+	out := make([]ModelStatus, 0, len(targets))
+	for _, target := range targets {
+		status, err := modelStatusForTarget(target, window, public)
 		if err != nil {
 			if public && err == gorm.ErrRecordNotFound {
 				continue
@@ -925,19 +1080,84 @@ func ModelStatuses(modelNames []string, minutes int, public bool) ([]ModelStatus
 	return ModelStatusesForWindow(modelNames, ModelStatusWindowFromMinutes(minutes), public)
 }
 
+func publicModelStatusCacheTTL() int64 {
+	seconds := setting.GetEnhancementSetting().ModelStatusRefreshSeconds
+	if seconds < 60 {
+		seconds = 60
+	}
+	if seconds > 24*60*60 {
+		seconds = 24 * 60 * 60
+	}
+	return int64(seconds)
+}
+
+func ClearModelStatusPublicCache() {
+	modelStatusPublicCache.Lock()
+	defer modelStatusPublicCache.Unlock()
+	modelStatusPublicCache.key = ""
+	modelStatusPublicCache.expiresAt = 0
+	modelStatusPublicCache.data = nil
+}
+
+func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
+	if err := requirePublicEmbedEnabled(); err != nil {
+		return nil, err
+	}
+	window := ModelStatusConfiguredWindow()
+	greenThreshold, yellowThreshold := ModelStatusThresholds()
+	key := "public:" + window + ":" +
+		strconv.Itoa(ModelStatusSlotMinutes()) + ":" +
+		strconv.FormatFloat(greenThreshold, 'f', -1, 64) + ":" +
+		strconv.FormatFloat(yellowThreshold, 'f', -1, 64)
+	now := common.GetTimestamp()
+
+	modelStatusPublicCache.Lock()
+	if modelStatusPublicCache.key == key && modelStatusPublicCache.expiresAt > now {
+		cached := append([]ModelStatus(nil), modelStatusPublicCache.data...)
+		modelStatusPublicCache.Unlock()
+		return cached, nil
+	}
+	modelStatusPublicCache.Unlock()
+
+	statuses, err := ModelStatusesForWindow(nil, window, true)
+	if err != nil {
+		return nil, err
+	}
+
+	modelStatusPublicCache.Lock()
+	modelStatusPublicCache.key = key
+	modelStatusPublicCache.expiresAt = now + publicModelStatusCacheTTL()
+	modelStatusPublicCache.data = append([]ModelStatus(nil), statuses...)
+	modelStatusPublicCache.Unlock()
+
+	return statuses, nil
+}
+
 func ModelStatusConfig(public bool) map[string]interface{} {
 	cfg := setting.GetEnhancementSetting()
 	selected := append([]string{}, cfg.SelectedModels...)
+	currentWindow := ModelStatusConfigWindowFromMinutes(cfg.ModelStatusTimeWindowMins)
+	refreshMinutes := cfg.ModelStatusRefreshSeconds / 60
+	if refreshMinutes < 1 {
+		refreshMinutes = 1
+	}
+	greenThreshold, yellowThreshold := ModelStatusThresholds()
 	base := map[string]interface{}{
-		"site_title":           cfg.ModelStatusSiteTitle,
-		"theme":                cfg.ModelStatusTheme,
-		"refresh_interval":     cfg.ModelStatusRefreshSeconds,
-		"sort_mode":            cfg.ModelStatusSortMode,
-		"selected_models":      selected,
-		"time_windows":         ModelStatusTimeWindows(),
-		"default_window":       ModelStatusWindow24h,
-		"public_embed_enabled": cfg.PublicEmbedEnabled,
-		"public_url_path":      "/model-status",
+		"site_title":               cfg.ModelStatusSiteTitle,
+		"theme":                    cfg.ModelStatusTheme,
+		"refresh_interval":         cfg.ModelStatusRefreshSeconds,
+		"refresh_interval_minutes": refreshMinutes,
+		"slot_minutes":             ModelStatusSlotMinutes(),
+		"green_threshold":          greenThreshold,
+		"yellow_threshold":         yellowThreshold,
+		"sort_mode":                cfg.ModelStatusSortMode,
+		"selected_models":          selected,
+		"time_window_minutes":      cfg.ModelStatusTimeWindowMins,
+		"time_windows":             ModelStatusTimeWindows(),
+		"default_window":           ModelStatusWindow24h,
+		"current_window":           currentWindow,
+		"public_embed_enabled":     cfg.PublicEmbedEnabled,
+		"public_url_path":          "/model-status",
 	}
 	if public {
 		base["public"] = true

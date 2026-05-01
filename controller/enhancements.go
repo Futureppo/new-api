@@ -153,6 +153,9 @@ func RegisterEnhancementRootRoutes(r *gin.RouterGroup) {
 	r.PUT("/model-status/config/time-window", enhancementModelStatusSaveOption("model_status_time_window_mins"))
 	r.PUT("/model-status/config/theme", enhancementModelStatusSaveOption("model_status_theme"))
 	r.PUT("/model-status/config/refresh-interval", enhancementModelStatusSaveOption("model_status_refresh_seconds"))
+	r.PUT("/model-status/config/slot-granularity", enhancementModelStatusSaveOption("model_status_slot_minutes"))
+	r.PUT("/model-status/config/threshold-green", enhancementModelStatusSaveOption("model_status_green_threshold"))
+	r.PUT("/model-status/config/threshold-yellow", enhancementModelStatusSaveOption("model_status_yellow_threshold"))
 	r.PUT("/model-status/config/sort-mode", enhancementModelStatusSaveOption("model_status_sort_mode"))
 	r.PUT("/model-status/config/custom-order", enhancementModelStatusSaveSelected)
 	r.PUT("/model-status/config/groups", enhancementReadOnlyPlaceholder("token groups are derived from tokens"))
@@ -542,7 +545,7 @@ func enhancementModelStatusModels(c *gin.Context) {
 }
 
 func enhancementModelStatusOne(c *gin.Context) {
-	data, err := enhancement.ModelStatusForWindow(c.Param("model_name"), modelStatusWindowFromQuery(c), false)
+	data, err := enhancement.ModelStatusForGroupWindow(c.Query("group"), c.Param("model_name"), modelStatusWindowFromQuery(c), false)
 	respondPublic(c, data, err)
 }
 
@@ -737,7 +740,7 @@ func enhancementEmbedModels(c *gin.Context) {
 }
 
 func enhancementEmbedStatusOne(c *gin.Context) {
-	data, err := enhancement.ModelStatusForWindow(c.Param("model_name"), modelStatusWindowFromQuery(c), true)
+	data, err := enhancement.ModelStatusForGroupWindow(c.Query("group"), c.Param("model_name"), enhancement.ModelStatusConfiguredWindow(), true)
 	respondPublic(c, data, err)
 }
 
@@ -748,12 +751,12 @@ func enhancementEmbedStatusMultiple(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	data, err := enhancement.ModelStatusesForWindow(req.Models, modelStatusWindowFromRequest(c, req), true)
+	data, err := enhancement.ModelStatusesForWindow(req.Models, enhancement.ModelStatusConfiguredWindow(), true)
 	respondPublic(c, data, err)
 }
 
 func enhancementEmbedStatusAll(c *gin.Context) {
-	data, err := enhancement.ModelStatusesForWindow(nil, modelStatusWindowFromQuery(c), true)
+	data, err := enhancement.ModelStatusesForPublicConfig()
 	respondPublic(c, data, err)
 }
 

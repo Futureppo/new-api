@@ -147,6 +147,19 @@ const PageLayout = () => {
     }
   }, [i18n, userState?.user?.setting]);
 
+  if (location.pathname === '/model-status') {
+    return (
+      <Layout className='app-layout' style={{ minHeight: '100vh' }}>
+        <Content style={{ minHeight: '100vh', overflow: 'auto' }}>
+          <ErrorBoundary>
+            <App />
+          </ErrorBoundary>
+        </Content>
+        <ToastContainer />
+      </Layout>
+    );
+  }
+
   return (
     <Layout
       className='app-layout'
