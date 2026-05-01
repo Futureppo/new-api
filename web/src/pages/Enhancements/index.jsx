@@ -319,9 +319,12 @@ function DataPreview({
   limit = 12,
   keys: preferredKeys,
   valueFormatter,
+  pagination = false,
+  loading = false,
 }) {
   const { t } = useTranslation();
-  const rows = pickItems(data).slice(0, limit);
+  const rawRows = pickItems(data);
+  const rows = typeof limit === 'number' ? rawRows.slice(0, limit) : rawRows;
   if (rows.length === 0) {
     return <Empty image={<></>} title={t('暂无数据')} />;
   }
@@ -351,7 +354,8 @@ function DataPreview({
       columns={columns}
       dataSource={rows.map((row, index) => ({ ...row, _rowKey: index }))}
       rowKey='_rowKey'
-      pagination={false}
+      pagination={pagination}
+      loading={loading}
       scroll={{ x: 'max-content' }}
     />
   );
@@ -804,6 +808,37 @@ function RedemptionsPanel({ data }) {
 
 function UsersPanel({ data }) {
   const currency = getCurrencyConfig();
+  const [list, setList] = useState(
+    data?.list || { items: [], total: 0, page: 1, page_size: 20 },
+  );
+  const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
+  const [listLoading, setListLoading] = useState(false);
+
+  useEffect(() => {
+    if (data?.list) {
+      setList(data.list);
+      setPageSize(data.list.page_size || 20);
+    }
+  }, [data?.list]);
+
+  const loadUsers = async (page = 1, size = pageSize) => {
+    setListLoading(true);
+    try {
+      const params = new URLSearchParams({
+        p: String(page),
+        page_size: String(size),
+      });
+      const nextList = await API.get(
+        `/api/enhancements/users?${params.toString()}`,
+      ).then(unwrap);
+      setList(nextList || { items: [], total: 0, page, page_size: size });
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
   const formatUserValue = (value, key, t) => {
     if (key === 'email' && value === '***masked***') {
       return t('未绑定');
@@ -819,9 +854,23 @@ function UsersPanel({ data }) {
       <SummaryGrid data={data?.summary || {}} />
       <Card title='数据预览' className='!rounded-lg'>
         <DataPreview
-          data={data?.list}
+          data={list}
+          limit={null}
           keys={USER_PREVIEW_KEYS}
           valueFormatter={formatUserValue}
+          loading={listLoading}
+          pagination={{
+            currentPage: list?.page || 1,
+            pageSize,
+            total: list?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) => loadUsers(page, pageSize),
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              loadUsers(1, size);
+            },
+          }}
         />
       </Card>
     </div>
