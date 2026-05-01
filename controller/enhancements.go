@@ -13,6 +13,7 @@ import (
 
 type modelStatusRequest struct {
 	Models            []string `json:"models"`
+	Window            string   `json:"window"`
 	TimeWindowMinutes int      `json:"time_window_minutes"`
 }
 
@@ -508,13 +509,31 @@ func enhancementIndexStatus(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"status": "managed_by_gorm_migrations", "ensure_requires_root": true})
 }
 
+func modelStatusWindowFromQuery(c *gin.Context) string {
+	if window := c.Query("window"); window != "" {
+		return window
+	}
+	if minutes := queryInt(c, "time_window_minutes", 0); minutes > 0 {
+		return enhancement.ModelStatusWindowFromMinutes(minutes)
+	}
+	return ""
+}
+
+func modelStatusWindowFromRequest(c *gin.Context, req modelStatusRequest) string {
+	if window := modelStatusWindowFromQuery(c); window != "" {
+		return window
+	}
+	if req.Window != "" {
+		return req.Window
+	}
+	if req.TimeWindowMinutes > 0 {
+		return enhancement.ModelStatusWindowFromMinutes(req.TimeWindowMinutes)
+	}
+	return ""
+}
+
 func enhancementModelStatusTimeWindows(c *gin.Context) {
-	common.ApiSuccess(c, []gin.H{
-		{"label": "15m", "minutes": 15},
-		{"label": "1h", "minutes": 60},
-		{"label": "6h", "minutes": 360},
-		{"label": "24h", "minutes": 1440},
-	})
+	common.ApiSuccess(c, enhancement.ModelStatusTimeWindows())
 }
 
 func enhancementModelStatusModels(c *gin.Context) {
@@ -523,7 +542,7 @@ func enhancementModelStatusModels(c *gin.Context) {
 }
 
 func enhancementModelStatusOne(c *gin.Context) {
-	data, err := enhancement.ModelStatusFor(c.Param("model_name"), queryInt(c, "time_window_minutes", 0), false)
+	data, err := enhancement.ModelStatusForWindow(c.Param("model_name"), modelStatusWindowFromQuery(c), false)
 	respondPublic(c, data, err)
 }
 
@@ -533,12 +552,12 @@ func enhancementModelStatusMultiple(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	data, err := enhancement.ModelStatuses(req.Models, req.TimeWindowMinutes, false)
+	data, err := enhancement.ModelStatusesForWindow(req.Models, modelStatusWindowFromRequest(c, req), false)
 	respondPublic(c, data, err)
 }
 
 func enhancementModelStatusAll(c *gin.Context) {
-	data, err := enhancement.ModelStatuses(nil, queryInt(c, "time_window_minutes", 0), false)
+	data, err := enhancement.ModelStatusesForWindow(nil, modelStatusWindowFromQuery(c), false)
 	respondPublic(c, data, err)
 }
 
@@ -701,6 +720,10 @@ func enhancementSaveAIBanConfig(c *gin.Context) {
 }
 
 func enhancementEmbedTimeWindows(c *gin.Context) {
+	if err := enhancement.RequirePublicEmbedEnabled(); err != nil {
+		respondPublic(c, nil, err)
+		return
+	}
 	enhancementModelStatusTimeWindows(c)
 }
 
@@ -714,7 +737,7 @@ func enhancementEmbedModels(c *gin.Context) {
 }
 
 func enhancementEmbedStatusOne(c *gin.Context) {
-	data, err := enhancement.ModelStatusFor(c.Param("model_name"), queryInt(c, "time_window_minutes", 0), true)
+	data, err := enhancement.ModelStatusForWindow(c.Param("model_name"), modelStatusWindowFromQuery(c), true)
 	respondPublic(c, data, err)
 }
 
@@ -725,12 +748,12 @@ func enhancementEmbedStatusMultiple(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	data, err := enhancement.ModelStatuses(req.Models, req.TimeWindowMinutes, true)
+	data, err := enhancement.ModelStatusesForWindow(req.Models, modelStatusWindowFromRequest(c, req), true)
 	respondPublic(c, data, err)
 }
 
 func enhancementEmbedStatusAll(c *gin.Context) {
-	data, err := enhancement.ModelStatuses(nil, queryInt(c, "time_window_minutes", 0), true)
+	data, err := enhancement.ModelStatusesForWindow(nil, modelStatusWindowFromQuery(c), true)
 	respondPublic(c, data, err)
 }
 
@@ -747,7 +770,8 @@ func enhancementEmbedSelected(c *gin.Context) {
 		respondPublic(c, nil, err)
 		return
 	}
-	common.ApiSuccess(c, enhancement.ModelStatusConfig(true)["selected_models"])
+	data, err := enhancement.AvailableModels(true)
+	respondPublic(c, data, err)
 }
 
 func enhancementEmbedTokenGroups(c *gin.Context) {

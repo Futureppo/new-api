@@ -42,10 +42,16 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import {
+  Activity,
+  AlertTriangle,
   Bot,
+  CheckCircle2,
+  Copy as CopyIcon,
   CreditCard,
   Database,
+  ExternalLink,
   Gift,
+  Globe2,
   KeyRound,
   LineChart,
   Link2,
@@ -63,6 +69,7 @@ import {
   copy,
   getCurrencyConfig,
   getModelCategories,
+  getServerAddress,
   renderGroupOption,
   selectFilter,
   showError,
@@ -89,6 +96,37 @@ const SECTIONS = [
 
 const ENHANCEMENTS_BASE_PATH = '/console/enhancements';
 const sectionIds = new Set(SECTIONS.map((section) => section.id));
+const MODEL_STATUS_PUBLIC_PATH = '/model-status';
+const MODEL_STATUS_WINDOWS = [
+  { label: '今日', value: 'today' },
+  { label: '24h', value: '24h' },
+  { label: '7天', value: '7d' },
+  { label: '30天', value: '30d' },
+];
+
+const MODEL_STATUS_META = {
+  green: {
+    label: '正常',
+    color: 'green',
+    icon: CheckCircle2,
+    barClass: 'bg-emerald-500',
+    softClass: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+  },
+  yellow: {
+    label: '警告',
+    color: 'amber',
+    icon: AlertTriangle,
+    barClass: 'bg-amber-400',
+    softClass: 'bg-amber-50 text-amber-700 border-amber-100',
+  },
+  red: {
+    label: '异常',
+    color: 'red',
+    icon: AlertTriangle,
+    barClass: 'bg-rose-500',
+    softClass: 'bg-rose-50 text-rose-700 border-rose-100',
+  },
+};
 
 const FIELD_LABELS = {
   id: 'ID',
@@ -272,6 +310,52 @@ function formatNumber(value) {
 function formatPercent(value) {
   const number = Number(value || 0);
   return `${(number * 100).toFixed(1)}%`;
+}
+
+function formatStatusPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '100.0%';
+  return `${number.toFixed(1)}%`;
+}
+
+function getModelStatusMeta(status) {
+  return MODEL_STATUS_META[status] || MODEL_STATUS_META.green;
+}
+
+function getModelStatusPublicUrl(config = {}) {
+  const base = String(config.server_address || getServerAddress() || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const origin = base || window.location.origin;
+  return `${origin}${config.public_url_path || MODEL_STATUS_PUBLIC_PATH}`;
+}
+
+function modelStatusOverview(statuses = []) {
+  const totalModels = statuses.length;
+  const totalRequests = statuses.reduce(
+    (sum, item) => sum + Number(item.total_requests || 0),
+    0,
+  );
+  const successCount = statuses.reduce(
+    (sum, item) => sum + Number(item.success_count || 0),
+    0,
+  );
+  const statusCounts = statuses.reduce(
+    (counts, item) => {
+      const key = item.current_status || 'green';
+      counts[key] = (counts[key] || 0) + 1;
+      return counts;
+    },
+    { green: 0, yellow: 0, red: 0 },
+  );
+  const successRate =
+    totalRequests > 0 ? (successCount / totalRequests) * 100 : 100;
+  return {
+    totalModels,
+    totalRequests,
+    successRate,
+    statusCounts,
+  };
 }
 
 function isUnixTimestampKey(key, value) {
@@ -2117,6 +2201,433 @@ function RiskPanel({ data }) {
   );
 }
 
+function ModelStatusWindowSelect({ value, onChange, className = '' }) {
+  const { t } = useTranslation();
+  return (
+    <Select
+      value={value}
+      onChange={onChange}
+      className={className || 'w-40'}
+      optionList={MODEL_STATUS_WINDOWS.map((item) => ({
+        value: item.value,
+        label: t(item.label),
+      }))}
+    />
+  );
+}
+
+function ModelStatusStat({ icon: Icon, label, value, hint }) {
+  return (
+    <Card className='!rounded-lg'>
+      <div className='flex items-center justify-between gap-3'>
+        <div>
+          <div className='text-xs text-semi-color-text-2'>{label}</div>
+          <div className='mt-1 text-2xl font-semibold text-semi-color-text-0'>
+            {value}
+          </div>
+          {hint ? (
+            <div className='mt-1 text-xs text-semi-color-text-2'>{hint}</div>
+          ) : null}
+        </div>
+        <div className='h-10 w-10 rounded-lg bg-semi-color-fill-0 flex items-center justify-center text-semi-color-text-2'>
+          <Icon size={20} />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ModelStatusCard({ status }) {
+  const { t } = useTranslation();
+  const meta = getModelStatusMeta(status?.current_status);
+  const Icon = meta.icon;
+  const slots = Array.isArray(status?.slot_data) ? status.slot_data : [];
+
+  return (
+    <Card className='!rounded-lg'>
+      <div className='flex flex-col gap-4'>
+        <div className='flex items-start justify-between gap-3'>
+          <div className='min-w-0'>
+            <div className='truncate text-base font-semibold text-semi-color-text-0'>
+              {status?.display_name || status?.model_name || '-'}
+            </div>
+            <div className='mt-1 text-xs text-semi-color-text-2'>
+              {formatNumber(Number(status?.total_requests || 0))}{' '}
+              {t('总请求')}
+            </div>
+          </div>
+          <Tag color={meta.color}>
+            <span className='inline-flex items-center gap-1'>
+              <Icon size={14} />
+              {t(meta.label)}
+            </span>
+          </Tag>
+        </div>
+
+        <div className='grid grid-cols-3 gap-2 text-sm'>
+          <div>
+            <div className='text-xs text-semi-color-text-2'>{t('成功率')}</div>
+            <div className='mt-1 font-medium'>
+              {formatStatusPercent(status?.success_rate)}
+            </div>
+          </div>
+          <div>
+            <div className='text-xs text-semi-color-text-2'>{t('成功')}</div>
+            <div className='mt-1 font-medium'>
+              {formatNumber(Number(status?.success_count || 0))}
+            </div>
+          </div>
+          <div>
+            <div className='text-xs text-semi-color-text-2'>{t('错误')}</div>
+            <div className='mt-1 font-medium'>
+              {formatNumber(Number(status?.error_count || 0))}
+            </div>
+          </div>
+        </div>
+
+        <div className='flex h-3 w-full gap-1 overflow-hidden rounded-full bg-semi-color-fill-0'>
+          {slots.length > 0 ? (
+            slots.map((slot) => {
+              const slotMeta = getModelStatusMeta(slot.status);
+              const title = `${dayjs.unix(slot.start_time).format('MM-DD HH:mm')} - ${dayjs
+                .unix(slot.end_time)
+                .format('MM-DD HH:mm')} · ${formatStatusPercent(
+                slot.success_rate,
+              )} · ${formatNumber(Number(slot.total_requests || 0))}`;
+              return (
+                <div
+                  key={`${status?.model_name}-${slot.slot}`}
+                  className={`h-full min-w-1 flex-1 ${slotMeta.barClass}`}
+                  title={title}
+                />
+              );
+            })
+          ) : (
+            <div className='h-full flex-1 bg-semi-color-fill-1' />
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ModelStatusBoard({
+  statuses,
+  loading,
+  windowValue,
+  onWindowChange,
+  lastUpdated,
+  toolbar,
+}) {
+  const { t } = useTranslation();
+  const items = Array.isArray(statuses) ? statuses : [];
+  const overview = modelStatusOverview(items);
+
+  return (
+    <div className='space-y-4'>
+      <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+        <div>
+          <Title heading={4} className='!mb-1'>
+            {t('全站模型状态')}
+          </Title>
+          <Text type='tertiary'>
+            {t('最后更新')}:{' '}
+            {lastUpdated
+              ? dayjs(lastUpdated).format('YYYY-MM-DD HH:mm:ss')
+              : '-'}
+          </Text>
+        </div>
+        <Space wrap>
+          {toolbar}
+          <ModelStatusWindowSelect
+            value={windowValue}
+            onChange={onWindowChange}
+          />
+        </Space>
+      </div>
+
+      <div className='grid grid-cols-1 gap-3 md:grid-cols-4'>
+        <ModelStatusStat
+          icon={LineChart}
+          label={t('模型数量')}
+          value={formatNumber(overview.totalModels)}
+        />
+        <ModelStatusStat
+          icon={Activity}
+          label={t('总请求')}
+          value={formatNumber(overview.totalRequests)}
+        />
+        <ModelStatusStat
+          icon={CheckCircle2}
+          label={t('平均成功率')}
+          value={formatStatusPercent(overview.successRate)}
+        />
+        <ModelStatusStat
+          icon={AlertTriangle}
+          label={t('异常模型')}
+          value={formatNumber(
+            Number(overview.statusCounts.yellow || 0) +
+              Number(overview.statusCounts.red || 0),
+          )}
+          hint={`${t('正常')} ${formatNumber(
+            overview.statusCounts.green || 0,
+          )}`}
+        />
+      </div>
+
+      <Spin spinning={loading}>
+        {items.length > 0 ? (
+          <div className='grid grid-cols-1 gap-3 xl:grid-cols-2'>
+            {items.map((item) => (
+              <ModelStatusCard key={item.model_name} status={item} />
+            ))}
+          </div>
+        ) : (
+          <Card className='!rounded-lg'>
+            <Empty description={t('暂无模型状态数据')} />
+          </Card>
+        )}
+      </Spin>
+    </div>
+  );
+}
+
+function ModelStatusPanel({ data }) {
+  const { t } = useTranslation();
+  const [config, setConfig] = useState(data?.config || {});
+  const [statuses, setStatuses] = useState(data?.statuses || []);
+  const [windowValue, setWindowValue] = useState(
+    data?.config?.default_window || '24h',
+  );
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const publicUrl = getModelStatusPublicUrl(config);
+
+  const loadStatuses = async (nextWindow = windowValue) => {
+    setLoading(true);
+    try {
+      const nextStatuses = await API.get(
+        '/api/enhancements/model-status/status/all',
+        { params: { window: nextWindow } },
+      ).then(unwrap);
+      setStatuses(nextStatuses || []);
+      setLastUpdated(new Date());
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadConfig = async () => {
+    try {
+      const nextConfig = await API.get(
+        '/api/enhancements/model-status/config/time-window',
+      ).then(unwrap);
+      setConfig(nextConfig || {});
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+
+  useEffect(() => {
+    setConfig(data?.config || {});
+    setStatuses(data?.statuses || []);
+    setLastUpdated(data?.statuses ? new Date() : null);
+  }, [data]);
+
+  const handleWindowChange = (nextWindow) => {
+    setWindowValue(nextWindow);
+    loadStatuses(nextWindow);
+  };
+
+  const handlePublicToggle = async (checked) => {
+    setSaving(true);
+    try {
+      await API.put('/api/enhancements/model-status/config/public-embed', {
+        value: checked,
+      }).then(unwrap);
+      setConfig((prev) => ({ ...prev, public_embed_enabled: checked }));
+      showSuccess(t('配置已保存'));
+      await loadConfig();
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCopy = async () => {
+    if (await copy(publicUrl)) {
+      showSuccess(t('复制成功'));
+    }
+  };
+
+  return (
+    <div className='space-y-4'>
+      <Card className='!rounded-lg'>
+        <div className='flex flex-col gap-4'>
+          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+            <div className='flex items-center gap-3'>
+              <div className='h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
+                <Globe2 size={20} />
+              </div>
+              <div>
+                <div className='text-base font-semibold text-semi-color-text-0'>
+                  {t('公开嵌入')}
+                </div>
+                <div className='text-sm text-semi-color-text-2'>
+                  {t('开启后外部用户可以访问整个站的模型状态页面')}
+                </div>
+              </div>
+            </div>
+            <Switch
+              checked={!!config.public_embed_enabled}
+              loading={saving}
+              onChange={handlePublicToggle}
+              checkedText={t('开启')}
+              uncheckedText={t('关闭')}
+            />
+          </div>
+
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]'>
+            <Input
+              readOnly
+              value={publicUrl}
+              prefix={<Link2 size={16} />}
+              addonBefore={t('公开访问地址')}
+            />
+            <Space>
+              <Button
+                icon={<CopyIcon size={16} />}
+                onClick={handleCopy}
+                disabled={!config.public_embed_enabled}
+              >
+                {t('复制地址')}
+              </Button>
+              <Button
+                icon={<ExternalLink size={16} />}
+                onClick={() => window.open(publicUrl, '_blank', 'noopener')}
+                disabled={!config.public_embed_enabled}
+              >
+                {t('打开页面')}
+              </Button>
+            </Space>
+          </div>
+        </div>
+      </Card>
+
+      <ModelStatusBoard
+        statuses={statuses}
+        loading={loading}
+        windowValue={windowValue}
+        onWindowChange={handleWindowChange}
+        lastUpdated={lastUpdated}
+        toolbar={
+          <Button
+            icon={<RefreshCw size={16} />}
+            loading={loading}
+            onClick={() => loadStatuses(windowValue)}
+          >
+            {t('刷新')}
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
+export function ModelStatusPublicPage() {
+  const { t } = useTranslation();
+  const [config, setConfig] = useState(null);
+  const [statuses, setStatuses] = useState([]);
+  const [windowValue, setWindowValue] = useState('24h');
+  const [loading, setLoading] = useState(false);
+  const [available, setAvailable] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState(null);
+
+  const loadPublicStatus = async (nextWindow = windowValue) => {
+    setLoading(true);
+    try {
+      const [nextConfig, nextStatuses] = await Promise.all([
+        API.get('/api/enhancements/model-status/embed/config').then(unwrap),
+        API.get('/api/enhancements/model-status/embed/status/all', {
+          params: { window: nextWindow },
+        }).then(unwrap),
+      ]);
+      setConfig(nextConfig || {});
+      setStatuses(nextStatuses || []);
+      setAvailable(true);
+      setLastUpdated(new Date());
+    } catch (error) {
+      setAvailable(false);
+      setConfig(null);
+      setStatuses([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadPublicStatus(windowValue);
+  }, []);
+
+  const handleWindowChange = (nextWindow) => {
+    setWindowValue(nextWindow);
+    loadPublicStatus(nextWindow);
+  };
+
+  if (!available && !loading) {
+    return (
+      <div className='min-h-screen bg-[#f6f8fb] px-4 py-10'>
+        <div className='mx-auto max-w-3xl'>
+          <Card className='!rounded-lg'>
+            <Empty
+              image={<Globe2 size={44} />}
+              title={t('模型状态暂未公开')}
+              description={t('管理员未开启公开嵌入')}
+            />
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className='min-h-screen bg-[#f6f8fb] px-4 py-6 md:py-8'>
+      <div className='mx-auto max-w-6xl space-y-5'>
+        <div className='flex flex-col gap-3 md:flex-row md:items-end md:justify-between'>
+          <div>
+            <div className='mb-2 inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-sm text-blue-700'>
+              <Globe2 size={15} />
+              {t('公开展示')}
+            </div>
+            <Title heading={2} className='!mb-1'>
+              {config?.site_title || t('全站模型状态')}
+            </Title>
+          </div>
+          <Button
+            icon={<RefreshCw size={16} />}
+            loading={loading}
+            onClick={() => loadPublicStatus(windowValue)}
+          >
+            {t('刷新')}
+          </Button>
+        </div>
+
+        <ModelStatusBoard
+          statuses={statuses}
+          loading={loading}
+          windowValue={windowValue}
+          onWindowChange={handleWindowChange}
+          lastUpdated={lastUpdated}
+        />
+      </div>
+    </div>
+  );
+}
+
 function GenericSection({ section, data, onRefresh }) {
   if (section === 'dashboard') {
     return <DashboardPanel data={data} />;
@@ -2132,6 +2643,9 @@ function GenericSection({ section, data, onRefresh }) {
   }
   if (section === 'risk') {
     return <RiskPanel data={data} />;
+  }
+  if (section === 'model-status') {
+    return <ModelStatusPanel data={data} />;
   }
 
   const summary =
@@ -2210,7 +2724,9 @@ async function fetchSection(section) {
         API.get('/api/enhancements/model-status/config/time-window').then(
           unwrap,
         ),
-        API.get('/api/enhancements/model-status/status/all').then(unwrap),
+        API.get('/api/enhancements/model-status/status/all', {
+          params: { window: '24h' },
+        }).then(unwrap),
       ]);
       return { config, statuses };
     }

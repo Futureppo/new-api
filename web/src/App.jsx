@@ -52,7 +52,7 @@ import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
 import Site from './pages/Site';
-import Enhancements from './pages/Enhancements';
+import Enhancements, { ModelStatusPublicPage } from './pages/Enhancements';
 import OAuth2Callback from './components/auth/OAuth2Callback';
 import PersonalSetting from './components/settings/PersonalSetting';
 import Setup from './pages/Setup';
@@ -114,6 +114,7 @@ function App() {
             </Suspense>
           }
         />
+        <Route path='/model-status' element={<ModelStatusPublicPage />} />
         <Route path='/forbidden' element={<Forbidden />} />
         <Route
           path='/console/models'

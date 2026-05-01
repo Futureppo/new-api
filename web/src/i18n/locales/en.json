@@ -3955,13 +3955,22 @@
     "风控中心": "Risk Center",
     "日志分析": "Log Analytics",
     "模型状态": "Model Status",
-    "自动分组": "Auto Group",
     "AI 封禁": "AI Ban",
     "系统工具": "System Tools",
     "生成兑换码": "Generate Redemption Codes",
     "确认生成兑换码？": "Generate redemption codes?",
     "生成": "Generate",
-    "生成成功": "Generated successfully",
-    "刷新": "Refresh"
-  }
+    "生成成功": "Generated successfully"
+  },
+  "??": "Disable",
+  "24h": "24h",
+  "7?": "7 days",
+  "30?": "30 days",
+  "???": "Success rate",
+  "??????": "Public URL",
+  "????": "Public view",
+  "?????": "Configuration saved",
+  "????????": "Model status is not public",
+  "?????????????????????": "External users can view the site-wide model status page after enabled",
+  "??????????": "The administrator has not enabled public embed"
 }

@@ -182,11 +182,33 @@ type RedemptionSummary struct {
 	ExpiredTime  int64  `json:"expired_time"`
 }
 
+type ModelStatusSlot struct {
+	Slot          int     `json:"slot"`
+	StartTime     int64   `json:"start_time"`
+	EndTime       int64   `json:"end_time"`
+	TotalRequests int64   `json:"total_requests"`
+	SuccessCount  int64   `json:"success_count"`
+	ErrorCount    int64   `json:"error_count"`
+	SuccessRate   float64 `json:"success_rate"`
+	Status        string  `json:"status"`
+}
+
 type ModelStatus struct {
-	ModelName         string  `json:"model_name"`
+	ModelName     string            `json:"model_name"`
+	Group         string            `json:"group"`
+	GroupName     string            `json:"group_name"`
+	DisplayName   string            `json:"display_name"`
+	TimeWindow    string            `json:"time_window"`
+	TotalRequests int64             `json:"total_requests"`
+	SuccessCount  int64             `json:"success_count"`
+	ErrorCount    int64             `json:"error_count"`
+	SuccessRate   float64           `json:"success_rate"`
+	CurrentStatus string            `json:"current_status"`
+	SlotData      []ModelStatusSlot `json:"slot_data"`
+	GeneratedAt   int64             `json:"generated_at"`
+
 	Status            string  `json:"status"`
 	Requests          int64   `json:"requests"`
-	ErrorCount        int64   `json:"error_count"`
 	ErrorRate         float64 `json:"error_rate"`
 	Quota             int64   `json:"quota"`
 	AvgUseTime        float64 `json:"avg_use_time"`
