@@ -435,7 +435,14 @@ func InvitedUsers(userId int, page int, pageSize int) (PageResult[UserSummary], 
 	return PageResult[UserSummary]{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
 
-func ListTokens(page int, pageSize int, status int, group string) (PageResult[TokenSummary], error) {
+func tokenKeyColumn() string {
+	if common.UsingPostgreSQL {
+		return `"key"`
+	}
+	return "`key`"
+}
+
+func ListTokens(page int, pageSize int, status int, group string, key string) (PageResult[TokenSummary], error) {
 	page = clampPage(page)
 	pageSize = clampLimit(pageSize)
 	query := model.DB.Model(&model.Token{})
@@ -450,6 +457,10 @@ func ListTokens(page int, pageSize int, status int, group string) (PageResult[To
 				query = query.Where("status = ?", status)
 			}
 		}
+	}
+	key = strings.TrimSpace(strings.TrimPrefix(key, "sk-"))
+	if key != "" {
+		query = query.Where(tokenKeyColumn()+" LIKE ?", "%"+key+"%")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -478,6 +489,13 @@ func TokenStats() (map[string]interface{}, error) {
 	if err := model.DB.Model(&model.Token{}).Where("status <> ?", common.TokenStatusEnabled).Count(&disabled).Error; err != nil {
 		return nil, err
 	}
+	out["total"] = total
+	out["enabled"] = enabled
+	out["disabled"] = disabled
+	return out, nil
+}
+
+func TokenGroups() (map[string]int64, error) {
 	var groups []struct {
 		GroupName string `gorm:"column:group_name"`
 		Count     int64  `gorm:"column:count"`
@@ -500,22 +518,7 @@ func TokenStats() (map[string]interface{}, error) {
 		}
 		groupMap[key] = item.Count
 	}
-	out["total"] = total
-	out["enabled"] = enabled
-	out["disabled"] = disabled
-	out["groups"] = groupMap
-	return out, nil
-}
-
-func TokenGroups() (map[string]int64, error) {
-	stats, err := TokenStats()
-	if err != nil {
-		return nil, err
-	}
-	if groups, ok := stats["groups"].(map[string]int64); ok {
-		return groups, nil
-	}
-	return map[string]int64{}, nil
+	return groupMap, nil
 }
 
 func RiskLeaderboards(start int64, end int64, limit int) ([]UserUsage, error) {
@@ -573,6 +576,33 @@ func UserRiskAnalysis(userId int, start int64, end int64) (map[string]interface{
 		"window_start": start,
 		"window_end":   end,
 	}, nil
+}
+
+func IPLogCoverageStats() (IPLogCoverage, error) {
+	var users []struct {
+		Id      int    `gorm:"column:id"`
+		Setting string `gorm:"column:setting"`
+	}
+	if err := model.DB.Model(&model.User{}).
+		Select("id, setting").
+		Find(&users).Error; err != nil {
+		return IPLogCoverage{}, err
+	}
+
+	stats := IPLogCoverage{
+		TotalUsers:  int64(len(users)),
+		GeneratedAt: common.GetTimestamp(),
+	}
+	for _, user := range users {
+		if isRecordIPLogEnabled(user.Setting) {
+			stats.EnabledUsers++
+		}
+	}
+	stats.DisabledUsers = stats.TotalUsers - stats.EnabledUsers
+	if stats.TotalUsers > 0 {
+		stats.EnabledRatio = float64(stats.EnabledUsers) / float64(stats.TotalUsers)
+	}
+	return stats, nil
 }
 
 func AvailableModels(public bool) ([]string, error) {

@@ -85,10 +85,12 @@ func (user *User) GetSetting() dto.UserSetting {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
 	}
+	setting.RecordIpLog = true
 	return setting
 }
 
 func (user *User) SetSetting(setting dto.UserSetting) {
+	setting.RecordIpLog = true
 	settingBytes, err := json.Marshal(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())

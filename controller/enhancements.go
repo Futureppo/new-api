@@ -65,10 +65,15 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		tokens.GET("/", enhancementListTokens)
 		tokens.GET("/statistics", enhancementTokenStats)
 		tokens.GET("/groups", enhancementTokenGroups)
+		tokens.PUT("/:token_id", enhancementUpdateToken)
 	}
 
 	risk := r.Group("/risk")
 	{
+		risk.GET("/ip-log-coverage", enhancementIPLogCoverage)
+		risk.POST("/ip-log/enable-all", enhancementEnableAllRecordIPLog)
+		risk.GET("/shared-token-ips", enhancementSharedTokenIPs)
+		risk.GET("/token-multi-ips", enhancementTokenMultiIPs)
 		risk.GET("/leaderboards", enhancementRiskLeaderboards)
 		risk.GET("/users/:user_id/analysis", enhancementUserRiskAnalysis)
 		risk.GET("/ban-records", enhancementBanRecords)
@@ -423,7 +428,23 @@ func enhancementDisableToken(c *gin.Context) {
 }
 
 func enhancementListTokens(c *gin.Context) {
-	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), queryInt(c, "status", 0), c.Query("group"))
+	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), queryInt(c, "status", 0), c.Query("group"), c.Query("key"))
+	respondPublic(c, data, err)
+}
+
+func enhancementUpdateToken(c *gin.Context) {
+	tokenId, err := pathInt(c, "token_id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	var req enhancement.UpdateTokenRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.UpdateToken(tokenId, req, operatorId)
 	respondPublic(c, data, err)
 }
 
@@ -439,6 +460,39 @@ func enhancementTokenGroups(c *gin.Context) {
 
 func enhancementRiskLeaderboards(c *gin.Context) {
 	data, err := enhancement.RiskLeaderboards(queryInt64(c, "start", 0), queryInt64(c, "end", 0), queryInt(c, "limit", 20))
+	respondPublic(c, data, err)
+}
+
+func enhancementIPLogCoverage(c *gin.Context) {
+	data, err := enhancement.IPLogCoverageStats()
+	respondPublic(c, data, err)
+}
+
+func enhancementEnableAllRecordIPLog(c *gin.Context) {
+	operatorId, _ := operator(c)
+	data, err := enhancement.EnableAllRecordIPLog(operatorId)
+	respondPublic(c, data, err)
+}
+
+func ipRiskQuery(c *gin.Context) enhancement.IPRiskQuery {
+	return enhancement.IPRiskQuery{
+		Page:     queryInt(c, "p", 1),
+		PageSize: queryInt(c, "page_size", 20),
+		Start:    queryInt64(c, "start", 0),
+		End:      queryInt64(c, "end", 0),
+		Sort:     c.Query("sort"),
+		Order:    c.Query("order"),
+		Keyword:  c.Query("keyword"),
+	}
+}
+
+func enhancementSharedTokenIPs(c *gin.Context) {
+	data, err := enhancement.SharedTokenIPs(ipRiskQuery(c))
+	respondPublic(c, data, err)
+}
+
+func enhancementTokenMultiIPs(c *gin.Context) {
+	data, err := enhancement.TokenMultiIPs(ipRiskQuery(c))
 	respondPublic(c, data, err)
 }
 
@@ -458,7 +512,7 @@ func enhancementBanRecords(c *gin.Context) {
 }
 
 func enhancementTokenRotation(c *gin.Context) {
-	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), 0, "")
+	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), 0, "", "")
 	respondPublic(c, data, err)
 }
 

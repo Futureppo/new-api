@@ -22,30 +22,40 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
+  Avatar,
   Card,
+  DatePicker,
   Empty,
   Input,
   InputNumber,
   Modal,
   Select,
+  SideSheet,
   Space,
   Spin,
+  Switch,
   Table,
   Tabs,
   TabPane,
   Tag,
+  TextArea,
   Typography,
 } from '@douyinfe/semi-ui';
 import {
   BarChart3,
   Bot,
+  CreditCard,
   Database,
   Gift,
+  KeyRound,
   LineChart,
+  Link2,
   RefreshCw,
+  Save,
   ShieldCheck,
   Sparkles,
   UserCog,
+  X,
 } from 'lucide-react';
 import { VChart } from '@visactor/react-vchart';
 import dayjs from 'dayjs';
@@ -53,6 +63,9 @@ import {
   API,
   copy,
   getCurrencyConfig,
+  getModelCategories,
+  renderGroupOption,
+  selectFilter,
   showError,
   showSuccess,
 } from '../../helpers';
@@ -149,6 +162,8 @@ const FIELD_LABELS = {
   token_id: '令牌 ID',
   token_name: '令牌名称',
   model_limits_enabled: '模型限制',
+  model_limits: '限制模型',
+  allow_ips: '允许 IP',
   dry_run: '试运行',
   dry_run_default: '默认试运行',
   model: '模型',
@@ -203,6 +218,20 @@ const REDEMPTION_STATUS_META = {
   [REDEMPTION_STATUS.USED]: { color: 'grey', text: '已兑换' },
 };
 
+const TOKEN_STATUS = {
+  ENABLED: 1,
+  DISABLED: 2,
+  EXPIRED: 3,
+  EXHAUSTED: 4,
+};
+
+const TOKEN_STATUS_META = {
+  [TOKEN_STATUS.ENABLED]: { color: 'green', text: '启用' },
+  [TOKEN_STATUS.DISABLED]: { color: 'red', text: '禁用' },
+  [TOKEN_STATUS.EXPIRED]: { color: 'orange', text: '已过期' },
+  [TOKEN_STATUS.EXHAUSTED]: { color: 'grey', text: '已耗尽' },
+};
+
 const USER_PREVIEW_KEYS = [
   'id',
   'username',
@@ -241,6 +270,11 @@ function formatFieldLabel(key, t) {
 function formatNumber(value) {
   if (typeof value !== 'number') return value;
   return new Intl.NumberFormat().format(value);
+}
+
+function formatPercent(value) {
+  const number = Number(value || 0);
+  return `${(number * 100).toFixed(1)}%`;
 }
 
 function isUnixTimestampKey(key, value) {
@@ -437,6 +471,14 @@ function redemptionUserText(record) {
   if (!record?.used_user_id) return '-';
   const username = record.used_username || '-';
   return `${username} (#${record.used_user_id})`;
+}
+
+function renderTokenStatus(status, t) {
+  const meta = TOKEN_STATUS_META[status] || {
+    color: 'black',
+    text: '未知',
+  };
+  return <Tag color={meta.color}>{t(meta.text)}</Tag>;
 }
 
 function formatDisplayAmount(quota, currency) {
@@ -877,6 +919,731 @@ function UsersPanel({ data }) {
   );
 }
 
+function TokensPanel({ data }) {
+  const { t } = useTranslation();
+  const [statistics, setStatistics] = useState(data?.statistics || {});
+  const [list, setList] = useState(
+    data?.list || { items: [], total: 0, page: 1, page_size: 20 },
+  );
+  const [filters, setFilters] = useState({ status: '0', key: '', group: '' });
+  const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
+  const [listLoading, setListLoading] = useState(false);
+  const [editingToken, setEditingToken] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [models, setModels] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setStatistics(data?.statistics || {});
+  }, [data?.statistics]);
+
+  useEffect(() => {
+    if (data?.list) {
+      setList(data.list);
+      setPageSize(data.list.page_size || 20);
+    }
+  }, [data?.list]);
+
+  useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        const [groupsRes, modelsRes] = await Promise.all([
+          API.get('/api/user/self/groups'),
+          API.get('/api/user/models'),
+        ]);
+        if (groupsRes.data?.success) {
+          const groupOptions = Object.entries(groupsRes.data.data || {}).map(
+            ([group, info]) => ({
+              label: info.desc,
+              value: group,
+              ratio: info.ratio,
+            }),
+          );
+          groupOptions.sort((a, b) => {
+            if (a.value === 'auto') return -1;
+            if (b.value === 'auto') return 1;
+            return a.value.localeCompare(b.value);
+          });
+          setGroups(groupOptions);
+        } else if (groupsRes.data?.message) {
+          showError(t(groupsRes.data.message));
+        }
+        if (modelsRes.data?.success) {
+          const categories = getModelCategories(t);
+          const modelOptions = (modelsRes.data.data || []).map((model) => {
+            let icon = null;
+            for (const [key, category] of Object.entries(categories)) {
+              if (key !== 'all' && category.filter({ model_name: model })) {
+                icon = category.icon;
+                break;
+              }
+            }
+            return {
+              label: (
+                <span className='flex items-center gap-1'>
+                  {icon}
+                  {model}
+                </span>
+              ),
+              value: model,
+            };
+          });
+          setModels(modelOptions);
+        } else if (modelsRes.data?.message) {
+          showError(t(modelsRes.data.message));
+        }
+      } catch (error) {
+        showError(error.message || error);
+      }
+    };
+    loadOptions();
+  }, [t]);
+
+  const loadStatistics = async () => {
+    const nextStatistics = await API.get(
+      '/api/enhancements/tokens/statistics',
+    ).then(unwrap);
+    setStatistics(nextStatistics || {});
+  };
+
+  const loadTokens = async (
+    page = 1,
+    size = pageSize,
+    nextFilters = filters,
+  ) => {
+    setListLoading(true);
+    try {
+      const params = new URLSearchParams({
+        p: String(page),
+        page_size: String(size),
+      });
+      if (nextFilters.status !== '0') params.set('status', nextFilters.status);
+      if (nextFilters.key.trim()) params.set('key', nextFilters.key.trim());
+      if (nextFilters.group.trim()) {
+        params.set('group', nextFilters.group.trim());
+      }
+      const nextList = await API.get(
+        `/api/enhancements/tokens?${params.toString()}`,
+      ).then(unwrap);
+      setList(nextList || { items: [], total: 0, page, page_size: size });
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  const openEditToken = (record) => {
+    const modelLimits =
+      typeof record.model_limits === 'string' && record.model_limits.trim()
+        ? record.model_limits
+            .split(',')
+            .map((model) => model.trim())
+            .filter(Boolean)
+        : [];
+    setEditingToken(record);
+    setEditForm({
+      name: record.name || '',
+      status: record.status || TOKEN_STATUS.ENABLED,
+      group: record.group || '',
+      expired_time: record.expired_time ?? -1,
+      remain_quota: record.remain_quota || 0,
+      unlimited_quota: Boolean(record.unlimited_quota),
+      model_limits_enabled: Boolean(record.model_limits_enabled),
+      model_limits: modelLimits,
+      allow_ips: record.allow_ips || '',
+    });
+  };
+
+  const patchEditForm = (patch) => {
+    setEditForm((prev) => ({ ...(prev || {}), ...patch }));
+  };
+
+  const saveToken = async () => {
+    if (!editingToken || !editForm) return;
+    setSaving(true);
+    try {
+      const modelLimits = Array.isArray(editForm.model_limits)
+        ? editForm.model_limits.join(',')
+        : editForm.model_limits.trim();
+      await API.put(`/api/enhancements/tokens/${editingToken.id}`, {
+        ...editForm,
+        name: editForm.name.trim(),
+        group: editForm.group.trim(),
+        model_limits: modelLimits,
+        model_limits_enabled: modelLimits !== '',
+        allow_ips: editForm.allow_ips.trim(),
+        status: Number(editForm.status),
+        expired_time: Number(editForm.expired_time),
+        remain_quota: Number(editForm.remain_quota),
+      });
+      showSuccess(t('保存成功'));
+      setEditingToken(null);
+      setEditForm(null);
+      await Promise.all([
+        loadStatistics(),
+        loadTokens(list?.page || 1, pageSize),
+      ]);
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const setTokenExpiration = (months, days, hours) => {
+    if (months === 0 && days === 0 && hours === 0) {
+      patchEditForm({ expired_time: -1 });
+      return;
+    }
+    const date = new Date();
+    date.setMonth(date.getMonth() + months);
+    date.setDate(date.getDate() + days);
+    date.setHours(date.getHours() + hours);
+    patchEditForm({ expired_time: Math.ceil(date.getTime() / 1000) });
+  };
+
+  const groupOptions = useMemo(() => {
+    if (
+      !editForm?.group ||
+      groups.some((group) => group.value === editForm.group)
+    ) {
+      return groups;
+    }
+    return [
+      ...groups,
+      {
+        label: editForm.group,
+        value: editForm.group,
+      },
+    ];
+  }, [editForm?.group, groups]);
+
+  const modelOptions = useMemo(() => {
+    const selectedModels = Array.isArray(editForm?.model_limits)
+      ? editForm.model_limits
+      : [];
+    const extraOptions = selectedModels
+      .filter(
+        (model) => model && !models.some((option) => option.value === model),
+      )
+      .map((model) => ({ label: model, value: model }));
+    return [...models, ...extraOptions];
+  }, [editForm?.model_limits, models]);
+
+  const columns = [
+    { title: t('ID'), dataIndex: 'id', width: 80 },
+    { title: t('用户 ID'), dataIndex: 'user_id', width: 100 },
+    { title: t('名称'), dataIndex: 'name', width: 160 },
+    {
+      title: t('Key'),
+      dataIndex: 'key',
+      width: 190,
+      render: (value) => <span className='font-mono text-xs'>{value}</span>,
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      width: 110,
+      render: (value) => renderTokenStatus(value, t),
+    },
+    {
+      title: t('分组'),
+      dataIndex: 'group',
+      width: 120,
+      render: (value) => value || '-',
+    },
+    {
+      title: t('剩余 quota'),
+      dataIndex: 'remain_quota',
+      width: 130,
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('已用 quota'),
+      dataIndex: 'used_quota',
+      width: 130,
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('无限额度'),
+      dataIndex: 'unlimited_quota',
+      width: 110,
+      render: (value) => t(value ? '是' : '否'),
+    },
+    {
+      title: t('模型限制'),
+      dataIndex: 'model_limits_enabled',
+      width: 110,
+      render: (value) => t(value ? '是' : '否'),
+    },
+    {
+      title: t('过期时间'),
+      dataIndex: 'expired_time',
+      width: 180,
+      render: (value) =>
+        value === -1 ? t('永不过期') : formatValue(value, 'expired_time', t),
+    },
+    {
+      title: t('操作'),
+      dataIndex: 'operate',
+      fixed: 'right',
+      width: 110,
+      render: (_, record) => (
+        <Button
+          size='small'
+          type='primary'
+          onClick={() => openEditToken(record)}
+        >
+          {t('编辑')}
+        </Button>
+      ),
+    },
+  ];
+
+  return (
+    <div className='space-y-4'>
+      <SummaryGrid data={statistics} />
+      <Card title='令牌列表' className='!rounded-lg'>
+        <div className='flex flex-col xl:flex-row gap-3 mb-4'>
+          <Select
+            value={filters.status}
+            style={{ width: 160 }}
+            onChange={(value) => {
+              const nextFilters = { ...filters, status: String(value) };
+              setFilters(nextFilters);
+              loadTokens(1, pageSize, nextFilters);
+            }}
+          >
+            <Select.Option value='0'>{t('全部')}</Select.Option>
+            <Select.Option value='1'>{t('启用')}</Select.Option>
+            <Select.Option value='2'>{t('禁用')}</Select.Option>
+            <Select.Option value='3'>{t('已过期')}</Select.Option>
+            <Select.Option value='4'>{t('已耗尽')}</Select.Option>
+          </Select>
+          <Input
+            value={filters.key}
+            placeholder={t('搜索令牌 Key')}
+            onChange={(value) =>
+              setFilters((prev) => ({ ...prev, key: value }))
+            }
+            onEnterPress={() => loadTokens(1, pageSize)}
+            className='xl:max-w-sm'
+          />
+          <Select
+            value={filters.group}
+            placeholder={t('筛选分组')}
+            optionList={groups}
+            renderOptionItem={renderGroupOption}
+            filter={selectFilter}
+            showClear
+            onChange={(value) => {
+              const nextFilters = { ...filters, group: value || '' };
+              setFilters(nextFilters);
+              loadTokens(1, pageSize, nextFilters);
+            }}
+            className='xl:max-w-xs'
+            style={{ width: 180 }}
+          />
+          <Space>
+            <Button type='primary' onClick={() => loadTokens(1, pageSize)}>
+              {t('搜索')}
+            </Button>
+            <Button
+              onClick={() => {
+                const nextFilters = { status: '0', key: '', group: '' };
+                setFilters(nextFilters);
+                loadTokens(1, pageSize, nextFilters);
+              }}
+            >
+              {t('重置')}
+            </Button>
+          </Space>
+        </div>
+        <Table
+          size='small'
+          columns={columns}
+          dataSource={(list?.items || []).map((row) => ({
+            ...row,
+            _rowKey: row.id,
+          }))}
+          rowKey='_rowKey'
+          loading={listLoading}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            currentPage: list?.page || 1,
+            pageSize,
+            total: list?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) => loadTokens(page, pageSize),
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              loadTokens(1, size);
+            },
+          }}
+        />
+      </Card>
+      <SideSheet
+        placement='right'
+        title={
+          <Space>
+            <Tag color='blue' shape='circle'>
+              {t('更新')}
+            </Tag>
+            <Title heading={4} style={{ margin: 0 }}>
+              {t('更新令牌信息')}
+            </Title>
+          </Space>
+        }
+        bodyStyle={{ padding: 0 }}
+        visible={Boolean(editingToken)}
+        width={600}
+        closeIcon={null}
+        onCancel={() => {
+          setEditingToken(null);
+          setEditForm(null);
+        }}
+        footer={
+          <div className='flex justify-end bg-semi-color-bg-0'>
+            <Space>
+              <Button
+                theme='solid'
+                type='primary'
+                className='!rounded-lg'
+                icon={<Save size={16} />}
+                loading={saving}
+                onClick={saveToken}
+              >
+                {t('提交')}
+              </Button>
+              <Button
+                theme='light'
+                type='primary'
+                className='!rounded-lg'
+                icon={<X size={16} />}
+                onClick={() => {
+                  setEditingToken(null);
+                  setEditForm(null);
+                }}
+              >
+                {t('取消')}
+              </Button>
+            </Space>
+          </div>
+        }
+      >
+        {editForm && (
+          <Spin spinning={saving}>
+            <div className='p-2 space-y-3'>
+              <Card className='!rounded-2xl shadow-sm border-0'>
+                <div className='flex items-center mb-3'>
+                  <Avatar size='small' color='blue' className='mr-2 shadow-md'>
+                    <KeyRound size={16} />
+                  </Avatar>
+                  <div>
+                    <Text className='text-lg font-medium'>{t('基本信息')}</Text>
+                    <div className='text-xs text-semi-color-text-2'>
+                      {t('设置令牌的基本信息')}
+                    </div>
+                  </div>
+                </div>
+                <div className='space-y-3'>
+                  <label className='space-y-1 block'>
+                    <Text type='secondary'>{t('名称')}</Text>
+                    <Input
+                      value={editForm.name}
+                      placeholder={t('请输入名称')}
+                      showClear
+                      onChange={(value) => patchEditForm({ name: value })}
+                    />
+                  </label>
+                  <label className='space-y-1 block'>
+                    <Text type='secondary'>{t('令牌分组')}</Text>
+                    <Select
+                      value={editForm.group}
+                      placeholder={t('令牌分组，默认使用用户分组')}
+                      optionList={groupOptions}
+                      renderOptionItem={renderGroupOption}
+                      filter={selectFilter}
+                      showClear
+                      style={{ width: '100%' }}
+                      onChange={(value) =>
+                        patchEditForm({ group: value || '' })
+                      }
+                    />
+                  </label>
+                  <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                    <label className='space-y-1 block'>
+                      <Text type='secondary'>{t('状态')}</Text>
+                      <Select
+                        value={editForm.status}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          patchEditForm({ status: Number(value) })
+                        }
+                      >
+                        <Select.Option value={1}>{t('启用')}</Select.Option>
+                        <Select.Option value={2}>{t('禁用')}</Select.Option>
+                        <Select.Option value={3}>{t('已过期')}</Select.Option>
+                        <Select.Option value={4}>{t('已耗尽')}</Select.Option>
+                      </Select>
+                    </label>
+                    <label className='space-y-1 block'>
+                      <Text type='secondary'>{t('过期时间戳')}</Text>
+                      <InputNumber
+                        value={editForm.expired_time}
+                        style={{ width: '100%' }}
+                        onChange={(value) =>
+                          patchEditForm({ expired_time: value ?? -1 })
+                        }
+                      />
+                      <Text type='tertiary' size='small'>
+                        {t('-1 表示永不过期')}
+                      </Text>
+                    </label>
+                  </div>
+                  <div>
+                    <Text type='secondary'>{t('过期时间快捷设置')}</Text>
+                    <div className='mt-2'>
+                      <Space wrap>
+                        <Button
+                          theme='light'
+                          type='primary'
+                          onClick={() => setTokenExpiration(0, 0, 0)}
+                        >
+                          {t('永不过期')}
+                        </Button>
+                        <Button
+                          theme='light'
+                          type='tertiary'
+                          onClick={() => setTokenExpiration(1, 0, 0)}
+                        >
+                          {t('一个月')}
+                        </Button>
+                        <Button
+                          theme='light'
+                          type='tertiary'
+                          onClick={() => setTokenExpiration(0, 1, 0)}
+                        >
+                          {t('一天')}
+                        </Button>
+                        <Button
+                          theme='light'
+                          type='tertiary'
+                          onClick={() => setTokenExpiration(0, 0, 1)}
+                        >
+                          {t('一小时')}
+                        </Button>
+                      </Space>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className='!rounded-2xl shadow-sm border-0'>
+                <div className='flex items-center mb-3'>
+                  <Avatar size='small' color='green' className='mr-2 shadow-md'>
+                    <CreditCard size={16} />
+                  </Avatar>
+                  <div>
+                    <Text className='text-lg font-medium'>{t('额度设置')}</Text>
+                    <div className='text-xs text-semi-color-text-2'>
+                      {t('设置令牌可用额度')}
+                    </div>
+                  </div>
+                </div>
+                <div className='space-y-3'>
+                  <label className='space-y-1 block'>
+                    <Text type='secondary'>{t('剩余 quota')}</Text>
+                    <InputNumber
+                      min={0}
+                      step={500000}
+                      value={editForm.remain_quota}
+                      disabled={editForm.unlimited_quota}
+                      style={{ width: '100%' }}
+                      onChange={(value) =>
+                        patchEditForm({ remain_quota: value ?? 0 })
+                      }
+                    />
+                  </label>
+                  <div className='flex items-center justify-between gap-3 rounded-lg border border-semi-color-border px-3 py-2'>
+                    <div>
+                      <Text>{t('无限额度')}</Text>
+                      <div className='text-xs text-semi-color-text-2'>
+                        {t('令牌额度只限制令牌自身的最大额度使用量')}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={editForm.unlimited_quota}
+                      onChange={(checked) =>
+                        patchEditForm({ unlimited_quota: checked })
+                      }
+                    />
+                  </div>
+                </div>
+              </Card>
+
+              <Card className='!rounded-2xl shadow-sm border-0'>
+                <div className='flex items-center mb-3'>
+                  <Avatar
+                    size='small'
+                    color='purple'
+                    className='mr-2 shadow-md'
+                  >
+                    <Link2 size={16} />
+                  </Avatar>
+                  <div>
+                    <Text className='text-lg font-medium'>{t('访问限制')}</Text>
+                    <div className='text-xs text-semi-color-text-2'>
+                      {t('设置令牌的访问限制')}
+                    </div>
+                  </div>
+                </div>
+                <div className='space-y-3'>
+                  <label className='space-y-1 block'>
+                    <Text type='secondary'>{t('模型限制列表')}</Text>
+                    <Select
+                      value={editForm.model_limits}
+                      placeholder={t(
+                        '请选择该令牌支持的模型，留空支持所有模型',
+                      )}
+                      optionList={modelOptions}
+                      multiple
+                      filter={selectFilter}
+                      autoClearSearchValue={false}
+                      searchPosition='dropdown'
+                      showClear
+                      style={{ width: '100%' }}
+                      onChange={(value) =>
+                        patchEditForm({ model_limits: value || [] })
+                      }
+                    />
+                    <Text type='tertiary' size='small'>
+                      {t('非必要，不建议启用模型限制')}
+                    </Text>
+                  </label>
+                  <label className='space-y-1 block'>
+                    <Text type='secondary'>
+                      {t('IP 白名单（支持 CIDR 表达式）')}
+                    </Text>
+                    <TextArea
+                      value={editForm.allow_ips}
+                      placeholder={t('允许的 IP，一行一个，不填写则不限制')}
+                      autosize
+                      rows={2}
+                      onChange={(value) => patchEditForm({ allow_ips: value })}
+                    />
+                    <Text type='tertiary' size='small'>
+                      {t('请配合 nginx 或 CDN 等可信网关使用')}
+                    </Text>
+                  </label>
+                </div>
+              </Card>
+            </div>
+          </Spin>
+        )}
+      </SideSheet>
+    </div>
+  );
+}
+
+function RiskPanel({ data }) {
+  const { t } = useTranslation();
+  const [coverage, setCoverage] = useState(data?.coverage || {});
+  const [applying, setApplying] = useState(false);
+
+  useEffect(() => {
+    setCoverage(data?.coverage || {});
+  }, [data?.coverage]);
+
+  const loadCoverage = async () => {
+    const nextCoverage = await API.get(
+      '/api/enhancements/risk/ip-log-coverage',
+    ).then(unwrap);
+    setCoverage(nextCoverage || {});
+  };
+
+  const enableAll = () => {
+    Modal.confirm({
+      title: t('一键开启 IP 日志记录'),
+      content: t('确认将所有未开启“记录请求与错误日志IP”的用户改为开启？'),
+      okText: t('开启'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setApplying(true);
+        try {
+          const res = await API.post(
+            '/api/enhancements/risk/ip-log/enable-all',
+          );
+          const result = unwrap(res);
+          setCoverage(result?.coverage || {});
+          showSuccess(t('操作成功'));
+          await loadCoverage();
+        } catch (error) {
+          showError(error.message || error);
+        } finally {
+          setApplying(false);
+        }
+      },
+    });
+  };
+
+  const totalUsers = coverage?.total_users || 0;
+  const enabledUsers = coverage?.enabled_users || 0;
+  const disabledUsers = coverage?.disabled_users || 0;
+
+  return (
+    <div className='space-y-4'>
+      <Card title={t('IP 日志记录覆盖率')} className='!rounded-lg'>
+        <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
+          <div>
+            <Text type='secondary'>
+              {t('已开启记录请求与错误日志IP的用户占比')}
+            </Text>
+            <div className='text-4xl font-semibold mt-2 text-semi-color-text-0'>
+              {formatPercent(coverage?.enabled_ratio)}
+            </div>
+            <div className='mt-2 text-semi-color-text-1'>
+              {formatNumber(enabledUsers)} / {formatNumber(totalUsers)}
+            </div>
+          </div>
+          <div className='grid grid-cols-2 gap-3 min-w-64'>
+            <div className='rounded-lg border border-semi-color-border p-3'>
+              <Text type='secondary' size='small'>
+                {t('已开启用户')}
+              </Text>
+              <div className='text-xl font-semibold mt-1'>
+                {formatNumber(enabledUsers)}
+              </div>
+            </div>
+            <div className='rounded-lg border border-semi-color-border p-3'>
+              <Text type='secondary' size='small'>
+                {t('未开启用户')}
+              </Text>
+              <div className='text-xl font-semibold mt-1'>
+                {formatNumber(disabledUsers)}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className='mt-4'>
+          <Button
+            size='small'
+            type='primary'
+            loading={applying}
+            disabled={disabledUsers === 0}
+            onClick={enableAll}
+          >
+            {t('一键开启未开启用户')}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 function GenericSection({ section, data, onRefresh }) {
   if (section === 'dashboard') {
     return <DashboardPanel data={data} />;
@@ -886,6 +1653,12 @@ function GenericSection({ section, data, onRefresh }) {
   }
   if (section === 'users') {
     return <UsersPanel data={data} />;
+  }
+  if (section === 'tokens') {
+    return <TokensPanel data={data} />;
+  }
+  if (section === 'risk') {
+    return <RiskPanel data={data} />;
   }
 
   const summary =
@@ -941,10 +1714,10 @@ async function fetchSection(section) {
       return { statistics, list };
     }
     case 'risk': {
-      const ranking = await API.get('/api/enhancements/risk/leaderboards').then(
-        unwrap,
-      );
-      return { ranking };
+      const coverage = await API.get(
+        '/api/enhancements/risk/ip-log-coverage',
+      ).then(unwrap);
+      return { coverage };
     }
     case 'analytics': {
       const [summary, models] = await Promise.all([

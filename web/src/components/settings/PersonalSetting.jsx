@@ -94,7 +94,7 @@ const PersonalSetting = () => {
     gotifyPriority: 5,
     upstreamModelUpdateNotifyEnabled: false,
     acceptUnsetModelRatioModel: false,
-    recordIpLog: false,
+    recordIpLog: true,
   });
 
   const {
@@ -197,7 +197,7 @@ const PersonalSetting = () => {
           settings.upstream_model_update_notify_enabled === true,
         acceptUnsetModelRatioModel:
           settings.accept_unset_model_ratio_model || false,
-        recordIpLog: settings.record_ip_log || false,
+        recordIpLog: true,
       });
     }
   }, [userState?.user?.setting]);
@@ -496,6 +496,10 @@ const PersonalSetting = () => {
   };
 
   const handleNotificationSettingChange = (type, value) => {
+    if (type === 'recordIpLog') {
+      setNotificationSettings((prev) => ({ ...prev, recordIpLog: true }));
+      return;
+    }
     setNotificationSettings((prev) => ({
       ...prev,
       [type]: value.target
@@ -527,7 +531,7 @@ const PersonalSetting = () => {
           notificationSettings.upstreamModelUpdateNotifyEnabled === true,
         accept_unset_model_ratio_model:
           notificationSettings.acceptUnsetModelRatioModel,
-        record_ip_log: notificationSettings.recordIpLog,
+        record_ip_log: true,
       });
 
       if (res.data.success) {

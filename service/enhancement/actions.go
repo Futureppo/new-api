@@ -307,6 +307,119 @@ func DisableToken(tokenId int, operatorId int) error {
 	return nil
 }
 
+func EnableAllRecordIPLog(operatorId int) (map[string]interface{}, error) {
+	var users []struct {
+		Id      int    `gorm:"column:id"`
+		Setting string `gorm:"column:setting"`
+	}
+	if err := model.DB.Model(&model.User{}).
+		Select("id, setting").
+		Find(&users).Error; err != nil {
+		return nil, err
+	}
+
+	updatedIDs := make([]int, 0)
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		for _, user := range users {
+			nextSetting, changed, err := forceRecordIPLogSetting(user.Setting)
+			if err != nil {
+				return err
+			}
+			if !changed {
+				continue
+			}
+			if err := tx.Model(&model.User{}).Where("id = ?", user.Id).Update("setting", nextSetting).Error; err != nil {
+				return err
+			}
+			updatedIDs = append(updatedIDs, user.Id)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	for _, userId := range updatedIDs {
+		_ = model.InvalidateUserCache(userId)
+	}
+	audit(operatorId, "enhancements.risk", "enable_all_record_ip_log", map[string]interface{}{
+		"updated": len(updatedIDs),
+	})
+	stats, err := IPLogCoverageStats()
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"updated":  len(updatedIDs),
+		"coverage": stats,
+	}, nil
+}
+
+func UpdateToken(tokenId int, req UpdateTokenRequest, operatorId int) (TokenSummary, error) {
+	if tokenId <= 0 {
+		return TokenSummary{}, errors.New("invalid token id")
+	}
+	if len([]rune(req.Name)) > 50 {
+		return TokenSummary{}, errors.New("token name is too long")
+	}
+	switch req.Status {
+	case common.TokenStatusEnabled, common.TokenStatusDisabled, common.TokenStatusExpired, common.TokenStatusExhausted:
+	default:
+		return TokenSummary{}, errors.New("invalid token status")
+	}
+	if !req.UnlimitedQuota {
+		if req.RemainQuota < 0 {
+			return TokenSummary{}, errors.New("remain quota cannot be negative")
+		}
+		maxQuotaValue := int(1000000000 * common.QuotaPerUnit)
+		if req.RemainQuota > maxQuotaValue {
+			return TokenSummary{}, fmt.Errorf("remain quota cannot exceed %d", maxQuotaValue)
+		}
+	}
+	if len([]rune(req.Group)) > 64 {
+		return TokenSummary{}, errors.New("group is too long")
+	}
+	if len([]rune(req.ModelLimits)) > 4096 {
+		return TokenSummary{}, errors.New("model limits are too long")
+	}
+	if len([]rune(req.AllowIps)) > 4096 {
+		return TokenSummary{}, errors.New("allow ips are too long")
+	}
+
+	var token model.Token
+	if err := model.DB.Where("id = ?", tokenId).First(&token).Error; err != nil {
+		return TokenSummary{}, err
+	}
+
+	token.Name = strings.TrimSpace(req.Name)
+	token.Status = req.Status
+	token.ExpiredTime = req.ExpiredTime
+	token.RemainQuota = req.RemainQuota
+	token.UnlimitedQuota = req.UnlimitedQuota
+	token.ModelLimitsEnabled = req.ModelLimitsEnabled && strings.TrimSpace(req.ModelLimits) != ""
+	token.ModelLimits = strings.TrimSpace(req.ModelLimits)
+	allowIps := strings.TrimSpace(req.AllowIps)
+	token.AllowIps = &allowIps
+	token.Group = strings.TrimSpace(req.Group)
+
+	if token.Status == common.TokenStatusEnabled {
+		if token.ExpiredTime != -1 && token.ExpiredTime <= common.GetTimestamp() {
+			return TokenSummary{}, errors.New("expired tokens cannot be enabled")
+		}
+		if !token.UnlimitedQuota && token.RemainQuota <= 0 {
+			return TokenSummary{}, errors.New("exhausted tokens cannot be enabled")
+		}
+	}
+
+	if err := token.Update(); err != nil {
+		return TokenSummary{}, err
+	}
+	audit(operatorId, "enhancements.tokens", "update", map[string]interface{}{
+		"token_id": token.Id,
+		"user_id":  token.UserId,
+	})
+	return tokenToSummary(token), nil
+}
+
 func ClearEnhancementCache(operatorId int) map[string]interface{} {
 	audit(operatorId, "enhancements.system", "clear_cache", map[string]interface{}{
 		"scope": "enhancements",

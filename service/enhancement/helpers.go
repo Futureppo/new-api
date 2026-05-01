@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"gorm.io/gorm"
@@ -107,6 +108,10 @@ func userToSummary(user model.User) UserSummary {
 }
 
 func tokenToSummary(token model.Token) TokenSummary {
+	allowIps := ""
+	if token.AllowIps != nil {
+		allowIps = *token.AllowIps
+	}
 	return TokenSummary{
 		Id:                 token.Id,
 		UserId:             token.UserId,
@@ -121,6 +126,8 @@ func tokenToSummary(token model.Token) TokenSummary {
 		UsedQuota:          token.UsedQuota,
 		UnlimitedQuota:     token.UnlimitedQuota,
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
+		ModelLimits:        token.ModelLimits,
+		AllowIps:           allowIps,
 	}
 }
 
@@ -147,6 +154,35 @@ func redemptionToSummaryWithUsername(redemption model.Redemption, revealKey bool
 	summary := redemptionToSummary(redemption, revealKey)
 	summary.UsedUsername = usedUsername
 	return summary
+}
+
+func userSettingFromString(raw string) dto.UserSetting {
+	settingMap := dto.UserSetting{}
+	if strings.TrimSpace(raw) == "" {
+		return settingMap
+	}
+	if err := common.UnmarshalJsonStr(raw, &settingMap); err != nil {
+		common.SysLog("failed to unmarshal user setting: " + err.Error())
+		return dto.UserSetting{}
+	}
+	return settingMap
+}
+
+func isRecordIPLogEnabled(raw string) bool {
+	return userSettingFromString(raw).RecordIpLog
+}
+
+func forceRecordIPLogSetting(raw string) (string, bool, error) {
+	settingMap := userSettingFromString(raw)
+	if settingMap.RecordIpLog {
+		return raw, false, nil
+	}
+	settingMap.RecordIpLog = true
+	bytes, err := common.Marshal(settingMap)
+	if err != nil {
+		return "", false, err
+	}
+	return string(bytes), true, nil
 }
 
 func selectedModelSet() map[string]struct{} {

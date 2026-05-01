@@ -86,6 +86,8 @@ type TokenSummary struct {
 	UsedQuota          int    `json:"used_quota"`
 	UnlimitedQuota     bool   `json:"unlimited_quota"`
 	ModelLimitsEnabled bool   `json:"model_limits_enabled"`
+	ModelLimits        string `json:"model_limits"`
+	AllowIps           string `json:"allow_ips"`
 }
 
 type UserSummary struct {
@@ -105,6 +107,65 @@ type UserSummary struct {
 	InviterId         int    `json:"inviter_id"`
 	AffCount          int    `json:"aff_count"`
 	LinuxDOId         string `json:"linux_do_id,omitempty"`
+}
+
+type IPLogCoverage struct {
+	TotalUsers    int64   `json:"total_users"`
+	EnabledUsers  int64   `json:"enabled_users"`
+	DisabledUsers int64   `json:"disabled_users"`
+	EnabledRatio  float64 `json:"enabled_ratio"`
+	GeneratedAt   int64   `json:"generated_at"`
+}
+
+type IPRiskQuery struct {
+	Page     int
+	PageSize int
+	Start    int64
+	End      int64
+	Sort     string
+	Order    string
+	Keyword  string
+}
+
+type IPRiskUserRef struct {
+	UserId       int    `json:"user_id"`
+	Username     string `json:"username"`
+	RequestCount int64  `json:"request_count"`
+}
+
+type IPRiskTokenRef struct {
+	TokenId      int    `json:"token_id"`
+	TokenName    string `json:"token_name"`
+	UserId       int    `json:"user_id"`
+	Username     string `json:"username"`
+	RequestCount int64  `json:"request_count"`
+}
+
+type SharedTokenIPRisk struct {
+	IP           string           `json:"ip"`
+	TokenCount   int64            `json:"token_count"`
+	UserCount    int64            `json:"user_count"`
+	RequestCount int64            `json:"request_count"`
+	ErrorCount   int64            `json:"error_count"`
+	Quota        int64            `json:"quota"`
+	FirstSeenAt  int64            `json:"first_seen_at"`
+	LastSeenAt   int64            `json:"last_seen_at"`
+	Users        []IPRiskUserRef  `json:"users"`
+	Tokens       []IPRiskTokenRef `json:"tokens"`
+}
+
+type TokenMultiIPRisk struct {
+	TokenId      int      `json:"token_id"`
+	TokenName    string   `json:"token_name"`
+	UserId       int      `json:"user_id"`
+	Username     string   `json:"username"`
+	IPCount      int64    `json:"ip_count"`
+	RequestCount int64    `json:"request_count"`
+	ErrorCount   int64    `json:"error_count"`
+	Quota        int64    `json:"quota"`
+	FirstSeenAt  int64    `json:"first_seen_at"`
+	LastSeenAt   int64    `json:"last_seen_at"`
+	IPs          []string `json:"ips"`
 }
 
 type RedemptionSummary struct {
@@ -148,4 +209,16 @@ type BatchIDsRequest struct {
 
 type BanUserRequest struct {
 	Reason string `json:"reason"`
+}
+
+type UpdateTokenRequest struct {
+	Name               string `json:"name"`
+	Status             int    `json:"status"`
+	ExpiredTime        int64  `json:"expired_time"`
+	RemainQuota        int    `json:"remain_quota"`
+	UnlimitedQuota     bool   `json:"unlimited_quota"`
+	ModelLimitsEnabled bool   `json:"model_limits_enabled"`
+	ModelLimits        string `json:"model_limits"`
+	AllowIps           string `json:"allow_ips"`
+	Group              string `json:"group"`
 }

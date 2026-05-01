@@ -797,12 +797,12 @@ const NotificationSettings = ({
                 <Form.Switch
                   field='recordIpLog'
                   label={t('记录请求与错误日志IP')}
+                  initValue={true}
+                  disabled
                   checkedText={t('开')}
                   uncheckedText={t('关')}
-                  onChange={(value) => handleFormChange('recordIpLog', value)}
-                  extraText={t(
-                    '开启后，仅"消费"和"错误"日志将记录您的客户端IP地址',
-                  )}
+                  onChange={() => handleFormChange('recordIpLog', true)}
+                  extraText={t('该选项已由管理员强制开启，所有用户无法关闭')}
                 />
               </div>
             </TabPane>
