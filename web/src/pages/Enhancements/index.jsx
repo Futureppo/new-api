@@ -42,7 +42,6 @@ import {
   Typography,
 } from '@douyinfe/semi-ui';
 import {
-  BarChart3,
   Bot,
   CreditCard,
   Database,
@@ -71,7 +70,6 @@ import {
 } from '../../helpers';
 import {
   displayAmountToQuota,
-  getQuotaPerUnit,
   quotaToDisplayAmount,
 } from '../../helpers/quota';
 
@@ -83,7 +81,6 @@ const SECTIONS = [
   { id: 'users', label: '用户增强', icon: UserCog },
   { id: 'tokens', label: '令牌审计', icon: ShieldCheck },
   { id: 'risk', label: '风控中心', icon: ShieldCheck },
-  { id: 'analytics', label: '日志分析', icon: BarChart3 },
   { id: 'model-status', label: '模型状态', icon: LineChart },
   { id: 'auto-group', label: '自动分组', icon: UserCog },
   { id: 'ai-ban', label: 'AI 封禁', icon: Bot },
@@ -110,9 +107,9 @@ const FIELD_LABELS = {
   enabled: '启用',
   disabled: '禁用',
   used: '已使用',
-  quota: '额度',
-  used_quota: '已用额度',
-  remain_quota: '剩余额度',
+  quota: '金额',
+  used_quota: '已用金额',
+  remain_quota: '剩余金额',
   unlimited_quota: '无限额度',
   prompt_tokens: '输入 Token',
   completion_tokens: '补全 Token',
@@ -282,11 +279,22 @@ function isUnixTimestampKey(key, value) {
   return /(^|_)(time|at)$/.test(key) || key.includes('_time');
 }
 
+function isQuotaAmountKey(key = '') {
+  const field = String(key).split('.').pop();
+  return (
+    field === 'quota' ||
+    (field.endsWith('_quota') && field !== 'unlimited_quota')
+  );
+}
+
 function formatValue(value, key = '', t = (text) => text) {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'boolean') return t(value ? '是' : '否');
   if (typeof value === 'string' && VALUE_LABELS[value]) {
     return t(VALUE_LABELS[value]);
+  }
+  if (isQuotaAmountKey(key) && typeof value === 'number') {
+    return formatDisplayAmount(value);
   }
   if (isUnixTimestampKey(key, value)) {
     return dayjs.unix(value).format('YYYY-MM-DD HH:mm:ss');
@@ -481,7 +489,7 @@ function renderTokenStatus(status, t) {
   return <Tag color={meta.color}>{t(meta.text)}</Tag>;
 }
 
-function formatDisplayAmount(quota, currency) {
+function formatDisplayAmount(quota, currency = getCurrencyConfig()) {
   const amount = quotaToDisplayAmount(quota);
   const formatted = new Intl.NumberFormat(undefined, {
     maximumFractionDigits: 6,
@@ -491,17 +499,7 @@ function formatDisplayAmount(quota, currency) {
 }
 
 function formatQuotaAsAmount(quota, currency) {
-  const amount = Number(quota || 0) / getQuotaPerUnit();
-  const shouldUseConfiguredCurrency =
-    currency.type === 'CNY' || currency.type === 'CUSTOM';
-  const convertedAmount = shouldUseConfiguredCurrency
-    ? amount * (currency.rate || 1)
-    : amount;
-  const symbol = shouldUseConfiguredCurrency ? currency.symbol : '$';
-  const formatted = new Intl.NumberFormat(undefined, {
-    maximumFractionDigits: 6,
-  }).format(convertedAmount);
-  return `${symbol}${formatted}`;
+  return formatDisplayAmount(quota, currency);
 }
 
 function RedemptionsPanel({ data }) {
@@ -921,6 +919,7 @@ function UsersPanel({ data }) {
 
 function TokensPanel({ data }) {
   const { t } = useTranslation();
+  const currency = getCurrencyConfig();
   const [statistics, setStatistics] = useState(data?.statistics || {});
   const [list, setList] = useState(
     data?.list || { items: [], total: 0, page: 1, page_size: 20 },
@@ -1049,6 +1048,9 @@ function TokensPanel({ data }) {
       group: record.group || '',
       expired_time: record.expired_time ?? -1,
       remain_quota: record.remain_quota || 0,
+      remain_amount: Number(
+        quotaToDisplayAmount(record.remain_quota || 0).toFixed(6),
+      ),
       unlimited_quota: Boolean(record.unlimited_quota),
       model_limits_enabled: Boolean(record.model_limits_enabled),
       model_limits: modelLimits,
@@ -1155,16 +1157,16 @@ function TokensPanel({ data }) {
       render: (value) => value || '-',
     },
     {
-      title: t('剩余 quota'),
+      title: t('剩余金额'),
       dataIndex: 'remain_quota',
       width: 130,
-      render: (value) => formatNumber(value),
+      render: (value) => formatDisplayAmount(value, currency),
     },
     {
-      title: t('已用 quota'),
+      title: t('已用金额'),
       dataIndex: 'used_quota',
       width: 130,
-      render: (value) => formatNumber(value),
+      render: (value) => formatDisplayAmount(value, currency),
     },
     {
       title: t('无限额度'),
@@ -1456,16 +1458,23 @@ function TokensPanel({ data }) {
                 </div>
                 <div className='space-y-3'>
                   <label className='space-y-1 block'>
-                    <Text type='secondary'>{t('剩余 quota')}</Text>
+                    <Text type='secondary'>{t('剩余金额')}</Text>
                     <InputNumber
                       min={0}
-                      step={500000}
-                      value={editForm.remain_quota}
+                      step={1}
+                      prefix={
+                        currency.type === 'TOKENS' ? undefined : currency.symbol
+                      }
+                      value={editForm.remain_amount}
                       disabled={editForm.unlimited_quota}
                       style={{ width: '100%' }}
-                      onChange={(value) =>
-                        patchEditForm({ remain_quota: value ?? 0 })
-                      }
+                      onChange={(value) => {
+                        const amount = value ?? 0;
+                        patchEditForm({
+                          remain_amount: amount,
+                          remain_quota: displayAmountToQuota(amount),
+                        });
+                      }}
                     />
                   </label>
                   <div className='flex items-center justify-between gap-3 rounded-lg border border-semi-color-border px-3 py-2'>
@@ -1549,20 +1558,180 @@ function TokensPanel({ data }) {
   );
 }
 
+const RISK_WINDOW_OPTIONS = [
+  { value: '24h', label: '最近 24 小时', amount: 24, unit: 'hour' },
+  { value: '7d', label: '最近 7 天', amount: 7, unit: 'day' },
+  { value: '30d', label: '最近 30 天', amount: 30, unit: 'day' },
+  { value: 'custom', label: '自定义' },
+];
+
+const SHARED_IP_SORT_OPTIONS = [
+  { value: '', label: '默认排序' },
+  { value: 'user_count', label: '用户数' },
+  { value: 'token_count', label: '令牌数' },
+  { value: 'request_count', label: '请求数' },
+  { value: 'error_count', label: '错误数' },
+  { value: 'quota', label: '金额' },
+  { value: 'first_seen_at', label: '首次出现' },
+  { value: 'last_seen_at', label: '最后出现' },
+];
+
+const TOKEN_MULTI_IP_SORT_OPTIONS = [
+  { value: '', label: '默认排序' },
+  { value: 'ip_count', label: 'IP 数' },
+  { value: 'request_count', label: '请求数' },
+  { value: 'error_count', label: '错误数' },
+  { value: 'quota', label: '金额' },
+  { value: 'first_seen_at', label: '首次出现' },
+  { value: 'last_seen_at', label: '最后出现' },
+  { value: 'token_id', label: '令牌 ID' },
+];
+
+const EMPTY_PAGE = { items: [], total: 0, page: 1, page_size: 20 };
+
+function getRiskWindowRange(filters) {
+  if (filters.window === 'custom' && filters.range?.length === 2) {
+    return {
+      start: dayjs(filters.range[0]).unix(),
+      end: dayjs(filters.range[1]).unix(),
+    };
+  }
+  const option =
+    RISK_WINDOW_OPTIONS.find((item) => item.value === filters.window) ||
+    RISK_WINDOW_OPTIONS[0];
+  const effectiveOption = option.amount ? option : RISK_WINDOW_OPTIONS[0];
+  return {
+    start: dayjs()
+      .subtract(effectiveOption.amount, effectiveOption.unit)
+      .unix(),
+    end: dayjs().unix(),
+  };
+}
+
+function compactRiskLabels(items, renderLabel, max = 4) {
+  if (!items?.length) return '-';
+  const visible = items.slice(0, max);
+  return (
+    <div className='flex flex-wrap gap-1'>
+      {visible.map((item, index) => (
+        <Tag key={`${renderLabel(item)}-${index}`} size='small'>
+          {renderLabel(item)}
+        </Tag>
+      ))}
+      {items.length > max && <Tag size='small'>+{items.length - max}</Tag>}
+    </div>
+  );
+}
+
 function RiskPanel({ data }) {
   const { t } = useTranslation();
+  const currency = getCurrencyConfig();
   const [coverage, setCoverage] = useState(data?.coverage || {});
+  const [sharedIPs, setSharedIPs] = useState(data?.sharedIPs || EMPTY_PAGE);
+  const [tokenMultiIPs, setTokenMultiIPs] = useState(
+    data?.tokenMultiIPs || EMPTY_PAGE,
+  );
+  const [filters, setFilters] = useState({
+    window: '24h',
+    range: [],
+    keyword: '',
+  });
+  const [sharedSort, setSharedSort] = useState({ sort: '', order: 'desc' });
+  const [tokenSort, setTokenSort] = useState({ sort: '', order: 'desc' });
+  const [sharedPageSize, setSharedPageSize] = useState(
+    data?.sharedIPs?.page_size || 20,
+  );
+  const [tokenPageSize, setTokenPageSize] = useState(
+    data?.tokenMultiIPs?.page_size || 20,
+  );
+  const [coverageLoading, setCoverageLoading] = useState(false);
+  const [sharedLoading, setSharedLoading] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
   const [applying, setApplying] = useState(false);
 
   useEffect(() => {
     setCoverage(data?.coverage || {});
-  }, [data?.coverage]);
+    setSharedIPs(data?.sharedIPs || EMPTY_PAGE);
+    setTokenMultiIPs(data?.tokenMultiIPs || EMPTY_PAGE);
+    setSharedPageSize(data?.sharedIPs?.page_size || 20);
+    setTokenPageSize(data?.tokenMultiIPs?.page_size || 20);
+  }, [data]);
+
+  const riskParams = (page, pageSize, nextFilters, nextSort) => {
+    const range = getRiskWindowRange(nextFilters);
+    const params = {
+      p: page,
+      page_size: pageSize,
+      start: range.start,
+      end: range.end,
+      order: nextSort.order,
+    };
+    if (nextSort.sort) params.sort = nextSort.sort;
+    if (nextFilters.keyword?.trim()) {
+      params.keyword = nextFilters.keyword.trim();
+    }
+    return params;
+  };
 
   const loadCoverage = async () => {
-    const nextCoverage = await API.get(
-      '/api/enhancements/risk/ip-log-coverage',
-    ).then(unwrap);
-    setCoverage(nextCoverage || {});
+    setCoverageLoading(true);
+    try {
+      const nextCoverage = await API.get(
+        '/api/enhancements/risk/ip-log-coverage',
+      ).then(unwrap);
+      setCoverage(nextCoverage || {});
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setCoverageLoading(false);
+    }
+  };
+
+  const loadSharedIPs = async (
+    page = 1,
+    pageSize = sharedPageSize,
+    nextFilters = filters,
+    nextSort = sharedSort,
+  ) => {
+    setSharedLoading(true);
+    try {
+      const nextData = await API.get(
+        '/api/enhancements/risk/shared-token-ips',
+        { params: riskParams(page, pageSize, nextFilters, nextSort) },
+      ).then(unwrap);
+      setSharedIPs(nextData || EMPTY_PAGE);
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setSharedLoading(false);
+    }
+  };
+
+  const loadTokenMultiIPs = async (
+    page = 1,
+    pageSize = tokenPageSize,
+    nextFilters = filters,
+    nextSort = tokenSort,
+  ) => {
+    setTokenLoading(true);
+    try {
+      const nextData = await API.get('/api/enhancements/risk/token-multi-ips', {
+        params: riskParams(page, pageSize, nextFilters, nextSort),
+      }).then(unwrap);
+      setTokenMultiIPs(nextData || EMPTY_PAGE);
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setTokenLoading(false);
+    }
+  };
+
+  const refreshRiskDetails = async (nextFilters = filters) => {
+    await Promise.all([
+      loadCoverage(),
+      loadSharedIPs(1, sharedPageSize, nextFilters),
+      loadTokenMultiIPs(1, tokenPageSize, nextFilters),
+    ]);
   };
 
   const enableAll = () => {
@@ -1594,51 +1763,355 @@ function RiskPanel({ data }) {
   const enabledUsers = coverage?.enabled_users || 0;
   const disabledUsers = coverage?.disabled_users || 0;
 
+  const sharedColumns = [
+    {
+      title: 'IP',
+      dataIndex: 'ip',
+      fixed: 'left',
+      width: 150,
+    },
+    {
+      title: t('令牌数'),
+      dataIndex: 'token_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('用户数'),
+      dataIndex: 'user_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('请求数'),
+      dataIndex: 'request_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('错误数'),
+      dataIndex: 'error_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('金额'),
+      dataIndex: 'quota',
+      render: (value) => formatDisplayAmount(value, currency),
+    },
+    {
+      title: t('首次出现'),
+      dataIndex: 'first_seen_at',
+      render: (value) => formatValue(value, 'first_seen_at', t),
+    },
+    {
+      title: t('最后出现'),
+      dataIndex: 'last_seen_at',
+      render: (value) => formatValue(value, 'last_seen_at', t),
+    },
+    {
+      title: t('用户'),
+      dataIndex: 'users',
+      width: 260,
+      render: (users) =>
+        compactRiskLabels(
+          users,
+          (user) => `${user.username || '-'} (#${user.user_id})`,
+          3,
+        ),
+    },
+    {
+      title: t('令牌'),
+      dataIndex: 'tokens',
+      width: 300,
+      render: (tokens) =>
+        compactRiskLabels(
+          tokens,
+          (token) =>
+            `${token.token_name || '-'} (#${token.token_id}, U${token.user_id})`,
+          3,
+        ),
+    },
+  ];
+
+  const tokenColumns = [
+    {
+      title: t('令牌 ID'),
+      dataIndex: 'token_id',
+      fixed: 'left',
+      width: 100,
+    },
+    {
+      title: t('令牌名称'),
+      dataIndex: 'token_name',
+      width: 180,
+      render: (value) => value || '-',
+    },
+    {
+      title: t('用户 ID'),
+      dataIndex: 'user_id',
+      width: 100,
+    },
+    {
+      title: t('用户名'),
+      dataIndex: 'username',
+      width: 140,
+      render: (value) => value || '-',
+    },
+    {
+      title: t('IP 数'),
+      dataIndex: 'ip_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('请求数'),
+      dataIndex: 'request_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('错误数'),
+      dataIndex: 'error_count',
+      render: (value) => formatNumber(value),
+    },
+    {
+      title: t('金额'),
+      dataIndex: 'quota',
+      render: (value) => formatDisplayAmount(value, currency),
+    },
+    {
+      title: t('首次出现'),
+      dataIndex: 'first_seen_at',
+      render: (value) => formatValue(value, 'first_seen_at', t),
+    },
+    {
+      title: t('最后出现'),
+      dataIndex: 'last_seen_at',
+      render: (value) => formatValue(value, 'last_seen_at', t),
+    },
+    {
+      title: 'IP',
+      dataIndex: 'ips',
+      width: 300,
+      render: (ips) => compactRiskLabels(ips, (ip) => ip, 5),
+    },
+  ];
+
+  const renderSortControls = (sortState, options, onChange) => (
+    <Space wrap>
+      <Select
+        value={sortState.sort}
+        size='small'
+        style={{ width: 140 }}
+        onChange={(value) => onChange({ ...sortState, sort: value })}
+      >
+        {options.map((option) => (
+          <Select.Option key={option.value} value={option.value}>
+            {t(option.label)}
+          </Select.Option>
+        ))}
+      </Select>
+      <Select
+        value={sortState.order}
+        size='small'
+        style={{ width: 110 }}
+        onChange={(value) => onChange({ ...sortState, order: value })}
+      >
+        <Select.Option value='desc'>{t('降序')}</Select.Option>
+        <Select.Option value='asc'>{t('升序')}</Select.Option>
+      </Select>
+    </Space>
+  );
+
   return (
     <div className='space-y-4'>
       <Card title={t('IP 日志记录覆盖率')} className='!rounded-lg'>
-        <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
-          <div>
-            <Text type='secondary'>
-              {t('已开启记录请求与错误日志IP的用户占比')}
+        <Spin spinning={coverageLoading}>
+          <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
+            <div>
+              <Text type='secondary'>
+                {t('已开启记录请求与错误日志IP的用户占比')}
+              </Text>
+              <div className='text-4xl font-semibold mt-2 text-semi-color-text-0'>
+                {formatPercent(coverage?.enabled_ratio)}
+              </div>
+              <div className='mt-2 text-semi-color-text-1'>
+                {formatNumber(enabledUsers)} / {formatNumber(totalUsers)}
+              </div>
+            </div>
+            <div className='grid grid-cols-2 gap-3 min-w-64'>
+              <div className='rounded-lg border border-semi-color-border p-3'>
+                <Text type='secondary' size='small'>
+                  {t('已开启用户')}
+                </Text>
+                <div className='text-xl font-semibold mt-1'>
+                  {formatNumber(enabledUsers)}
+                </div>
+              </div>
+              <div className='rounded-lg border border-semi-color-border p-3'>
+                <Text type='secondary' size='small'>
+                  {t('未开启用户')}
+                </Text>
+                <div className='text-xl font-semibold mt-1'>
+                  {formatNumber(disabledUsers)}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className='mt-4'>
+            <Button
+              size='small'
+              type='primary'
+              loading={applying}
+              disabled={disabledUsers === 0}
+              onClick={enableAll}
+            >
+              {t('一键开启未开启用户')}
+            </Button>
+          </div>
+        </Spin>
+      </Card>
+
+      <Card className='!rounded-lg'>
+        <div className='flex flex-col xl:flex-row gap-3 xl:items-end'>
+          <label className='space-y-1'>
+            <Text type='secondary' size='small'>
+              {t('时间范围')}
             </Text>
-            <div className='text-4xl font-semibold mt-2 text-semi-color-text-0'>
-              {formatPercent(coverage?.enabled_ratio)}
-            </div>
-            <div className='mt-2 text-semi-color-text-1'>
-              {formatNumber(enabledUsers)} / {formatNumber(totalUsers)}
-            </div>
-          </div>
-          <div className='grid grid-cols-2 gap-3 min-w-64'>
-            <div className='rounded-lg border border-semi-color-border p-3'>
-              <Text type='secondary' size='small'>
-                {t('已开启用户')}
-              </Text>
-              <div className='text-xl font-semibold mt-1'>
-                {formatNumber(enabledUsers)}
-              </div>
-            </div>
-            <div className='rounded-lg border border-semi-color-border p-3'>
-              <Text type='secondary' size='small'>
-                {t('未开启用户')}
-              </Text>
-              <div className='text-xl font-semibold mt-1'>
-                {formatNumber(disabledUsers)}
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className='mt-4'>
+            <Select
+              value={filters.window}
+              style={{ width: 160 }}
+              onChange={(value) => {
+                const nextFilters = {
+                  ...filters,
+                  window: value,
+                  range: value === 'custom' ? filters.range : [],
+                };
+                setFilters(nextFilters);
+                if (value !== 'custom') {
+                  refreshRiskDetails(nextFilters);
+                }
+              }}
+            >
+              {RISK_WINDOW_OPTIONS.map((option) => (
+                <Select.Option key={option.value} value={option.value}>
+                  {t(option.label)}
+                </Select.Option>
+              ))}
+            </Select>
+          </label>
+          <label className='space-y-1 flex-1 min-w-72'>
+            <Text type='secondary' size='small'>
+              {t('自定义时间')}
+            </Text>
+            <DatePicker
+              className='w-full'
+              type='dateTimeRange'
+              value={filters.range}
+              inputReadOnly
+              showClear
+              disabled={filters.window !== 'custom'}
+              placeholder={[t('开始时间'), t('结束时间')]}
+              onChange={(value) =>
+                setFilters((prev) => ({
+                  ...prev,
+                  window: 'custom',
+                  range: value || [],
+                }))
+              }
+            />
+          </label>
+          <label className='space-y-1 flex-1 min-w-60'>
+            <Text type='secondary' size='small'>
+              {t('关键词')}
+            </Text>
+            <Input
+              value={filters.keyword}
+              placeholder={t('搜索 IP、用户名、用户 ID 或令牌')}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, keyword: value }))
+              }
+              onEnterPress={() => refreshRiskDetails(filters)}
+            />
+          </label>
           <Button
-            size='small'
             type='primary'
-            loading={applying}
-            disabled={disabledUsers === 0}
-            onClick={enableAll}
+            icon={<RefreshCw size={16} />}
+            loading={coverageLoading || sharedLoading || tokenLoading}
+            onClick={() => refreshRiskDetails(filters)}
           >
-            {t('一键开启未开启用户')}
+            {t('刷新')}
           </Button>
         </div>
+      </Card>
+
+      <Card title={t('多令牌共用 IP')} className='!rounded-lg'>
+        <div className='flex justify-end mb-3'>
+          {renderSortControls(
+            sharedSort,
+            SHARED_IP_SORT_OPTIONS,
+            (nextSort) => {
+              setSharedSort(nextSort);
+              loadSharedIPs(1, sharedPageSize, filters, nextSort);
+            },
+          )}
+        </div>
+        <Table
+          size='small'
+          columns={sharedColumns}
+          dataSource={(sharedIPs?.items || []).map((row) => ({
+            ...row,
+            _rowKey: row.ip,
+          }))}
+          rowKey='_rowKey'
+          loading={sharedLoading}
+          empty={<Empty description={t('暂无数据')} />}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            currentPage: sharedIPs?.page || 1,
+            pageSize: sharedPageSize,
+            total: sharedIPs?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) => loadSharedIPs(page, sharedPageSize),
+            onPageSizeChange: (size) => {
+              setSharedPageSize(size);
+              loadSharedIPs(1, size);
+            },
+          }}
+        />
+      </Card>
+
+      <Card title={t('单令牌多 IP')} className='!rounded-lg'>
+        <div className='flex justify-end mb-3'>
+          {renderSortControls(
+            tokenSort,
+            TOKEN_MULTI_IP_SORT_OPTIONS,
+            (nextSort) => {
+              setTokenSort(nextSort);
+              loadTokenMultiIPs(1, tokenPageSize, filters, nextSort);
+            },
+          )}
+        </div>
+        <Table
+          size='small'
+          columns={tokenColumns}
+          dataSource={(tokenMultiIPs?.items || []).map((row) => ({
+            ...row,
+            _rowKey: row.token_id,
+          }))}
+          rowKey='_rowKey'
+          loading={tokenLoading}
+          empty={<Empty description={t('暂无数据')} />}
+          scroll={{ x: 'max-content' }}
+          pagination={{
+            currentPage: tokenMultiIPs?.page || 1,
+            pageSize: tokenPageSize,
+            total: tokenMultiIPs?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) => loadTokenMultiIPs(page, tokenPageSize),
+            onPageSizeChange: (size) => {
+              setTokenPageSize(size);
+              loadTokenMultiIPs(1, size);
+            },
+          }}
+        />
       </Card>
     </div>
   );
@@ -1714,17 +2187,23 @@ async function fetchSection(section) {
       return { statistics, list };
     }
     case 'risk': {
-      const coverage = await API.get(
-        '/api/enhancements/risk/ip-log-coverage',
-      ).then(unwrap);
-      return { coverage };
-    }
-    case 'analytics': {
-      const [summary, models] = await Promise.all([
-        API.get('/api/enhancements/analytics/summary').then(unwrap),
-        API.get('/api/enhancements/analytics/models').then(unwrap),
+      const range = getRiskWindowRange({ window: '24h', range: [] });
+      const riskParams = {
+        p: 1,
+        page_size: 20,
+        start: range.start,
+        end: range.end,
+      };
+      const [coverage, sharedIPs, tokenMultiIPs] = await Promise.all([
+        API.get('/api/enhancements/risk/ip-log-coverage').then(unwrap),
+        API.get('/api/enhancements/risk/shared-token-ips', {
+          params: riskParams,
+        }).then(unwrap),
+        API.get('/api/enhancements/risk/token-multi-ips', {
+          params: riskParams,
+        }).then(unwrap),
       ]);
-      return { summary, models };
+      return { coverage, sharedIPs, tokenMultiIPs };
     }
     case 'model-status': {
       const [config, statuses] = await Promise.all([

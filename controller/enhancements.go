@@ -81,22 +81,6 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		risk.GET("/affiliated-accounts", enhancementAffiliatedAccounts)
 	}
 
-	analytics := r.Group("/analytics")
-	{
-		analytics.GET("/state", enhancementAnalyticsState)
-		analytics.POST("/process", enhancementAnalyticsNoop)
-		analytics.POST("/batch-process", enhancementAnalyticsNoop)
-		analytics.POST("/batch", enhancementAnalyticsNoop)
-		analytics.GET("/ranking/requests", enhancementAnalyticsRequestRanking)
-		analytics.GET("/ranking/quota", enhancementDashboardTopUsers)
-		analytics.GET("/users/requests", enhancementAnalyticsRequestRanking)
-		analytics.GET("/users/quota", enhancementDashboardTopUsers)
-		analytics.GET("/models", enhancementDashboardModels)
-		analytics.GET("/summary", enhancementDashboardUsage)
-		analytics.GET("/sync-status", enhancementAnalyticsState)
-		analytics.POST("/check-consistency", enhancementAnalyticsConsistency)
-	}
-
 	modelStatus := r.Group("/model-status")
 	{
 		modelStatus.GET("/time-windows", enhancementModelStatusTimeWindows)
@@ -163,7 +147,6 @@ func RegisterEnhancementRootRoutes(r *gin.RouterGroup) {
 	r.DELETE("/users/:user_id", enhancementDeleteUser)
 	r.POST("/users/soft-deleted/purge", enhancementPurgeSoftDeletedUsers)
 	r.POST("/system/indexes/ensure", enhancementEnsureIndexes)
-	r.POST("/analytics/reset", enhancementAnalyticsReset)
 	r.PUT("/model-status/selected", enhancementModelStatusSaveSelected)
 	r.POST("/model-status/config/selected", enhancementModelStatusSaveSelected)
 	r.PUT("/model-status/config/time-window", enhancementModelStatusSaveOption("model_status_time_window_mins"))
@@ -525,23 +508,6 @@ func enhancementIndexStatus(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"status": "managed_by_gorm_migrations", "ensure_requires_root": true})
 }
 
-func enhancementAnalyticsState(c *gin.Context) {
-	common.ApiSuccess(c, gin.H{"status": "ready", "log_db_split": enhancement.SystemInfo()["database"].(map[string]interface{})["log_db_split"]})
-}
-
-func enhancementAnalyticsNoop(c *gin.Context) {
-	common.ApiSuccess(c, gin.H{"processed": 0, "message": "analytics are computed on demand"})
-}
-
-func enhancementAnalyticsRequestRanking(c *gin.Context) {
-	data, err := enhancement.RiskLeaderboards(queryInt64(c, "start", 0), queryInt64(c, "end", 0), queryInt(c, "limit", 20))
-	respondPublic(c, data, err)
-}
-
-func enhancementAnalyticsConsistency(c *gin.Context) {
-	common.ApiSuccess(c, gin.H{"consistent": true, "mode": "on_demand"})
-}
-
 func enhancementModelStatusTimeWindows(c *gin.Context) {
 	common.ApiSuccess(c, []gin.H{
 		{"label": "15m", "minutes": 15},
@@ -721,11 +687,6 @@ func enhancementPurgeSoftDeletedUsers(c *gin.Context) {
 
 func enhancementEnsureIndexes(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"ensured": false, "message": "indexes are maintained by migrations and model tags"})
-}
-
-func enhancementAnalyticsReset(c *gin.Context) {
-	operatorId, _ := operator(c)
-	common.ApiSuccess(c, enhancement.ClearEnhancementCache(operatorId))
 }
 
 func enhancementSaveAIBanConfig(c *gin.Context) {
