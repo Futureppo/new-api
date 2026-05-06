@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -21,9 +22,10 @@ type groupTransferRequest struct {
 }
 
 type groupBalanceRequest struct {
-	Group string `json:"group"`
-	Mode  string `json:"mode"`
-	Quota int    `json:"quota"`
+	Group  string   `json:"group"`
+	Mode   string   `json:"mode"`
+	Quota  int      `json:"quota"`
+	Factor *float64 `json:"factor"`
 }
 
 func GetGroupTransferOptions(c *gin.Context) {
@@ -46,19 +48,20 @@ func GetGroupTransferOptions(c *gin.Context) {
 }
 
 func PreviewGroupBalance(c *gin.Context) {
-	quota, err := strconv.Atoi(strings.TrimSpace(c.Query("quota")))
-	if err != nil {
-		common.ApiError(c, errors.New("额度必须为正整数"))
-		return
-	}
-
-	group, mode, quota, err := validateGroupBalance(c.Query("group"), c.Query("mode"), quota)
+	mode := strings.TrimSpace(c.Query("mode"))
+	quota, factor, err := parseGroupBalanceValue(mode, c.Query("quota"), c.Query("factor"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	preview, err := model.PreviewActiveUsersGroupBalance(group, mode, quota)
+	group, mode, quota, factor, err := validateGroupBalance(c.Query("group"), mode, quota, factor)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+
+	preview, err := model.PreviewActiveUsersGroupBalance(group, mode, quota, factor)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -74,13 +77,13 @@ func UpdateGroupBalance(c *gin.Context) {
 		return
 	}
 
-	group, mode, quota, err := validateGroupBalance(req.Group, req.Mode, req.Quota)
+	group, mode, quota, factor, err := validateGroupBalance(req.Group, req.Mode, req.Quota, req.Factor)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 
-	preview, _, err := model.UpdateActiveUsersGroupBalance(group, mode, quota)
+	preview, _, err := model.UpdateActiveUsersGroupBalance(group, mode, quota, factor)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -88,18 +91,23 @@ func UpdateGroupBalance(c *gin.Context) {
 
 	adminID := c.GetInt("id")
 	adminUsername := c.GetString("username")
+	operationValue := groupBalanceOperationValue(mode, quota, factor)
+	logMeta := map[string]interface{}{
+		"admin_id":       adminID,
+		"admin_username": adminUsername,
+		"group":          group,
+		"mode":           mode,
+		"quota":          quota,
+		"affected":       preview.Affected,
+		"total_delta":    preview.TotalDelta,
+	}
+	if factor != nil {
+		logMeta["factor"] = *factor
+	}
 	model.RecordLogWithAdminInfo(adminID, model.LogTypeManage,
 		fmt.Sprintf("管理员 %s 批量%s分组 %s 用户余额 %s，影响 %d 人，总变化 %s",
-			adminUsername, groupBalanceModeText(mode), group, logger.LogQuota(quota), preview.Affected, logger.LogQuota(int(preview.TotalDelta))),
-		map[string]interface{}{
-			"admin_id":       adminID,
-			"admin_username": adminUsername,
-			"group":          group,
-			"mode":           mode,
-			"quota":          quota,
-			"affected":       preview.Affected,
-			"total_delta":    preview.TotalDelta,
-		},
+			adminUsername, groupBalanceModeText(mode), group, operationValue, preview.Affected, logger.LogQuota(int(preview.TotalDelta))),
+		logMeta,
 	)
 
 	common.ApiSuccess(c, preview)
@@ -179,20 +187,42 @@ func validateGroupTransfer(sourceGroup string, targetGroup string) (string, stri
 	return sourceGroup, targetGroup, nil
 }
 
-func validateGroupBalance(group string, mode string, quota int) (string, string, int, error) {
+func parseGroupBalanceValue(mode string, quotaRaw string, factorRaw string) (int, *float64, error) {
+	if mode == model.UserGroupBalanceModeMultiply {
+		factor, err := strconv.ParseFloat(strings.TrimSpace(factorRaw), 64)
+		if err != nil {
+			return 0, nil, errors.New("倍数必须为大于 0 的数字")
+		}
+		return 0, &factor, nil
+	}
+
+	quota, err := strconv.Atoi(strings.TrimSpace(quotaRaw))
+	if err != nil {
+		return 0, nil, errors.New("额度必须为正整数")
+	}
+	return quota, nil, nil
+}
+
+func validateGroupBalance(group string, mode string, quota int, factor *float64) (string, string, int, *float64, error) {
 	group = strings.TrimSpace(group)
 	mode = strings.TrimSpace(mode)
 	if group == "" {
-		return "", "", 0, errors.New("分组不能为空")
-	}
-	if quota <= 0 {
-		return "", "", 0, errors.New("额度必须为正整数")
+		return "", "", 0, nil, errors.New("分组不能为空")
 	}
 	switch mode {
 	case model.UserGroupBalanceModeAdd, model.UserGroupBalanceModeSubtract, model.UserGroupBalanceModeOverride:
-		return group, mode, quota, nil
+		if quota <= 0 {
+			return "", "", 0, nil, errors.New("额度必须为正整数")
+		}
+		return group, mode, quota, nil, nil
+	case model.UserGroupBalanceModeMultiply:
+		if factor == nil || *factor <= 0 || math.IsNaN(*factor) || math.IsInf(*factor, 0) {
+			return "", "", 0, nil, errors.New("倍数必须为大于 0 的数字")
+		}
+		factorValue := *factor
+		return group, mode, 0, &factorValue, nil
 	default:
-		return "", "", 0, errors.New("余额调整方式无效")
+		return "", "", 0, nil, errors.New("余额调整方式无效")
 	}
 }
 
@@ -204,7 +234,16 @@ func groupBalanceModeText(mode string) string {
 		return "减少"
 	case model.UserGroupBalanceModeOverride:
 		return "覆盖"
+	case model.UserGroupBalanceModeMultiply:
+		return "翻倍"
 	default:
 		return mode
 	}
+}
+
+func groupBalanceOperationValue(mode string, quota int, factor *float64) string {
+	if mode == model.UserGroupBalanceModeMultiply && factor != nil {
+		return strconv.FormatFloat(*factor, 'f', -1, 64) + " 倍"
+	}
+	return logger.LogQuota(quota)
 }

@@ -86,16 +86,30 @@ const Site = () => {
       add: t('增加余额'),
       subtract: t('减少余额'),
       override: t('覆盖余额'),
+      multiply: t('翻倍余额'),
     }),
     [t],
   );
 
+  const isBalanceMultiplyMode = balanceMode === 'multiply';
+
   const validBalanceQuota = useMemo(() => {
+    if (isBalanceMultiplyMode) return 0;
     const value = Number(balanceAmount);
     if (!Number.isFinite(value) || value <= 0) return 0;
     const quota = displayAmountToQuota(value);
     return Number.isInteger(quota) && quota > 0 ? quota : 0;
-  }, [balanceAmount]);
+  }, [balanceAmount, isBalanceMultiplyMode]);
+
+  const validBalanceFactor = useMemo(() => {
+    if (!isBalanceMultiplyMode) return 0;
+    const value = Number(balanceAmount);
+    return Number.isFinite(value) && value > 0 ? value : 0;
+  }, [balanceAmount, isBalanceMultiplyMode]);
+
+  const hasValidBalanceValue = isBalanceMultiplyMode
+    ? validBalanceFactor > 0
+    : validBalanceQuota > 0;
 
   const formatQuotaValue = (quota) => `${renderQuota(quota)} (${quota})`;
 
@@ -184,7 +198,7 @@ const Site = () => {
     let ignore = false;
 
     async function loadBalancePreview() {
-      if (!balanceGroup || !balanceMode || !validBalanceQuota) {
+      if (!balanceGroup || !balanceMode || !hasValidBalanceValue) {
         setBalancePreview(null);
         return;
       }
@@ -195,7 +209,9 @@ const Site = () => {
           params: {
             group: balanceGroup,
             mode: balanceMode,
-            quota: validBalanceQuota,
+            ...(isBalanceMultiplyMode
+              ? { factor: validBalanceFactor }
+              : { quota: validBalanceQuota }),
           },
           disableDuplicate: true,
         });
@@ -224,7 +240,14 @@ const Site = () => {
     return () => {
       ignore = true;
     };
-  }, [balanceGroup, balanceMode, validBalanceQuota]);
+  }, [
+    balanceGroup,
+    balanceMode,
+    hasValidBalanceValue,
+    isBalanceMultiplyMode,
+    validBalanceFactor,
+    validBalanceQuota,
+  ]);
 
   const validationMessage = useMemo(() => {
     if (!sourceGroup || !targetGroup) {
@@ -251,18 +274,26 @@ const Site = () => {
     if (!balanceGroup) {
       return t('请选择分组');
     }
-    if (!validBalanceQuota) {
-      return t('请输入大于 0 的金额');
+    if (!hasValidBalanceValue) {
+      return t(
+        isBalanceMultiplyMode ? '请输入大于 0 的倍数' : '请输入大于 0 的金额',
+      );
     }
     if (balancePreview?.affected === 0) {
       return t('预计影响人数为 0，无法执行修改');
     }
     return '';
-  }, [balanceGroup, balancePreview?.affected, t, validBalanceQuota]);
+  }, [
+    balanceGroup,
+    balancePreview?.affected,
+    hasValidBalanceValue,
+    isBalanceMultiplyMode,
+    t,
+  ]);
 
   const canSubmitBalance =
     balanceGroup &&
-    validBalanceQuota > 0 &&
+    hasValidBalanceValue &&
     balancePreview?.affected > 0 &&
     !balancePreviewLoading &&
     !balanceSubmitting;
@@ -332,8 +363,12 @@ const Site = () => {
       showWarning(t('请选择分组'));
       return;
     }
-    if (!validBalanceQuota) {
-      showWarning(t('请输入大于 0 的金额'));
+    if (!hasValidBalanceValue) {
+      showWarning(
+        t(
+          isBalanceMultiplyMode ? '请输入大于 0 的倍数' : '请输入大于 0 的金额',
+        ),
+      );
       return;
     }
     if (!balancePreview || balancePreview.affected <= 0) {
@@ -352,8 +387,12 @@ const Site = () => {
             {t('操作')}：<Text strong>{balanceModeLabels[balanceMode]}</Text>
           </div>
           <div>
-            {t('金额')}：
-            <Text strong>{formatQuotaValue(validBalanceQuota)}</Text>
+            {isBalanceMultiplyMode ? t('倍数') : t('金额')}：
+            <Text strong>
+              {isBalanceMultiplyMode
+                ? validBalanceFactor
+                : formatQuotaValue(validBalanceQuota)}
+            </Text>
           </div>
           <div>
             {t('预计影响人数')}：<Text strong>{balancePreview.affected}</Text>
@@ -370,11 +409,14 @@ const Site = () => {
       onOk: async () => {
         setBalanceSubmitting(true);
         try {
-          const res = await API.post('/api/site/group-balance', {
+          const payload = {
             group: balanceGroup,
             mode: balanceMode,
-            quota: validBalanceQuota,
-          });
+            ...(isBalanceMultiplyMode
+              ? { factor: validBalanceFactor }
+              : { quota: validBalanceQuota }),
+          };
+          const res = await API.post('/api/site/group-balance', payload);
           const { success, message, data } = res.data;
           if (!success) {
             showError(message);
@@ -392,7 +434,9 @@ const Site = () => {
             params: {
               group: balanceGroup,
               mode: balanceMode,
-              quota: validBalanceQuota,
+              ...(isBalanceMultiplyMode
+                ? { factor: validBalanceFactor }
+                : { quota: validBalanceQuota }),
             },
             disableDuplicate: true,
           });
@@ -481,10 +525,12 @@ const Site = () => {
         <Card style={{ marginTop: 16 }}>
           <Form.Section
             text={t('批量修改分组用户余额')}
-            extraText={t('按分组批量增加、减少或覆盖未删除用户的账户余额')}
+            extraText={t(
+              '按分组批量增加、减少、覆盖或翻倍未删除用户的账户余额',
+            )}
           >
             <Row gutter={[16, 16]}>
-              <Col xs={24} md={8}>
+              <Col xs={24} md={6}>
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   {t('分组')}
                 </Text>
@@ -497,7 +543,7 @@ const Site = () => {
                   showClear
                 />
               </Col>
-              <Col xs={24} md={8}>
+              <Col xs={24} md={10}>
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
                   {t('操作')}
                 </Text>
@@ -510,19 +556,24 @@ const Site = () => {
                   <Radio value='add'>{balanceModeLabels.add}</Radio>
                   <Radio value='subtract'>{balanceModeLabels.subtract}</Radio>
                   <Radio value='override'>{balanceModeLabels.override}</Radio>
+                  <Radio value='multiply'>{balanceModeLabels.multiply}</Radio>
                 </RadioGroup>
               </Col>
               <Col xs={24} md={4}>
                 <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                  {t('金额')}
+                  {isBalanceMultiplyMode ? t('倍数') : t('金额')}
                 </Text>
                 <InputNumber
                   value={balanceAmount}
                   min={0}
                   precision={6}
                   step={0.000001}
-                  prefix={getCurrencyConfig().symbol}
-                  placeholder={t('输入金额')}
+                  {...(isBalanceMultiplyMode
+                    ? {}
+                    : { prefix: getCurrencyConfig().symbol })}
+                  placeholder={
+                    isBalanceMultiplyMode ? t('输入倍数') : t('输入金额')
+                  }
                   onChange={(value) =>
                     setBalanceAmount(
                       value === '' || value == null ? null : Number(value),

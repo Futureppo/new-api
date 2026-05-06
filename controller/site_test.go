@@ -37,11 +37,12 @@ type groupTransferOptionsResponseData struct {
 }
 
 type groupBalanceResponseData struct {
-	Group      string `json:"group"`
-	Mode       string `json:"mode"`
-	Quota      int    `json:"quota"`
-	Affected   int64  `json:"affected"`
-	TotalDelta int64  `json:"total_delta"`
+	Group      string   `json:"group"`
+	Mode       string   `json:"mode"`
+	Quota      int      `json:"quota"`
+	Factor     *float64 `json:"factor,omitempty"`
+	Affected   int64    `json:"affected"`
+	TotalDelta int64    `json:"total_delta"`
 }
 
 func setupSiteControllerTestDB(t *testing.T) *gorm.DB {
@@ -367,6 +368,38 @@ func TestPreviewGroupBalanceMatchesExecute(t *testing.T) {
 	require.Equal(t, preview.Data, executed.Data)
 }
 
+func TestUpdateGroupBalanceMultiplyMatchesPreviewAndTruncatesTowardZero(t *testing.T) {
+	db := setupSiteControllerTestDB(t)
+	seedSiteUserWithQuota(t, db, 1, "legacy-a", "legacy", common.RoleCommonUser, 101, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 2, "legacy-negative", "legacy", common.RoleCommonUser, -101, common.UserStatusEnabled)
+	seedSiteUserWithQuota(t, db, 3, "legacy-small", "legacy", common.RoleCommonUser, 2, common.UserStatusEnabled)
+	deletedUser := seedSiteUserWithQuota(t, db, 4, "legacy-deleted", "legacy", common.RoleCommonUser, 200, common.UserStatusEnabled)
+	require.NoError(t, db.Delete(deletedUser).Error)
+
+	ctx, recorder := newSiteControllerContext(t, http.MethodGet, "/api/site/group-balance/preview?group=legacy&mode=multiply&factor=1.5", nil)
+	PreviewGroupBalance(ctx)
+	preview := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, preview.Success)
+	require.EqualValues(t, 3, preview.Data.Affected)
+	require.EqualValues(t, 1, preview.Data.TotalDelta)
+	require.NotNil(t, preview.Data.Factor)
+	require.InDelta(t, 1.5, *preview.Data.Factor, 0)
+
+	ctx, recorder = newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", gin.H{
+		"group":  "legacy",
+		"mode":   "multiply",
+		"factor": 1.5,
+	})
+	UpdateGroupBalance(ctx)
+	executed := decodeSiteAPIResponse[groupBalanceResponseData](t, recorder)
+	require.True(t, executed.Success)
+	require.Equal(t, preview.Data, executed.Data)
+	require.Equal(t, 151, getSiteUserQuota(t, db, 1, false))
+	require.Equal(t, -151, getSiteUserQuota(t, db, 2, false))
+	require.Equal(t, 3, getSiteUserQuota(t, db, 3, false))
+	require.Equal(t, 200, getSiteUserQuota(t, db, 4, true))
+}
+
 func TestGroupBalanceRejectsInvalidParams(t *testing.T) {
 	_ = setupSiteControllerTestDB(t)
 
@@ -374,11 +407,34 @@ func TestGroupBalanceRejectsInvalidParams(t *testing.T) {
 		{"group": "", "mode": "add", "quota": 100},
 		{"group": "legacy", "mode": "invalid", "quota": 100},
 		{"group": "legacy", "mode": "add", "quota": 0},
+		{"group": "legacy", "mode": "multiply"},
+		{"group": "legacy", "mode": "multiply", "factor": 0},
+		{"group": "legacy", "mode": "multiply", "factor": -1.2},
+		{"group": "legacy", "mode": "multiply", "factor": "abc"},
 	}
 
 	for _, body := range tests {
 		ctx, recorder := newSiteControllerContext(t, http.MethodPost, "/api/site/group-balance", body)
 		UpdateGroupBalance(ctx)
+
+		response := decodeSiteAPIResponse[struct{}](t, recorder)
+		require.False(t, response.Success)
+	}
+}
+
+func TestPreviewGroupBalanceRejectsInvalidFactor(t *testing.T) {
+	_ = setupSiteControllerTestDB(t)
+
+	tests := []string{
+		"/api/site/group-balance/preview?group=legacy&mode=multiply",
+		"/api/site/group-balance/preview?group=legacy&mode=multiply&factor=0",
+		"/api/site/group-balance/preview?group=legacy&mode=multiply&factor=-1.2",
+		"/api/site/group-balance/preview?group=legacy&mode=multiply&factor=abc",
+	}
+
+	for _, target := range tests {
+		ctx, recorder := newSiteControllerContext(t, http.MethodGet, target, nil)
+		PreviewGroupBalance(ctx)
 
 		response := decodeSiteAPIResponse[struct{}](t, recorder)
 		require.False(t, response.Success)
