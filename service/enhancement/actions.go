@@ -450,15 +450,16 @@ func SaveSelectedModels(models []string, operatorId int) error {
 
 func SaveModelStatusOption(key string, value string, operatorId int) error {
 	allowed := map[string]struct{}{
-		"public_embed_enabled":          {},
-		"model_status_time_window_mins": {},
-		"model_status_refresh_seconds":  {},
-		"model_status_slot_minutes":     {},
-		"model_status_green_threshold":  {},
-		"model_status_yellow_threshold": {},
-		"model_status_theme":            {},
-		"model_status_sort_mode":        {},
-		"model_status_site_title":       {},
+		"public_embed_enabled":            {},
+		"model_status_time_window_mins":   {},
+		"model_status_refresh_seconds":    {},
+		"model_status_slot_minutes":       {},
+		"model_status_green_threshold":    {},
+		"model_status_yellow_threshold":   {},
+		"model_status_show_zero_requests": {},
+		"model_status_theme":              {},
+		"model_status_sort_mode":          {},
+		"model_status_site_title":         {},
 	}
 	if _, ok := allowed[key]; !ok {
 		return errors.New("unsupported model status option")
@@ -492,6 +493,10 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		threshold, err := strconv.ParseFloat(value, 64)
 		if err != nil || threshold <= 0 || threshold > 100 {
 			return errors.New("status threshold must be between 0 and 100")
+		}
+	case "model_status_show_zero_requests":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return errors.New("show zero request models must be boolean")
 		}
 	case "model_status_theme":
 		if value != "light" && value != "dark" && value != "system" {

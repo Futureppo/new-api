@@ -194,6 +194,7 @@ const FIELD_LABELS = {
   site_title: '站点标题',
   theme: '主题',
   public_embed_enabled: '公开嵌入',
+  show_zero_request_models: '展示0请求次数的模型',
   public: '公开',
   window: '时间窗口',
   start: '开始时间',
@@ -403,10 +404,6 @@ function modelStatusOverview(statuses = []) {
     successRate,
     statusCounts,
   };
-}
-
-function modelStatusHasRequests(status) {
-  return Number(status?.total_requests || 0) > 0;
 }
 
 function isUnixTimestampKey(key, value) {
@@ -2479,13 +2476,14 @@ function ModelStatusBoard({
 function ModelStatusPanel({ data }) {
   const { t } = useTranslation();
   const [config, setConfig] = useState(data?.config || {});
-  const [statuses, setStatuses] = useState(data?.statuses || []);
-  const [showZeroRequestModels, setShowZeroRequestModels] = useState(false);
   const [windowValue, setWindowValue] = useState(
     getModelStatusConfigWindow(data?.config),
   );
   const [publicEnabled, setPublicEnabled] = useState(
     !!data?.config?.public_embed_enabled,
+  );
+  const [showZeroRequestModels, setShowZeroRequestModels] = useState(
+    !!data?.config?.show_zero_request_models,
   );
   const [refreshMinutes, setRefreshMinutes] = useState(
     getModelStatusRefreshMinutes(data?.config),
@@ -2499,33 +2497,8 @@ function ModelStatusPanel({ data }) {
   const [yellowThreshold, setYellowThreshold] = useState(
     getModelStatusThreshold(data?.config, 'yellow_threshold', 80),
   );
-  const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [lastUpdated, setLastUpdated] = useState(null);
   const publicUrl = getModelStatusPublicUrl(config);
-  const visibleStatuses = useMemo(
-    () =>
-      showZeroRequestModels
-        ? statuses
-        : statuses.filter(modelStatusHasRequests),
-    [showZeroRequestModels, statuses],
-  );
-
-  const loadStatuses = async (nextWindow = windowValue) => {
-    setLoading(true);
-    try {
-      const nextStatuses = await API.get(
-        '/api/enhancements/model-status/status/all',
-        { params: { window: nextWindow } },
-      ).then(unwrap);
-      setStatuses(nextStatuses || []);
-      setLastUpdated(new Date());
-    } catch (error) {
-      showError(error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadConfig = async () => {
     try {
@@ -2541,9 +2514,9 @@ function ModelStatusPanel({ data }) {
   useEffect(() => {
     const nextConfig = data?.config || {};
     setConfig(nextConfig);
-    setStatuses(data?.statuses || []);
     setWindowValue(getModelStatusConfigWindow(nextConfig));
     setPublicEnabled(!!nextConfig.public_embed_enabled);
+    setShowZeroRequestModels(!!nextConfig.show_zero_request_models);
     setRefreshMinutes(getModelStatusRefreshMinutes(nextConfig));
     setSlotMinutes(getModelStatusSlotMinutes(nextConfig));
     setGreenThreshold(
@@ -2552,7 +2525,6 @@ function ModelStatusPanel({ data }) {
     setYellowThreshold(
       getModelStatusThreshold(nextConfig, 'yellow_threshold', 80),
     );
-    setLastUpdated(data?.statuses ? new Date() : null);
   }, [data]);
 
   const handleSaveSettings = async () => {
@@ -2579,6 +2551,12 @@ function ModelStatusPanel({ data }) {
         API.put('/api/enhancements/model-status/config/public-embed', {
           value: publicEnabled,
         }).then(unwrap),
+        API.put(
+          '/api/enhancements/model-status/config/show-zero-request-models',
+          {
+            value: showZeroRequestModels,
+          },
+        ).then(unwrap),
         API.put('/api/enhancements/model-status/config/time-window', {
           value: windowValue,
         }).then(unwrap),
@@ -2597,7 +2575,6 @@ function ModelStatusPanel({ data }) {
       ]);
       showSuccess(t('配置已保存'));
       await loadConfig();
-      await loadStatuses(windowValue);
     } catch (error) {
       showError(error.message);
     } finally {
@@ -2615,26 +2592,45 @@ function ModelStatusPanel({ data }) {
     <div className='space-y-4'>
       <Card className='!rounded-lg'>
         <div className='flex flex-col gap-4'>
-          <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-            <div className='flex items-center gap-3'>
-              <div className='h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
-                <Globe2 size={20} />
-              </div>
-              <div>
-                <div className='text-base font-semibold text-semi-color-text-0'>
-                  {t('公开嵌入')}
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+              <div className='flex items-center gap-3'>
+                <div className='h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
+                  <Globe2 size={20} />
                 </div>
-                <div className='text-sm text-semi-color-text-2'>
-                  {t('开启后外部用户可以访问整个站的模型状态页面')}
+                <div>
+                  <div className='text-base font-semibold text-semi-color-text-0'>
+                    {t('公开嵌入')}
+                  </div>
+                  <div className='text-sm text-semi-color-text-2'>
+                    {t('开启后外部用户可以访问整个站的模型状态页面')}
+                  </div>
                 </div>
               </div>
+              <Switch
+                checked={publicEnabled}
+                onChange={setPublicEnabled}
+                checkedText={t('开启')}
+                uncheckedText={t('关闭')}
+              />
             </div>
-            <Switch
-              checked={publicEnabled}
-              onChange={setPublicEnabled}
-              checkedText={t('开启')}
-              uncheckedText={t('关闭')}
-            />
+
+            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+              <div className='flex items-center gap-3'>
+                <div className='h-10 w-10 rounded-lg bg-semi-color-fill-0 text-semi-color-text-2 flex items-center justify-center'>
+                  <LineChart size={20} />
+                </div>
+                <div className='text-base font-semibold text-semi-color-text-0'>
+                  {t('展示0请求次数的模型')}
+                </div>
+              </div>
+              <Switch
+                checked={showZeroRequestModels}
+                onChange={setShowZeroRequestModels}
+                checkedText={t('开启')}
+                uncheckedText={t('关闭')}
+              />
+            </div>
           </div>
 
           <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5'>
@@ -2724,33 +2720,6 @@ function ModelStatusPanel({ data }) {
           </div>
         </div>
       </Card>
-
-      <ModelStatusBoard
-        statuses={visibleStatuses}
-        loading={loading}
-        windowValue={windowValue}
-        onWindowChange={setWindowValue}
-        lastUpdated={lastUpdated}
-        showWindowSelect={false}
-        extraControls={
-          <div className='flex items-center gap-2'>
-            <Text type='secondary'>{t('展示0请求次数的模型')}</Text>
-            <Switch
-              checked={showZeroRequestModels}
-              onChange={setShowZeroRequestModels}
-            />
-          </div>
-        }
-        toolbar={
-          <Button
-            icon={<RefreshCw size={16} />}
-            loading={loading}
-            onClick={() => loadStatuses(windowValue)}
-          >
-            {t('刷新')}
-          </Button>
-        }
-      />
     </div>
   );
 }
@@ -2979,13 +2948,7 @@ async function fetchSection(section) {
       const config = await API.get(
         '/api/enhancements/model-status/config/time-window',
       ).then(unwrap);
-      const statuses = await API.get(
-        '/api/enhancements/model-status/status/all',
-        {
-          params: { window: getModelStatusConfigWindow(config) },
-        },
-      ).then(unwrap);
-      return { config, statuses };
+      return { config };
     }
     case 'auto-group': {
       const [config, preview] = await Promise.all([

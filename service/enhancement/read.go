@@ -1114,16 +1114,40 @@ func ClearModelStatusPublicCache() {
 	modelStatusPublicCache.data = nil
 }
 
+func modelStatusHasRequests(status ModelStatus) bool {
+	if status.TotalRequests > 0 {
+		return true
+	}
+	for _, slot := range status.SlotData {
+		if slot.TotalRequests > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func filterZeroRequestModelStatuses(statuses []ModelStatus) []ModelStatus {
+	filtered := make([]ModelStatus, 0, len(statuses))
+	for _, status := range statuses {
+		if modelStatusHasRequests(status) {
+			filtered = append(filtered, status)
+		}
+	}
+	return filtered
+}
+
 func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
 	if err := requirePublicEmbedEnabled(); err != nil {
 		return nil, err
 	}
 	window := ModelStatusConfiguredWindow()
 	greenThreshold, yellowThreshold := ModelStatusThresholds()
+	showZeroRequests := setting.GetEnhancementSetting().ModelStatusShowZeroRequests
 	key := "public:" + window + ":" +
 		strconv.Itoa(ModelStatusSlotMinutes()) + ":" +
 		strconv.FormatFloat(greenThreshold, 'f', -1, 64) + ":" +
 		strconv.FormatFloat(yellowThreshold, 'f', -1, 64) + ":" +
+		strconv.FormatBool(showZeroRequests) + ":" +
 		ratio_setting.GroupDisplay2JSONString() + ":" +
 		setting.UserUsableGroups2JSONString()
 	now := common.GetTimestamp()
@@ -1139,6 +1163,9 @@ func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
 	statuses, err := ModelStatusesForWindow(nil, window, true)
 	if err != nil {
 		return nil, err
+	}
+	if !showZeroRequests {
+		statuses = filterZeroRequestModelStatuses(statuses)
 	}
 
 	modelStatusPublicCache.Lock()
@@ -1167,6 +1194,7 @@ func ModelStatusConfig(public bool) map[string]interface{} {
 		"slot_minutes":             ModelStatusSlotMinutes(),
 		"green_threshold":          greenThreshold,
 		"yellow_threshold":         yellowThreshold,
+		"show_zero_request_models": cfg.ModelStatusShowZeroRequests,
 		"sort_mode":                cfg.ModelStatusSortMode,
 		"selected_models":          selected,
 		"time_window_minutes":      cfg.ModelStatusTimeWindowMins,
