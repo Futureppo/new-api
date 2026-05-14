@@ -113,22 +113,25 @@ const MODEL_STATUS_META = {
     label: '正常',
     color: 'green',
     icon: CheckCircle2,
-    barClass: 'bg-emerald-500',
-    softClass: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    barClass: 'bg-semi-color-success',
+    softClass:
+      'bg-semi-color-success-light-default text-semi-color-success border-semi-color-success-light-hover',
   },
   yellow: {
     label: '警告',
     color: 'amber',
     icon: AlertTriangle,
-    barClass: 'bg-amber-400',
-    softClass: 'bg-amber-50 text-amber-700 border-amber-100',
+    barClass: 'bg-semi-color-warning',
+    softClass:
+      'bg-semi-color-warning-light-default text-semi-color-warning border-semi-color-warning-light-hover',
   },
   red: {
     label: '异常',
     color: 'red',
     icon: AlertTriangle,
-    barClass: 'bg-rose-500',
-    softClass: 'bg-rose-50 text-rose-700 border-rose-100',
+    barClass: 'bg-semi-color-danger',
+    softClass:
+      'bg-semi-color-danger-light-default text-semi-color-danger border-semi-color-danger-light-hover',
   },
 };
 

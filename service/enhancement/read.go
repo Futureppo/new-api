@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"gorm.io/gorm"
 )
 
@@ -629,6 +630,14 @@ type modelStatusTarget struct {
 	Model string
 }
 
+func isPublicModelStatusGroupDisplayed(group string) bool {
+	if !ratio_setting.IsGroupDisplayed(group) {
+		return false
+	}
+	_, ok := setting.GetUserUsableGroupsCopy()[group]
+	return ok
+}
+
 var modelStatusPublicCache = struct {
 	sync.Mutex
 	key       string
@@ -643,7 +652,7 @@ func AvailableModels(public bool) ([]string, error) {
 		}
 	}
 
-	targets, err := availableModelStatusTargets()
+	targets, err := availableModelStatusTargets(public)
 	if err != nil {
 		return nil, err
 	}
@@ -665,7 +674,7 @@ func AvailableModels(public bool) ([]string, error) {
 	return out, nil
 }
 
-func availableModelStatusTargets() ([]modelStatusTarget, error) {
+func availableModelStatusTargets(public bool) ([]modelStatusTarget, error) {
 	var abilities []model.Ability
 	err := model.DB.Model(&model.Ability{}).
 		Joins("JOIN channels ON channels.id = abilities.channel_id").
@@ -681,6 +690,9 @@ func availableModelStatusTargets() ([]modelStatusTarget, error) {
 		group := strings.TrimSpace(ability.Group)
 		if group == "" {
 			group = "default"
+		}
+		if public && !isPublicModelStatusGroupDisplayed(group) {
+			continue
 		}
 		modelName := strings.TrimSpace(ability.Model)
 		if modelName == "" {
@@ -926,6 +938,9 @@ func buildModelStatus(groupName string, modelName string, window string, public 
 	if groupName == "" {
 		groupName = "default"
 	}
+	if public && !isPublicModelStatusGroupDisplayed(groupName) {
+		return ModelStatus{}, gorm.ErrRecordNotFound
+	}
 	modelName = strings.TrimSpace(modelName)
 
 	resolved := resolveModelStatusWindow(window)
@@ -1040,7 +1055,7 @@ func ModelStatusesForWindow(modelNames []string, window string, public bool) ([]
 			return nil, err
 		}
 	}
-	targets, err := availableModelStatusTargets()
+	targets, err := availableModelStatusTargets(public)
 	if err != nil {
 		return nil, err
 	}
@@ -1108,7 +1123,9 @@ func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
 	key := "public:" + window + ":" +
 		strconv.Itoa(ModelStatusSlotMinutes()) + ":" +
 		strconv.FormatFloat(greenThreshold, 'f', -1, 64) + ":" +
-		strconv.FormatFloat(yellowThreshold, 'f', -1, 64)
+		strconv.FormatFloat(yellowThreshold, 'f', -1, 64) + ":" +
+		ratio_setting.GroupDisplay2JSONString() + ":" +
+		setting.UserUsableGroups2JSONString()
 	now := common.GetTimestamp()
 
 	modelStatusPublicCache.Lock()
