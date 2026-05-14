@@ -57,6 +57,7 @@ import {
   Link2,
   RefreshCw,
   Save,
+  Search,
   ShieldCheck,
   Sparkles,
   UserCog,
@@ -2392,6 +2393,7 @@ function ModelStatusBoard({
   lastUpdated,
   toolbar,
   extraControls,
+  belowStatsControls,
   showWindowSelect = true,
 }) {
   const { t } = useTranslation();
@@ -2452,6 +2454,8 @@ function ModelStatusBoard({
           )}`}
         />
       </div>
+
+      {belowStatsControls ? <div>{belowStatsControls}</div> : null}
 
       <Spin spinning={loading}>
         {items.length > 0 ? (
@@ -2729,6 +2733,7 @@ export function ModelStatusPublicPage() {
   const [config, setConfig] = useState(null);
   const [statuses, setStatuses] = useState([]);
   const [groupFilter, setGroupFilter] = useState('');
+  const [modelSearch, setModelSearch] = useState('');
   const [sortMode, setSortMode] = useState('requests_desc');
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
@@ -2782,9 +2787,18 @@ export function ModelStatusPublicPage() {
   }, [statuses, t]);
 
   const visibleStatuses = useMemo(() => {
+    const keyword = modelSearch.trim().toLowerCase();
     const items = statuses.filter((item) => {
-      if (!groupFilter) return true;
-      return (item.group_name || item.group || 'default') === groupFilter;
+      if (
+        groupFilter &&
+        (item.group_name || item.group || 'default') !== groupFilter
+      ) {
+        return false;
+      }
+      if (!keyword) return true;
+      return [item.display_name, item.model_name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword));
     });
     return [...items].sort((a, b) => {
       if (sortMode === 'success_rate_asc') {
@@ -2800,7 +2814,7 @@ export function ModelStatusPublicPage() {
         String(b.model_name || ''),
       );
     });
-  }, [groupFilter, sortMode, statuses]);
+  }, [groupFilter, modelSearch, sortMode, statuses]);
 
   if (!available && !loading) {
     return (
@@ -2828,6 +2842,17 @@ export function ModelStatusPublicPage() {
           onWindowChange={() => {}}
           lastUpdated={lastUpdated}
           showWindowSelect={false}
+          belowStatsControls={
+            <Input
+              value={modelSearch}
+              prefix={<Search size={16} />}
+              placeholder={t('搜索模型名称')}
+              showClear
+              onChange={setModelSearch}
+              className='w-full md:w-96'
+              aria-label={t('搜索模型名称')}
+            />
+          }
           extraControls={
             <>
               <Select
