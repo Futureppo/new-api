@@ -402,6 +402,10 @@ function modelStatusOverview(statuses = []) {
   };
 }
 
+function modelStatusHasRequests(status) {
+  return Number(status?.total_requests || 0) > 0;
+}
+
 function isUnixTimestampKey(key, value) {
   if (typeof value !== 'number' || value < 1000000000) return false;
   return /(^|_)(time|at)$/.test(key) || key.includes('_time');
@@ -2473,8 +2477,13 @@ function ModelStatusPanel({ data }) {
   const { t } = useTranslation();
   const [config, setConfig] = useState(data?.config || {});
   const [statuses, setStatuses] = useState(data?.statuses || []);
-  const [windowValue, setWindowValue] = useState(getModelStatusConfigWindow(data?.config));
-  const [publicEnabled, setPublicEnabled] = useState(!!data?.config?.public_embed_enabled);
+  const [showZeroRequestModels, setShowZeroRequestModels] = useState(false);
+  const [windowValue, setWindowValue] = useState(
+    getModelStatusConfigWindow(data?.config),
+  );
+  const [publicEnabled, setPublicEnabled] = useState(
+    !!data?.config?.public_embed_enabled,
+  );
   const [refreshMinutes, setRefreshMinutes] = useState(
     getModelStatusRefreshMinutes(data?.config),
   );
@@ -2491,6 +2500,13 @@ function ModelStatusPanel({ data }) {
   const [saving, setSaving] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const publicUrl = getModelStatusPublicUrl(config);
+  const visibleStatuses = useMemo(
+    () =>
+      showZeroRequestModels
+        ? statuses
+        : statuses.filter(modelStatusHasRequests),
+    [showZeroRequestModels, statuses],
+  );
 
   const loadStatuses = async (nextWindow = windowValue) => {
     setLoading(true);
@@ -2707,12 +2723,21 @@ function ModelStatusPanel({ data }) {
       </Card>
 
       <ModelStatusBoard
-        statuses={statuses}
+        statuses={visibleStatuses}
         loading={loading}
         windowValue={windowValue}
         onWindowChange={setWindowValue}
         lastUpdated={lastUpdated}
         showWindowSelect={false}
+        extraControls={
+          <div className='flex items-center gap-2'>
+            <Text type='secondary'>{t('展示0请求次数的模型')}</Text>
+            <Switch
+              checked={showZeroRequestModels}
+              onChange={setShowZeroRequestModels}
+            />
+          </div>
+        }
         toolbar={
           <Button
             icon={<RefreshCw size={16} />}
@@ -2791,14 +2816,17 @@ export function ModelStatusPublicPage() {
     });
     return [...items].sort((a, b) => {
       if (sortMode === 'success_rate_asc') {
-        const rateDiff = Number(a.success_rate || 0) - Number(b.success_rate || 0);
+        const rateDiff =
+          Number(a.success_rate || 0) - Number(b.success_rate || 0);
         if (rateDiff !== 0) return rateDiff;
         return Number(b.total_requests || 0) - Number(a.total_requests || 0);
       }
       const requestDiff =
         Number(b.total_requests || 0) - Number(a.total_requests || 0);
       if (requestDiff !== 0) return requestDiff;
-      return String(a.model_name || '').localeCompare(String(b.model_name || ''));
+      return String(a.model_name || '').localeCompare(
+        String(b.model_name || ''),
+      );
     });
   }, [groupFilter, sortMode, statuses]);
 
@@ -2948,9 +2976,12 @@ async function fetchSection(section) {
       const config = await API.get(
         '/api/enhancements/model-status/config/time-window',
       ).then(unwrap);
-      const statuses = await API.get('/api/enhancements/model-status/status/all', {
-        params: { window: getModelStatusConfigWindow(config) },
-      }).then(unwrap);
+      const statuses = await API.get(
+        '/api/enhancements/model-status/status/all',
+        {
+          params: { window: getModelStatusConfigWindow(config) },
+        },
+      ).then(unwrap);
       return { config, statuses };
     }
     case 'auto-group': {

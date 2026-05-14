@@ -1696,6 +1696,7 @@
     "模型重定向里的下列模型尚未添加到“模型”列表，调用时会因为缺少可用模型而失败：": "The following models from the redirect have not been added to the “Models” list and requests will fail due to no available model:",
     "模型专用区域": "Khu vực dành riêng cho mô hình",
     "模型状态": "Model Status",
+    "展示0请求次数的模型": "Hiển thị mô hình có 0 yêu cầu",
     "模型组": "Nhóm mô hình",
     "默认": "Mặc định",
     "默认 API 版本": "Phiên bản API mặc định",
