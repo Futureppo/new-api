@@ -2298,15 +2298,21 @@ function ModelStatusTimeline({ status }) {
         {slots.length > 0 ? (
           slots.map((slot) => {
             const slotMeta = getModelStatusMeta(slot.status);
+            const totalRequests = Number(slot.total_requests || 0);
+            const isEmptySlot = totalRequests <= 0;
+            const slotBarClass = isEmptySlot
+              ? 'bg-white border border-semi-color-border'
+              : slotMeta.barClass;
+            const statusText = isEmptySlot
+              ? t('无请求')
+              : formatStatusPercent(slot.success_rate);
             const title = `${dayjs.unix(slot.start_time).format('MM-DD HH:mm')} - ${dayjs
               .unix(slot.end_time)
-              .format('MM-DD HH:mm')} · ${formatStatusPercent(
-              slot.success_rate,
-            )} · ${formatNumber(Number(slot.total_requests || 0))}`;
+              .format('MM-DD HH:mm')} · ${statusText} · ${formatNumber(totalRequests)}`;
             return (
               <div
                 key={`${groupName}-${modelName}-${slot.slot}`}
-                className={`min-w-[3px] flex-1 rounded-[1px] ${slotMeta.barClass}`}
+                className={`min-w-[3px] flex-1 rounded-[1px] ${slotBarClass}`}
                 title={title}
               />
             );
