@@ -152,6 +152,7 @@ type RelayInfo struct {
 	RuntimeHeadersOverride                map[string]interface{}
 	UseRuntimeHeadersOverride             bool
 	ParamOverrideAudit                    []string
+	ConversationCapture                   *ConversationCapture
 
 	PriceData types.PriceData
 

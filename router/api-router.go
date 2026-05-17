@@ -216,6 +216,19 @@ func SetApiRouter(router *gin.Engine) {
 			performanceRoute.GET("/logs", controller.GetLogFiles)
 			performanceRoute.DELETE("/logs", controller.CleanupLogFiles)
 		}
+		conversationLogRoute := apiRouter.Group("/conversation_logs")
+		conversationLogRoute.Use(middleware.RootAuth())
+		{
+			conversationLogRoute.GET("/summary", controller.GetConversationLogSummary)
+			conversationLogRoute.GET("/export.zip", controller.ExportConversationLogs)
+			conversationLogRoute.POST("/export_and_delete", controller.ExportAndDeleteConversationLogs)
+			conversationLogRoute.PUT("/settings", controller.UpdateConversationLogSettings)
+			conversationLogRoute.GET("", controller.GetConversationLogs)
+			conversationLogRoute.GET("/", controller.GetConversationLogs)
+			conversationLogRoute.GET("/:id", controller.GetConversationLog)
+			conversationLogRoute.DELETE("", controller.DeleteConversationLogs)
+			conversationLogRoute.DELETE("/", controller.DeleteConversationLogs)
+		}
 		ratioSyncRoute := apiRouter.Group("/ratio_sync")
 		ratioSyncRoute.Use(middleware.RootAuth())
 		{

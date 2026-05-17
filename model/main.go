@@ -264,6 +264,7 @@ func migrateDB() error {
 		&Redemption{},
 		&Ability{},
 		&Log{},
+		&ConversationLog{},
 		&Midjourney{},
 		&TopUp{},
 		&QuotaData{},
@@ -282,6 +283,9 @@ func migrateDB() error {
 		&UserOAuthBinding{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := migrateConversationLogBodyColumns(DB); err != nil {
 		return err
 	}
 	if common.UsingSQLite {
@@ -312,6 +316,7 @@ func migrateDBFast() error {
 		{&Redemption{}, "Redemption"},
 		{&Ability{}, "Ability"},
 		{&Log{}, "Log"},
+		{&ConversationLog{}, "ConversationLog"},
 		{&Midjourney{}, "Midjourney"},
 		{&TopUp{}, "TopUp"},
 		{&QuotaData{}, "QuotaData"},
@@ -361,6 +366,9 @@ func migrateDBFast() error {
 			return err
 		}
 	}
+	if err := migrateConversationLogBodyColumns(DB); err != nil {
+		return err
+	}
 	common.SysLog("database migrated")
 	return nil
 }
@@ -370,7 +378,41 @@ func migrateLOGDB() error {
 	if err = LOG_DB.AutoMigrate(&Log{}); err != nil {
 		return err
 	}
+	if err = LOG_DB.AutoMigrate(&ConversationLog{}); err != nil {
+		return err
+	}
+	if err = migrateConversationLogBodyColumns(LOG_DB); err != nil {
+		return err
+	}
 	return nil
+}
+
+func migrateConversationLogBodyColumns(db *gorm.DB) error {
+	if db == nil || !isMySQLDB(db) || !db.Migrator().HasTable(&ConversationLog{}) {
+		return nil
+	}
+	for _, col := range []string{
+		"client_request_body",
+		"upstream_request_body",
+		"upstream_response_body",
+		"client_response_body",
+		"derived_assistant_text",
+		"derived_tool_calls",
+		"metadata",
+	} {
+		if err := db.Exec("ALTER TABLE conversation_logs MODIFY COLUMN " + col + " LONGTEXT").Error; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func isMySQLDB(db *gorm.DB) bool {
+	if db == nil {
+		return false
+	}
+	name := db.Dialector.Name()
+	return name == "mysql"
 }
 
 type sqliteColumnDef struct {

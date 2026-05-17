@@ -471,4 +471,5 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		Group:            relayInfo.UsingGroup,
 		Other:            other,
 	})
+	RecordConversationLogAfterConsume(ctx, relayInfo, summary, usage, logModel, other)
 }

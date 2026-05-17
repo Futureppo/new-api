@@ -8,6 +8,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -59,22 +60,33 @@ func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {
 	if err != nil {
 		common.SysError("error marshalling stream response: " + err.Error())
 	} else {
+		relaycommon.AppendConversationClientResponse(c, []byte(fmt.Sprintf("event: %s\n", resp.Type)))
 		c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-		c.Render(-1, common.CustomEvent{Data: "data: " + string(jsonData)})
+		data := "data: " + string(jsonData)
+		relaycommon.AppendConversationClientResponse(c, []byte(data+"\n\n"))
+		c.Render(-1, common.CustomEvent{Data: data})
 	}
 	_ = FlushWriter(c)
 	return nil
 }
 
 func ClaudeChunkData(c *gin.Context, resp dto.ClaudeResponse, data string) {
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s\n", data)})
+	eventData := fmt.Sprintf("event: %s\n", resp.Type)
+	chunkData := fmt.Sprintf("data: %s\n", data)
+	relaycommon.AppendConversationClientResponse(c, []byte(eventData))
+	relaycommon.AppendConversationClientResponse(c, []byte(chunkData+"\n\n"))
+	c.Render(-1, common.CustomEvent{Data: eventData})
+	c.Render(-1, common.CustomEvent{Data: chunkData})
 	_ = FlushWriter(c)
 }
 
 func ResponseChunkData(c *gin.Context, resp dto.ResponsesStreamResponse, data string) {
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("event: %s\n", resp.Type)})
-	c.Render(-1, common.CustomEvent{Data: fmt.Sprintf("data: %s", data)})
+	eventData := fmt.Sprintf("event: %s\n", resp.Type)
+	chunkData := fmt.Sprintf("data: %s", data)
+	relaycommon.AppendConversationClientResponse(c, []byte(eventData))
+	relaycommon.AppendConversationClientResponse(c, []byte(chunkData+"\n\n"))
+	c.Render(-1, common.CustomEvent{Data: eventData})
+	c.Render(-1, common.CustomEvent{Data: chunkData})
 	_ = FlushWriter(c)
 }
 
@@ -87,7 +99,9 @@ func StringData(c *gin.Context, str string) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	c.Render(-1, common.CustomEvent{Data: "data: " + str})
+	data := "data: " + str
+	relaycommon.AppendConversationClientResponse(c, []byte(data+"\n\n"))
+	c.Render(-1, common.CustomEvent{Data: data})
 	return FlushWriter(c)
 }
 
@@ -100,7 +114,9 @@ func PingData(c *gin.Context) error {
 		return fmt.Errorf("request context done: %w", c.Request.Context().Err())
 	}
 
-	if _, err := c.Writer.Write([]byte(": PING\n\n")); err != nil {
+	pingData := []byte(": PING\n\n")
+	relaycommon.AppendConversationClientResponse(c, pingData)
+	if _, err := c.Writer.Write(pingData); err != nil {
 		return fmt.Errorf("write ping data failed: %w", err)
 	}
 	return FlushWriter(c)

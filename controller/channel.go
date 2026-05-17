@@ -765,6 +765,11 @@ func AddChannel(c *gin.Context) {
 		})
 		return
 	}
+	if c.GetInt("role") < common.RoleRootUser {
+		otherSettings := addChannelRequest.Channel.GetOtherSettings()
+		otherSettings.ConversationLogEnabled = false
+		addChannelRequest.Channel.SetOtherSettings(otherSettings)
+	}
 
 	addChannelRequest.Channel.CreatedTime = common.GetTimestamp()
 	keys := make([]string, 0)
@@ -1071,6 +1076,12 @@ func UpdateChannel(c *gin.Context) {
 	channel.ChannelInfo = originChannel.ChannelInfo
 	channel.DailySuccessCount = originChannel.DailySuccessCount
 	channel.DailySuccessDate = originChannel.DailySuccessDate
+	if c.GetInt("role") < common.RoleRootUser {
+		otherSettings := channel.GetOtherSettings()
+		originOtherSettings := originChannel.GetOtherSettings()
+		otherSettings.ConversationLogEnabled = originOtherSettings.ConversationLogEnabled
+		channel.SetOtherSettings(otherSettings)
+	}
 
 	// If the request explicitly specifies a new MultiKeyMode, apply it on top of the original info.
 	if channel.MultiKeyMode != nil && *channel.MultiKeyMode != "" {

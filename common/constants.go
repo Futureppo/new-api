@@ -73,6 +73,8 @@ var DebugEnabled bool
 var MemoryCacheEnabled bool
 
 var LogConsumeEnabled = true
+var ConversationLogRetentionDays = 30
+var ConversationLogMaxStorageGB = 50
 
 var TLSInsecureSkipVerify bool
 var InsecureTLSConfig = &tls.Config{InsecureSkipVerify: true}

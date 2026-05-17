@@ -24,6 +24,7 @@ import {
   showError,
   showInfo,
   showSuccess,
+  isRoot,
   verifyJSON,
 } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -209,6 +210,7 @@ const EditChannelModal = (props) => {
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
     allow_include_obfuscation: false,
+    conversation_log_enabled: false,
     allow_inference_geo: false,
     allow_speed: false,
     claude_beta_query: false,
@@ -894,6 +896,8 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_safety_identifier || false;
           data.allow_include_obfuscation =
             parsedSettings.allow_include_obfuscation || false;
+          data.conversation_log_enabled =
+            parsedSettings.conversation_log_enabled === true;
           data.allow_inference_geo =
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
@@ -927,6 +931,7 @@ const EditChannelModal = (props) => {
           data.disable_store = false;
           data.allow_safety_identifier = false;
           data.allow_include_obfuscation = false;
+          data.conversation_log_enabled = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
@@ -946,6 +951,7 @@ const EditChannelModal = (props) => {
         data.disable_store = false;
         data.allow_safety_identifier = false;
         data.allow_include_obfuscation = false;
+        data.conversation_log_enabled = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
@@ -1805,6 +1811,10 @@ const EditChannelModal = (props) => {
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
     }
+    if (isRoot()) {
+      settings.conversation_log_enabled =
+        localInputs.conversation_log_enabled === true;
+    }
 
     settings.upstream_model_update_check_enabled =
       localInputs.upstream_model_update_check_enabled === true;
@@ -1848,6 +1858,7 @@ const EditChannelModal = (props) => {
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
     delete localInputs.allow_include_obfuscation;
+    delete localInputs.conversation_log_enabled;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
@@ -2591,6 +2602,9 @@ const EditChannelModal = (props) => {
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
                   <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
+                  {isRoot() && (
+                    <Form.Switch field='conversation_log_enabled' label={t('完整对话采集')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('conversation_log_enabled', value)} extraText={t('开启后将保存成功文本对话的请求体和响应体，用于蒸馏数据集导出。')} />
+                  )}
 
                   <Form.Input field='proxy' label={t('代理地址')} placeholder={t('例如: socks5://user:pass@host:port')} onChange={(value) => handleChannelSettingsChange('proxy', value)} showClear extraText={t('用于配置网络代理，支持 socks5 协议')} />
                   <Form.Input field='custom_model_list_url' label={t('自定义模型列表 API')} placeholder={t('例如：https://api.kilo.ai/api/gateway/models')} onChange={(value) => handleChannelOtherSettingsChange('custom_model_list_url', value)} showClear extraText={t('留空使用默认模型列表接口，例如 {base_url}/v1/models')} />

@@ -34,7 +34,7 @@ func openChannelRetryControllerTestDB(t *testing.T) *gorm.DB {
 
 	model.DB = db
 	model.LOG_DB = db
-	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}))
+	require.NoError(t, db.AutoMigrate(&model.Channel{}, &model.Ability{}, &model.ConversationLog{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -129,6 +129,77 @@ func TestUpdateChannelClearsDailySuccessLimit(t *testing.T) {
 	require.Equal(t, 0, reloaded.DailySuccessLimit)
 	require.Equal(t, 3, reloaded.DailySuccessCount)
 	require.Equal(t, "2026-04-29", reloaded.DailySuccessDate)
+}
+
+func TestUpdateChannelPreservesConversationLogSettingForNonRoot(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+
+	autoBan := 1
+	channel := model.Channel{
+		Type:    1,
+		Key:     "test-key",
+		Status:  common.ChannelStatusEnabled,
+		Name:    "conversation-log-test",
+		Models:  "gpt-4o",
+		Group:   "default",
+		AutoBan: &autoBan,
+	}
+	channel.SetOtherSettings(dto.ChannelOtherSettings{ConversationLogEnabled: true})
+	require.NoError(t, db.Create(&channel).Error)
+
+	body := fmt.Sprintf(`{
+		"id": %d,
+		"type": 1,
+		"key": "test-key",
+		"status": %d,
+		"name": "conversation-log-test",
+		"models": "gpt-4o",
+		"group": "default",
+		"auto_ban": 1,
+		"settings": "{\"conversation_log_enabled\":false}"
+	}`, channel.Id, common.ChannelStatusEnabled)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("role", common.RoleAdminUser)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/api/channel/", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	UpdateChannel(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var reloaded model.Channel
+	require.NoError(t, db.First(&reloaded, channel.Id).Error)
+	require.True(t, reloaded.GetOtherSettings().ConversationLogEnabled)
+}
+
+func TestAddChannelClearsConversationLogSettingForNonRoot(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+
+	body := `{
+		"mode": "single",
+		"channel": {
+			"type": 1,
+			"key": "test-key",
+			"status": 1,
+			"name": "conversation-log-add",
+			"models": "gpt-4o",
+			"group": "default",
+			"auto_ban": 1,
+			"settings": "{\"conversation_log_enabled\":true}"
+		}
+	}`
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Set("role", common.RoleAdminUser)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/api/channel/", strings.NewReader(body))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	AddChannel(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var reloaded model.Channel
+	require.NoError(t, db.Where("name = ?", "conversation-log-add").First(&reloaded).Error)
+	require.False(t, reloaded.GetOtherSettings().ConversationLogEnabled)
 }
 
 func TestResolveFetchModelsURL(t *testing.T) {

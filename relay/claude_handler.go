@@ -24,6 +24,7 @@ import (
 func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 
 	info.InitChannelMeta(c)
+	service.StartConversationCapture(c, info)
 
 	claudeReq, ok := info.Request.(*dto.ClaudeRequest)
 
@@ -151,6 +152,9 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
+		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertClaudeRequest(c, info, request)
@@ -180,6 +184,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if common.DebugEnabled {
 			println("requestBody: ", string(jsonData))
 		}
+		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 
@@ -199,6 +204,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
+		relaycommon.WrapConversationUpstreamResponse(info, httpResp)
 	}
 
 	usage, newAPIError := adaptor.DoResponse(c, httpResp, info)

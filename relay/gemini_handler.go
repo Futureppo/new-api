@@ -54,6 +54,7 @@ func trimModelThinking(modelName string) string {
 
 func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	service.StartConversationCapture(c, info)
 
 	geminiReq, ok := info.Request.(*dto.GeminiChatRequest)
 	if !ok {
@@ -142,6 +143,9 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
+		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		// 使用 ConvertGeminiRequest 转换请求格式
@@ -165,6 +169,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 		logger.LogDebug(c, "Gemini request body: "+string(jsonData))
 
+		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewReader(jsonData)
 	}
 
@@ -186,6 +191,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			service.ResetStatusCode(newAPIError, statusCodeMappingStr)
 			return newAPIError
 		}
+		relaycommon.WrapConversationUpstreamResponse(info, httpResp)
 	}
 
 	usage, openaiErr := adaptor.DoResponse(c, resp.(*http.Response), info)

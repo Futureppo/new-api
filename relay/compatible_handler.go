@@ -25,6 +25,7 @@ import (
 
 func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	service.StartConversationCapture(c, info)
 
 	textReq, ok := info.Request.(*dto.GeneralOpenAIRequest)
 	if !ok {
@@ -105,6 +106,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 				println("requestBody: ", string(debugBytes))
 			}
 		}
+		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
+		}
 		requestBody = common.ReaderOnly(storage)
 	} else {
 		convertedRequest, err := adaptor.ConvertOpenAIRequest(c, info, request)
@@ -176,6 +180,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 		logger.LogDebug(c, fmt.Sprintf("text request body: %s", string(jsonData)))
 
+		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}
 
@@ -196,6 +201,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
 			return newApiErr
 		}
+		relaycommon.WrapConversationUpstreamResponse(info, httpResp)
 	}
 
 	usage, newApiErr := adaptor.DoResponse(c, httpResp, info)
