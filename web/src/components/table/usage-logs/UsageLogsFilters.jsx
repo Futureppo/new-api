@@ -102,6 +102,15 @@ const LogsFilters = ({
             size='small'
           />
 
+          <Form.Input
+            field='ip'
+            prefix={<IconSearch />}
+            placeholder={t('IP')}
+            showClear
+            pure
+            size='small'
+          />
+
           {isAdminUser && (
             <>
               <Form.Input
