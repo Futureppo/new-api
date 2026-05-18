@@ -12,6 +12,7 @@ import {
   Table,
   Tag,
   Typography,
+  Progress,
 } from '@douyinfe/semi-ui';
 import { IconDownload, IconDelete, IconSearch, IconSave } from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
@@ -58,6 +59,16 @@ export default function SettingsConversationLogs() {
   const [pagination, setPagination] = useState({ currentPage: 1, pageSize: 10, total: 0 });
   const [formApi, setFormApi] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [exportProgress, setExportProgress] = useState({
+    visible: false,
+    title: '',
+    phase: 'idle',
+    percent: 0,
+    recordCount: 0,
+    estimateBytes: 0,
+    loadedBytes: 0,
+    message: '',
+  });
 
   const getFilterParams = () => {
     const values = formApi ? formApi.getValues() : {};
@@ -130,20 +141,111 @@ export default function SettingsConversationLogs() {
     }
   };
 
-  const exportZip = async () => {
+  const updateExportProgress = (patch) => {
+    setExportProgress((prev) => ({ ...prev, ...patch }));
+  };
+
+  const fetchExportSummary = async (params) => {
+    updateExportProgress({
+      visible: true,
+      phase: 'preparing',
+      percent: 3,
+      loadedBytes: 0,
+      message: t('正在统计当前筛选结果'),
+    });
+    const res = await API.get('/api/conversation_logs/export_summary', {
+      params,
+      disableDuplicate: true,
+    });
+    const { success, message, data } = res.data;
+    if (!success) {
+      throw new Error(message || t('导出统计失败'));
+    }
+    updateExportProgress({
+      phase: 'packaging',
+      percent: data.record_count > 0 ? 5 : 100,
+      recordCount: data.record_count || 0,
+      estimateBytes: data.storage_bytes || 0,
+      message:
+        data.record_count > 0
+          ? t('服务器正在流式打包 ZIP')
+          : t('当前筛选结果没有记录'),
+    });
+    return data;
+  };
+
+  const runExportWithProgress = async ({ deleteAfterExport = false } = {}) => {
+    const params = getFilterParams();
     setActionLoading(true);
     try {
-      const res = await API.get('/api/conversation_logs/export.zip', {
-        params: getFilterParams(),
+      updateExportProgress({
+        visible: true,
+        title: deleteAfterExport ? t('导出并删除进度') : t('导出进度'),
+        phase: 'preparing',
+        percent: 0,
+        recordCount: 0,
+        estimateBytes: 0,
+        loadedBytes: 0,
+        message: t('准备导出'),
+      });
+      const exportSummary = await fetchExportSummary(params);
+      const estimateBytes = Number(exportSummary.storage_bytes || 0);
+      const requestConfig = {
         responseType: 'blob',
+        skipErrorHandler: true,
         disableDuplicate: true,
+        onDownloadProgress: (event) => {
+          const loadedBytes = Number(event.loaded || 0);
+          const totalBytes = Number(event.total || 0);
+          const denominator = totalBytes > 0 ? totalBytes : estimateBytes;
+          const percent =
+            denominator > 0
+              ? Math.min(98, Math.max(5, Math.round((loadedBytes / denominator) * 100)))
+              : 15;
+          updateExportProgress({
+            phase: 'downloading',
+            percent,
+            loadedBytes,
+            message: t('正在接收 ZIP 数据'),
+          });
+        },
+      };
+      const res = deleteAfterExport
+        ? await API.post('/api/conversation_logs/export_and_delete', params, requestConfig)
+        : await API.get('/api/conversation_logs/export.zip', {
+            ...requestConfig,
+            params,
+          });
+      updateExportProgress({
+        phase: 'saving',
+        percent: 99,
+        message: t('正在保存文件'),
       });
       downloadBlob(res.data, `conversation-logs-${Date.now()}.zip`);
-      showSuccess(t('导出成功'));
+      updateExportProgress({
+        phase: 'done',
+        percent: 100,
+        loadedBytes: res.data?.size || estimateBytes,
+        message: deleteAfterExport ? t('导出并删除完成') : t('导出完成'),
+      });
+      showSuccess(deleteAfterExport ? t('导出并删除完成') : t('导出成功'));
       fetchSummary();
+      if (deleteAfterExport) {
+        fetchLogs(1, pagination.pageSize);
+      }
+    } catch (error) {
+      updateExportProgress({
+        phase: 'error',
+        message: error?.message || t('导出失败'),
+      });
+      showError(error?.message || t('导出失败'));
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const exportZip = async () => {
+    await runExportWithProgress();
   };
 
   const exportAndDelete = () => {
@@ -152,21 +254,7 @@ export default function SettingsConversationLogs() {
       content: t('将按当前筛选条件导出 ZIP，下载完成后删除命中的记录。'),
       okText: t('确认'),
       cancelText: t('取消'),
-      onOk: async () => {
-        setActionLoading(true);
-        try {
-          const res = await API.post('/api/conversation_logs/export_and_delete', getFilterParams(), {
-            responseType: 'blob',
-            skipErrorHandler: true,
-          });
-          downloadBlob(res.data, `conversation-logs-${Date.now()}.zip`);
-          showSuccess(t('导出并删除完成'));
-          fetchSummary();
-          fetchLogs(1, pagination.pageSize);
-        } finally {
-          setActionLoading(false);
-        }
-      },
+      onOk: () => runExportWithProgress({ deleteAfterExport: true }),
     });
   };
 
@@ -396,6 +484,46 @@ export default function SettingsConversationLogs() {
               ))}
             </div>
           )}
+        </Modal>
+
+        <Modal
+          title={exportProgress.title || t('导出进度')}
+          visible={exportProgress.visible}
+          maskClosable={false}
+          closable={exportProgress.phase === 'done' || exportProgress.phase === 'error'}
+          onCancel={() => updateExportProgress({ visible: false })}
+          footer={
+            exportProgress.phase === 'done' || exportProgress.phase === 'error' ? (
+              <Button onClick={() => updateExportProgress({ visible: false })}>
+                {t('关闭')}
+              </Button>
+            ) : null
+          }
+        >
+          <div className='space-y-3'>
+            <Progress
+              percent={exportProgress.percent}
+              status={exportProgress.phase === 'error' ? 'exception' : undefined}
+              showInfo
+            />
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-2 text-sm'>
+              <div>
+                <Text type='tertiary'>{t('记录数')}</Text>
+                <div>{exportProgress.recordCount || 0}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('估算原始大小')}</Text>
+                <div>{formatBytes(exportProgress.estimateBytes || 0)}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('已接收')}</Text>
+                <div>{formatBytes(exportProgress.loadedBytes || 0)}</div>
+              </div>
+            </div>
+            <Text type={exportProgress.phase === 'error' ? 'danger' : 'tertiary'}>
+              {exportProgress.message}
+            </Text>
+          </div>
         </Modal>
       </div>
     </Spin>

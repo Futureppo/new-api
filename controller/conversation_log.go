@@ -45,6 +45,15 @@ func GetConversationLogSummary(c *gin.Context) {
 	})
 }
 
+func GetConversationLogExportSummary(c *gin.Context) {
+	exportSummary, err := model.GetConversationLogExportSummary(parseConversationLogQuery(c))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, exportSummary)
+}
+
 func GetConversationLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	query := parseConversationLogQuery(c)
@@ -195,6 +204,10 @@ func exportConversationLogs(c *gin.Context, query model.ConversationLogQuery, de
 	fileName := fmt.Sprintf("conversation-logs-%s.zip", batchID)
 	c.Header("Content-Type", "application/zip")
 	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", fileName))
+	c.Header("X-Conversation-Log-Batch-Id", batchID)
+	c.Header("X-Conversation-Log-Record-Count", strconv.FormatInt(exportSummary.RecordCount, 10))
+	c.Header("X-Conversation-Log-Storage-Bytes", strconv.FormatInt(exportSummary.StorageBytes, 10))
+	c.Header("Access-Control-Expose-Headers", "X-Conversation-Log-Batch-Id, X-Conversation-Log-Record-Count, X-Conversation-Log-Storage-Bytes")
 	c.Status(http.StatusOK)
 
 	zipWriter := zip.NewWriter(c.Writer)

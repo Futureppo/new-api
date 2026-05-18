@@ -220,6 +220,7 @@ func SetApiRouter(router *gin.Engine) {
 		conversationLogRoute.Use(middleware.RootAuth())
 		{
 			conversationLogRoute.GET("/summary", controller.GetConversationLogSummary)
+			conversationLogRoute.GET("/export_summary", controller.GetConversationLogExportSummary)
 			conversationLogRoute.GET("/export.zip", controller.ExportConversationLogs)
 			conversationLogRoute.POST("/export_and_delete", controller.ExportAndDeleteConversationLogs)
 			conversationLogRoute.PUT("/settings", controller.UpdateConversationLogSettings)
