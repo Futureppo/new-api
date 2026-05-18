@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -30,6 +30,18 @@ function formatBytes(bytes, decimals = 2) {
   return `${parseFloat((value / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`;
 }
 
+function formatDuration(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '-';
+  const totalSeconds = Math.round(seconds);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const remainingSeconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${remainingSeconds}s`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+}
+
 function toTimestamp(value) {
   if (!value) return 0;
   if (value instanceof Date) return Math.floor(value.getTime() / 1000);
@@ -50,6 +62,7 @@ function downloadBlob(blob, filename) {
 
 export default function SettingsConversationLogs() {
   const { t } = useTranslation();
+  const exportProgressStartRef = useRef(0);
   const [loading, setLoading] = useState(false);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
@@ -67,6 +80,8 @@ export default function SettingsConversationLogs() {
     recordCount: 0,
     estimateBytes: 0,
     loadedBytes: 0,
+    speedBytesPerSecond: 0,
+    remainingSeconds: null,
     message: '',
   });
 
@@ -151,6 +166,8 @@ export default function SettingsConversationLogs() {
       phase: 'preparing',
       percent: 3,
       loadedBytes: 0,
+      speedBytesPerSecond: 0,
+      remainingSeconds: null,
       message: t('正在统计当前筛选结果'),
     });
     const res = await API.get('/api/conversation_logs/export_summary', {
@@ -178,6 +195,7 @@ export default function SettingsConversationLogs() {
     const params = getFilterParams();
     setActionLoading(true);
     try {
+      exportProgressStartRef.current = 0;
       updateExportProgress({
         visible: true,
         title: deleteAfterExport ? t('导出并删除进度') : t('导出进度'),
@@ -186,10 +204,13 @@ export default function SettingsConversationLogs() {
         recordCount: 0,
         estimateBytes: 0,
         loadedBytes: 0,
+        speedBytesPerSecond: 0,
+        remainingSeconds: null,
         message: t('准备导出'),
       });
       const exportSummary = await fetchExportSummary(params);
       const estimateBytes = Number(exportSummary.storage_bytes || 0);
+      exportProgressStartRef.current = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const requestConfig = {
         responseType: 'blob',
         skipErrorHandler: true,
@@ -198,6 +219,15 @@ export default function SettingsConversationLogs() {
           const loadedBytes = Number(event.loaded || 0);
           const totalBytes = Number(event.total || 0);
           const denominator = totalBytes > 0 ? totalBytes : estimateBytes;
+          const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          if (!exportProgressStartRef.current) {
+            exportProgressStartRef.current = now;
+          }
+          const elapsedSeconds = Math.max((now - exportProgressStartRef.current) / 1000, 0.001);
+          const speedBytesPerSecond = loadedBytes / elapsedSeconds;
+          const remainingBytes = denominator > 0 ? Math.max(denominator - loadedBytes, 0) : 0;
+          const remainingSeconds =
+            speedBytesPerSecond > 0 && remainingBytes > 0 ? remainingBytes / speedBytesPerSecond : null;
           const percent =
             denominator > 0
               ? Math.min(98, Math.max(5, Math.round((loadedBytes / denominator) * 100)))
@@ -206,6 +236,8 @@ export default function SettingsConversationLogs() {
             phase: 'downloading',
             percent,
             loadedBytes,
+            speedBytesPerSecond,
+            remainingSeconds,
             message: t('正在接收 ZIP 数据'),
           });
         },
@@ -219,13 +251,19 @@ export default function SettingsConversationLogs() {
       updateExportProgress({
         phase: 'saving',
         percent: 99,
+        remainingSeconds: null,
         message: t('正在保存文件'),
       });
       downloadBlob(res.data, `conversation-logs-${Date.now()}.zip`);
+      const finalLoadedBytes = res.data?.size || estimateBytes;
+      const doneAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const doneElapsedSeconds = Math.max((doneAt - exportProgressStartRef.current) / 1000, 0.001);
       updateExportProgress({
         phase: 'done',
         percent: 100,
-        loadedBytes: res.data?.size || estimateBytes,
+        loadedBytes: finalLoadedBytes,
+        speedBytesPerSecond: finalLoadedBytes / doneElapsedSeconds,
+        remainingSeconds: 0,
         message: deleteAfterExport ? t('导出并删除完成') : t('导出完成'),
       });
       showSuccess(deleteAfterExport ? t('导出并删除完成') : t('导出成功'));
@@ -236,6 +274,7 @@ export default function SettingsConversationLogs() {
     } catch (error) {
       updateExportProgress({
         phase: 'error',
+        remainingSeconds: null,
         message: error?.message || t('导出失败'),
       });
       showError(error?.message || t('导出失败'));
@@ -506,7 +545,7 @@ export default function SettingsConversationLogs() {
               status={exportProgress.phase === 'error' ? 'exception' : undefined}
               showInfo
             />
-            <div className='grid grid-cols-1 md:grid-cols-3 gap-2 text-sm'>
+            <div className='grid grid-cols-1 md:grid-cols-5 gap-2 text-sm'>
               <div>
                 <Text type='tertiary'>{t('记录数')}</Text>
                 <div>{exportProgress.recordCount || 0}</div>
@@ -518,6 +557,18 @@ export default function SettingsConversationLogs() {
               <div>
                 <Text type='tertiary'>{t('已接收')}</Text>
                 <div>{formatBytes(exportProgress.loadedBytes || 0)}</div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('速度')}</Text>
+                <div>
+                  {exportProgress.speedBytesPerSecond > 0
+                    ? `${formatBytes(exportProgress.speedBytesPerSecond)}/s`
+                    : '-'}
+                </div>
+              </div>
+              <div>
+                <Text type='tertiary'>{t('预计剩余')}</Text>
+                <div>{formatDuration(exportProgress.remainingSeconds)}</div>
               </div>
             </div>
             <Text type={exportProgress.phase === 'error' ? 'danger' : 'tertiary'}>
