@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/common/limiter"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-gonic/gin"
@@ -19,7 +21,183 @@ import (
 const (
 	ModelRequestRateLimitCountMark        = "MRRL"
 	ModelRequestRateLimitSuccessCountMark = "MRRLS"
+	ModelRequestRateLimitConcurrencyMark  = "MRRLC"
+
+	modelRequestConcurrencyLease           = 30 * time.Second
+	modelRequestConcurrencyRefreshInterval = 10 * time.Second
+	modelRequestConcurrencyRedisTTL        = 60 * time.Second
 )
+
+const redisAcquireModelRequestConcurrencyScript = `
+local key = KEYS[1]
+local member = ARGV[1]
+local now = tonumber(ARGV[2])
+local expire_before = tonumber(ARGV[3])
+local limit = tonumber(ARGV[4])
+local ttl = tonumber(ARGV[5])
+
+redis.call("ZREMRANGEBYSCORE", key, "-inf", expire_before)
+if redis.call("ZCARD", key) >= limit then
+	redis.call("EXPIRE", key, ttl)
+	return 0
+end
+
+redis.call("ZADD", key, now, member)
+redis.call("EXPIRE", key, ttl)
+return 1
+`
+
+const redisRefreshModelRequestConcurrencyScript = `
+local key = KEYS[1]
+local member = ARGV[1]
+local now = tonumber(ARGV[2])
+local ttl = tonumber(ARGV[3])
+
+if redis.call("ZSCORE", key, member) then
+	redis.call("ZADD", key, now, member)
+	redis.call("EXPIRE", key, ttl)
+	return 1
+end
+
+return 0
+`
+
+var modelRequestConcurrencyLimiter = struct {
+	sync.Mutex
+	counts map[string]int
+}{
+	counts: make(map[string]int),
+}
+
+func modelRequestConcurrencyRedisKey(userId string) string {
+	return fmt.Sprintf("rateLimit:%s:%s", ModelRequestRateLimitConcurrencyMark, userId)
+}
+
+func modelRequestConcurrencyMemoryKey(userId string) string {
+	return ModelRequestRateLimitConcurrencyMark + userId
+}
+
+func modelRequestConcurrencyRequestId(c *gin.Context) string {
+	requestId := c.GetString(common.RequestIdKey)
+	if requestId == "" {
+		requestId = common.GetUUID()
+	}
+	return requestId
+}
+
+func acquireRedisModelRequestConcurrency(ctx context.Context, rdb *redis.Client, userId string, maxCount int, requestId string) (func(), bool, error) {
+	if maxCount == 0 {
+		return func() {}, true, nil
+	}
+
+	key := modelRequestConcurrencyRedisKey(userId)
+	now := time.Now().UnixMilli()
+	leaseMillis := int64(modelRequestConcurrencyLease / time.Millisecond)
+	ttlSeconds := int64(modelRequestConcurrencyRedisTTL / time.Second)
+
+	allowed, err := rdb.Eval(
+		ctx,
+		redisAcquireModelRequestConcurrencyScript,
+		[]string{key},
+		requestId,
+		now,
+		now-leaseMillis,
+		maxCount,
+		ttlSeconds,
+	).Int()
+	if err != nil {
+		return nil, false, err
+	}
+	if allowed != 1 {
+		return nil, false, nil
+	}
+
+	refreshCtx, cancel := context.WithCancel(context.Background())
+	var releaseOnce sync.Once
+	go func() {
+		ticker := time.NewTicker(modelRequestConcurrencyRefreshInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-refreshCtx.Done():
+				return
+			case <-ticker.C:
+				_ = rdb.Eval(
+					context.Background(),
+					redisRefreshModelRequestConcurrencyScript,
+					[]string{key},
+					requestId,
+					time.Now().UnixMilli(),
+					ttlSeconds,
+				).Err()
+			}
+		}
+	}()
+
+	release := func() {
+		releaseOnce.Do(func() {
+			cancel()
+			_ = rdb.ZRem(context.Background(), key, requestId).Err()
+		})
+	}
+
+	return release, true, nil
+}
+
+func acquireMemoryModelRequestConcurrency(userId string, maxCount int) (func(), bool) {
+	if maxCount == 0 {
+		return func() {}, true
+	}
+
+	key := modelRequestConcurrencyMemoryKey(userId)
+	modelRequestConcurrencyLimiter.Lock()
+	defer modelRequestConcurrencyLimiter.Unlock()
+
+	if modelRequestConcurrencyLimiter.counts == nil {
+		modelRequestConcurrencyLimiter.counts = make(map[string]int)
+	}
+	if modelRequestConcurrencyLimiter.counts[key] >= maxCount {
+		return nil, false
+	}
+	modelRequestConcurrencyLimiter.counts[key]++
+
+	var releaseOnce sync.Once
+	release := func() {
+		releaseOnce.Do(func() {
+			modelRequestConcurrencyLimiter.Lock()
+			defer modelRequestConcurrencyLimiter.Unlock()
+
+			if modelRequestConcurrencyLimiter.counts[key] <= 1 {
+				delete(modelRequestConcurrencyLimiter.counts, key)
+				return
+			}
+			modelRequestConcurrencyLimiter.counts[key]--
+		})
+	}
+
+	return release, true
+}
+
+func rateLimitReachedMessage(c *gin.Context, maxCount int) string {
+	return i18n.T(c, i18n.MsgRateLimitReached, map[string]any{
+		"Minutes": setting.ModelRequestRateLimitDurationMinutes,
+		"Max":     maxCount,
+	})
+}
+
+func rateLimitTotalReachedMessage(c *gin.Context, maxCount int) string {
+	return i18n.T(c, i18n.MsgRateLimitTotalReached, map[string]any{
+		"Minutes": setting.ModelRequestRateLimitDurationMinutes,
+		"Max":     maxCount,
+	})
+}
+
+func rateLimitConcurrencyReachedMessage(c *gin.Context, maxCount int) string {
+	return i18n.T(c, i18n.MsgRateLimitConcurrencyReached, map[string]any{
+		"Max": maxCount,
+	})
+}
 
 // 检查Redis中的请求限制
 func checkRedisRateLimit(ctx context.Context, rdb *redis.Client, key string, maxCount int, duration int64) (bool, error) {
@@ -75,22 +253,34 @@ func recordRedisRequest(ctx context.Context, rdb *redis.Client, key string, maxC
 }
 
 // Redis限流处理器
-func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
+func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount, concurrencyMaxCount int) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		userId := strconv.Itoa(c.GetInt("id"))
 		ctx := context.Background()
 		rdb := common.RDB
 
+		release, allowed, err := acquireRedisModelRequestConcurrency(ctx, rdb, userId, concurrencyMaxCount, modelRequestConcurrencyRequestId(c))
+		if err != nil {
+			fmt.Println("检查并发请求数限制失败:", err.Error())
+			abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
+			return
+		}
+		if !allowed {
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitConcurrencyReachedMessage(c, concurrencyMaxCount))
+			return
+		}
+		defer release()
+
 		// 1. 检查成功请求数限制
 		successKey := fmt.Sprintf("rateLimit:%s:%s", ModelRequestRateLimitSuccessCountMark, userId)
-		allowed, err := checkRedisRateLimit(ctx, rdb, successKey, successMaxCount, duration)
+		allowed, err = checkRedisRateLimit(ctx, rdb, successKey, successMaxCount, duration)
 		if err != nil {
 			fmt.Println("检查成功请求数限制失败:", err.Error())
 			abortWithOpenAiMessage(c, http.StatusInternalServerError, "rate_limit_check_failed")
 			return
 		}
 		if !allowed {
-			abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到请求数限制：%d分钟内最多请求%d次", setting.ModelRequestRateLimitDurationMinutes, successMaxCount))
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitReachedMessage(c, successMaxCount))
 			return
 		}
 
@@ -114,7 +304,8 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 			}
 
 			if !allowed {
-				abortWithOpenAiMessage(c, http.StatusTooManyRequests, fmt.Sprintf("您已达到总请求数限制：%d分钟内最多请求%d次，包括失败次数，请检查您的请求是否正确", setting.ModelRequestRateLimitDurationMinutes, totalMaxCount))
+				abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitTotalReachedMessage(c, totalMaxCount))
+				return
 			}
 		}
 
@@ -129,7 +320,7 @@ func redisRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) g
 }
 
 // 内存限流处理器
-func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) gin.HandlerFunc {
+func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount, concurrencyMaxCount int) gin.HandlerFunc {
 	inMemoryRateLimiter.Init(time.Duration(setting.ModelRequestRateLimitDurationMinutes) * time.Minute)
 
 	return func(c *gin.Context) {
@@ -137,10 +328,16 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 		totalKey := ModelRequestRateLimitCountMark + userId
 		successKey := ModelRequestRateLimitSuccessCountMark + userId
 
+		release, allowed := acquireMemoryModelRequestConcurrency(userId, concurrencyMaxCount)
+		if !allowed {
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitConcurrencyReachedMessage(c, concurrencyMaxCount))
+			return
+		}
+		defer release()
+
 		// 1. 检查总请求数限制（当totalMaxCount为0时跳过）
 		if totalMaxCount > 0 && !inMemoryRateLimiter.Request(totalKey, totalMaxCount, duration) {
-			c.Status(http.StatusTooManyRequests)
-			c.Abort()
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitTotalReachedMessage(c, totalMaxCount))
 			return
 		}
 
@@ -148,8 +345,7 @@ func memoryRateLimitHandler(duration int64, totalMaxCount, successMaxCount int) 
 		// 使用一个临时key来检查限制，这样可以避免实际记录
 		checkKey := successKey + "_check"
 		if !inMemoryRateLimiter.Request(checkKey, successMaxCount, duration) {
-			c.Status(http.StatusTooManyRequests)
-			c.Abort()
+			abortWithOpenAiMessage(c, http.StatusTooManyRequests, rateLimitReachedMessage(c, successMaxCount))
 			return
 		}
 
@@ -176,6 +372,7 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		duration := int64(setting.ModelRequestRateLimitDurationMinutes * 60)
 		totalMaxCount := setting.ModelRequestRateLimitCount
 		successMaxCount := setting.ModelRequestRateLimitSuccessCount
+		concurrencyMaxCount := setting.ModelRequestConcurrencyLimit
 
 		// 获取分组
 		group := common.GetContextKeyString(c, constant.ContextKeyTokenGroup)
@@ -184,17 +381,20 @@ func ModelRequestRateLimit() func(c *gin.Context) {
 		}
 
 		//获取分组的限流配置
-		groupTotalCount, groupSuccessCount, found := setting.GetGroupRateLimit(group)
+		groupTotalCount, groupSuccessCount, groupConcurrencyCount, hasConcurrencyLimit, found := setting.GetGroupRateLimit(group)
 		if found {
 			totalMaxCount = groupTotalCount
 			successMaxCount = groupSuccessCount
+			if hasConcurrencyLimit {
+				concurrencyMaxCount = groupConcurrencyCount
+			}
 		}
 
 		// 根据存储类型选择并执行限流处理器
 		if common.RedisEnabled {
-			redisRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
+			redisRateLimitHandler(duration, totalMaxCount, successMaxCount, concurrencyMaxCount)(c)
 		} else {
-			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount)(c)
+			memoryRateLimitHandler(duration, totalMaxCount, successMaxCount, concurrencyMaxCount)(c)
 		}
 	}
 }
