@@ -35,6 +35,8 @@ export const useUsersData = () => {
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
+  const [purgingSoftDeletedUsers, setPurgingSoftDeletedUsers] =
+    useState(false);
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -247,6 +249,34 @@ export const useUsersData = () => {
     }
   };
 
+  const purgeSoftDeletedUsers = async () => {
+    if (purgingSoftDeletedUsers) {
+      return;
+    }
+    setPurgingSoftDeletedUsers(true);
+    setLoading(true);
+    try {
+      const res = await API.post('/api/user/soft-deleted/purge');
+      const { success, message, data } = res.data;
+      if (success) {
+        const count = Number(data?.deleted || 0);
+        if (count > 0) {
+          showSuccess(t('已清理 {{count}} 个已注销用户', { count }));
+        } else {
+          showSuccess(t('没有需要清理的已注销用户'));
+        }
+        await refresh(1);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setPurgingSoftDeletedUsers(false);
+      setLoading(false);
+    }
+  };
+
   // Fetch groups data
   const fetchGroups = async () => {
     try {
@@ -296,6 +326,7 @@ export const useUsersData = () => {
     userCount,
     searching,
     groupOptions,
+    purgingSoftDeletedUsers,
 
     // Modal state
     showAddUser,
@@ -318,6 +349,7 @@ export const useUsersData = () => {
     loadUsers,
     searchUsers,
     manageUser,
+    purgeSoftDeletedUsers,
     resetUserPasskey,
     resetUserTwoFA,
     handlePageChange,

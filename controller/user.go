@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/enhancement"
 	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/QuantumNous/new-api/constant"
@@ -831,6 +832,15 @@ func DeleteSelf(c *gin.Context) {
 		"message": "",
 	})
 	return
+}
+
+func PurgeSoftDeletedUsers(c *gin.Context) {
+	count, err := enhancement.PurgeSoftDeletedUsers(c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{"deleted": count})
 }
 
 func CreateUser(c *gin.Context) {

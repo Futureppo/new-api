@@ -268,22 +268,26 @@ func BatchDeleteUsers(ids []int, operatorId int, operatorRole int) (map[string]i
 	}, nil
 }
 
-func PurgeSoftDeletedUsers(operatorId int) (int64, error) {
-	var users []model.User
-	if err := model.DB.Unscoped().Where("deleted_at IS NOT NULL").Find(&users).Error; err != nil {
-		return 0, err
+func PurgeSoftDeletedUsers(operatorId int, operatorRole int) (int64, error) {
+	if operatorRole < common.RoleAdminUser {
+		return 0, errors.New("admin permission required")
 	}
-	for _, user := range users {
-		if user.Role >= common.RoleRootUser || user.Id == operatorId {
-			return 0, errors.New("soft-deleted set contains protected users")
-		}
+
+	maxDeletedRole := common.RoleAdminUser
+	if operatorRole >= common.RoleRootUser {
+		maxDeletedRole = common.RoleRootUser
 	}
-	result := model.DB.Unscoped().Where("deleted_at IS NOT NULL").Delete(&model.User{})
+
+	result := model.DB.Unscoped().
+		Where("deleted_at IS NOT NULL").
+		Where("role < ?", maxDeletedRole).
+		Delete(&model.User{})
 	if result.Error != nil {
 		return 0, result.Error
 	}
 	audit(operatorId, "enhancements.users", "purge_soft_deleted", map[string]interface{}{
-		"count": result.RowsAffected,
+		"count":    result.RowsAffected,
+		"max_role": maxDeletedRole,
 	})
 	return result.RowsAffected, nil
 }

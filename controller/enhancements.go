@@ -704,8 +704,8 @@ func enhancementDeleteUser(c *gin.Context) {
 }
 
 func enhancementPurgeSoftDeletedUsers(c *gin.Context) {
-	operatorId, _ := operator(c)
-	count, err := enhancement.PurgeSoftDeletedUsers(operatorId)
+	operatorId, role := operator(c)
+	count, err := enhancement.PurgeSoftDeletedUsers(operatorId, role)
 	respondPublic(c, gin.H{"deleted": count}, err)
 }
 
