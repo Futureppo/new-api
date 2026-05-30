@@ -282,7 +282,8 @@ func SendEmailVerification(c *gin.Context) {
 		"<p>验证码 %d 分钟内有效，如果不是本人操作，请忽略。</p>", common.SystemName, code, common.VerificationValidMinutes)
 	err := common.SendEmail(subject, email, content)
 	if err != nil {
-		common.ApiError(c, err)
+		logger.LogError(c.Request.Context(), fmt.Sprintf("failed to send email verification to %s: %s", email, err.Error()))
+		common.ApiErrorMsg(c, "邮件发送失败，请稍后重试或联系管理员")
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{
