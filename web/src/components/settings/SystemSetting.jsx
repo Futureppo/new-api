@@ -44,6 +44,21 @@ import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
 
+const emailDomainLabelPattern =
+  '[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?';
+const emailDomainRegex = new RegExp(
+  `^(?:${emailDomainLabelPattern}\\.)+[a-zA-Z]{2,}$`,
+);
+const wildcardEmailDomainRegex = new RegExp(
+  `^\\*\\.(?:${emailDomainLabelPattern}\\.)+[a-zA-Z]{2,}$`,
+);
+
+const normalizeEmailDomain = (domain) =>
+  `${domain ?? ''}`.trim().toLowerCase();
+
+const isValidEmailDomainWhitelistItem = (domain) =>
+  emailDomainRegex.test(domain) || wildcardEmailDomainRegex.test(domain);
+
 const SystemSetting = () => {
   const { t } = useTranslation();
   let [inputs, setInputs] = useState({
@@ -350,16 +365,35 @@ const SystemSetting = () => {
   };
 
   const submitEmailDomainWhitelist = async () => {
-    if (Array.isArray(emailDomainWhitelist)) {
-      await updateOptions([
-        {
-          key: 'EmailDomainWhitelist',
-          value: emailDomainWhitelist.join(','),
-        },
-      ]);
-    } else {
+    if (!Array.isArray(emailDomainWhitelist)) {
       showError(t('邮箱域名白名单格式不正确'));
+      return;
     }
+
+    const normalizedDomains = [];
+    for (const item of emailDomainWhitelist) {
+      const domain = normalizeEmailDomain(item);
+      if (domain === '') {
+        continue;
+      }
+      if (!isValidEmailDomainWhitelistItem(domain)) {
+        showError(
+          t('邮箱域名格式不正确，请输入有效的域名，如 gmail.com 或 *.edu.cn'),
+        );
+        return;
+      }
+      if (!normalizedDomains.includes(domain)) {
+        normalizedDomains.push(domain);
+      }
+    }
+
+    setEmailDomainWhitelist(normalizedDomains);
+    await updateOptions([
+      {
+        key: 'EmailDomainWhitelist',
+        value: normalizedDomains.join(','),
+      },
+    ]);
   };
 
   const submitSSRF = async () => {
@@ -404,18 +438,21 @@ const SystemSetting = () => {
 
   const handleAddEmail = () => {
     if (emailToAdd && emailToAdd.trim() !== '') {
-      const domain = emailToAdd.trim();
+      const domain = normalizeEmailDomain(emailToAdd);
 
       // 验证域名格式
-      const domainRegex =
-        /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
-      if (!domainRegex.test(domain)) {
-        showError(t('邮箱域名格式不正确，请输入有效的域名，如 gmail.com'));
+      if (!isValidEmailDomainWhitelistItem(domain)) {
+        showError(
+          t('邮箱域名格式不正确，请输入有效的域名，如 gmail.com 或 *.edu.cn'),
+        );
         return;
       }
 
       // 检查是否已存在
-      if (emailDomainWhitelist.includes(domain)) {
+      const normalizedWhitelist = emailDomainWhitelist.map((item) =>
+        normalizeEmailDomain(item),
+      );
+      if (normalizedWhitelist.includes(domain)) {
         showError(t('该域名已存在于白名单中'));
         return;
       }
@@ -1267,7 +1304,9 @@ const SystemSetting = () => {
                     style={{ width: '100%', marginTop: 16 }}
                   />
                   <Form.Input
-                    placeholder={t('输入要添加的邮箱域名')}
+                    placeholder={t(
+                      '输入要添加的邮箱域名，如 gmail.com 或 *.edu.cn',
+                    )}
                     value={emailToAdd}
                     onChange={(value) => setEmailToAdd(value)}
                     style={{ marginTop: 16 }}

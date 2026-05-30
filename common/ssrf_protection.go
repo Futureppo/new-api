@@ -33,20 +33,20 @@ var DefaultSSRFProtection = &SSRFProtection{
 // 参考 IANA IPv4 Special-Purpose Address Registry
 // https://www.iana.org/assignments/iana-ipv4-special-registry/
 var privateIPv4Nets = []net.IPNet{
-	{IP: net.IPv4(0, 0, 0, 0), Mask: net.CIDRMask(8, 32)},       // 0.0.0.0/8 ("This network" / 未指定)
-	{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},      // 10.0.0.0/8 (私有)
-	{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)},   // 100.64.0.0/10 (运营商级 NAT / CGNAT)
-	{IP: net.IPv4(127, 0, 0, 0), Mask: net.CIDRMask(8, 32)},     // 127.0.0.0/8 (回环)
-	{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(16, 32)},  // 169.254.0.0/16 (链路本地)
-	{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},   // 172.16.0.0/12 (私有)
-	{IP: net.IPv4(192, 0, 0, 0), Mask: net.CIDRMask(24, 32)},    // 192.0.0.0/24 (IETF 协议分配)
-	{IP: net.IPv4(192, 0, 2, 0), Mask: net.CIDRMask(24, 32)},    // 192.0.2.0/24 (TEST-NET-1)
-	{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},  // 192.168.0.0/16 (私有)
-	{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)},   // 198.18.0.0/15 (基准测试)
-	{IP: net.IPv4(198, 51, 100, 0), Mask: net.CIDRMask(24, 32)}, // 198.51.100.0/24 (TEST-NET-2)
-	{IP: net.IPv4(203, 0, 113, 0), Mask: net.CIDRMask(24, 32)},  // 203.0.113.0/24 (TEST-NET-3)
-	{IP: net.IPv4(224, 0, 0, 0), Mask: net.CIDRMask(4, 32)},     // 224.0.0.0/4 (组播)
-	{IP: net.IPv4(240, 0, 0, 0), Mask: net.CIDRMask(4, 32)},     // 240.0.0.0/4 (保留)
+	{IP: net.IPv4(0, 0, 0, 0), Mask: net.CIDRMask(8, 32)},          // 0.0.0.0/8 ("This network" / 未指定)
+	{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)},         // 10.0.0.0/8 (私有)
+	{IP: net.IPv4(100, 64, 0, 0), Mask: net.CIDRMask(10, 32)},      // 100.64.0.0/10 (运营商级 NAT / CGNAT)
+	{IP: net.IPv4(127, 0, 0, 0), Mask: net.CIDRMask(8, 32)},        // 127.0.0.0/8 (回环)
+	{IP: net.IPv4(169, 254, 0, 0), Mask: net.CIDRMask(16, 32)},     // 169.254.0.0/16 (链路本地)
+	{IP: net.IPv4(172, 16, 0, 0), Mask: net.CIDRMask(12, 32)},      // 172.16.0.0/12 (私有)
+	{IP: net.IPv4(192, 0, 0, 0), Mask: net.CIDRMask(24, 32)},       // 192.0.0.0/24 (IETF 协议分配)
+	{IP: net.IPv4(192, 0, 2, 0), Mask: net.CIDRMask(24, 32)},       // 192.0.2.0/24 (TEST-NET-1)
+	{IP: net.IPv4(192, 168, 0, 0), Mask: net.CIDRMask(16, 32)},     // 192.168.0.0/16 (私有)
+	{IP: net.IPv4(198, 18, 0, 0), Mask: net.CIDRMask(15, 32)},      // 198.18.0.0/15 (基准测试)
+	{IP: net.IPv4(198, 51, 100, 0), Mask: net.CIDRMask(24, 32)},    // 198.51.100.0/24 (TEST-NET-2)
+	{IP: net.IPv4(203, 0, 113, 0), Mask: net.CIDRMask(24, 32)},     // 203.0.113.0/24 (TEST-NET-3)
+	{IP: net.IPv4(224, 0, 0, 0), Mask: net.CIDRMask(4, 32)},        // 224.0.0.0/4 (组播)
+	{IP: net.IPv4(240, 0, 0, 0), Mask: net.CIDRMask(4, 32)},        // 240.0.0.0/4 (保留)
 	{IP: net.IPv4(255, 255, 255, 255), Mask: net.CIDRMask(32, 32)}, // 255.255.255.255/32 (受限广播)
 }
 
@@ -187,13 +187,17 @@ func (p *SSRFProtection) isAllowedPort(port int) bool {
 	return false
 }
 
-// isDomainWhitelisted 检查域名是否在白名单中
-func isDomainListed(domain string, list []string) bool {
+// IsDomainListed checks whether a domain matches a domain list entry.
+// Entries support exact matches and wildcard suffixes such as *.example.com.
+func IsDomainListed(domain string, list []string) bool {
 	if len(list) == 0 {
 		return false
 	}
 
-	domain = strings.ToLower(domain)
+	domain = strings.ToLower(strings.TrimSpace(domain))
+	if domain == "" {
+		return false
+	}
 	for _, item := range list {
 		item = strings.ToLower(strings.TrimSpace(item))
 		if item == "" {
@@ -215,7 +219,7 @@ func isDomainListed(domain string, list []string) bool {
 }
 
 func (p *SSRFProtection) isDomainAllowed(domain string) bool {
-	listed := isDomainListed(domain, p.DomainList)
+	listed := IsDomainListed(domain, p.DomainList)
 	if p.DomainFilterMode { // 白名单
 		return listed
 	}

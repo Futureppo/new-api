@@ -248,14 +248,7 @@ func SendEmailVerification(c *gin.Context) {
 	localPart := parts[0]
 	domainPart := parts[1]
 	if common.EmailDomainRestrictionEnabled {
-		allowed := false
-		for _, domain := range common.EmailDomainWhitelist {
-			if domainPart == domain {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
+		if !common.IsDomainListed(domainPart, common.EmailDomainWhitelist) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "The administrator has enabled the email domain name whitelist, and your email address is not allowed due to special symbols or it's not in the whitelist.",
