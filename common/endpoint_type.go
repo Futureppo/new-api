@@ -49,5 +49,17 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		// add to first
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
+	if IsVideoGenerationModel(modelName) {
+		endpointTypes = prependEndpointType(endpointTypes, constant.EndpointTypeOpenAIVideo)
+	}
 	return endpointTypes
+}
+
+func prependEndpointType(endpointTypes []constant.EndpointType, endpointType constant.EndpointType) []constant.EndpointType {
+	for _, et := range endpointTypes {
+		if et == endpointType {
+			return endpointTypes
+		}
+	}
+	return append([]constant.EndpointType{endpointType}, endpointTypes...)
 }
