@@ -13,6 +13,7 @@ var (
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
+		"agnes-image-",
 		"prefix:imagen-",
 		"flux-",
 		"flux.1-",

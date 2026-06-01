@@ -126,8 +126,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			requestPath = "/v1/embeddings" // 修改请求路径
 		}
 
-		// VolcEngine 图像生成模型
-		if channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream") {
+		if common.IsImageGenerationModel(testModel) ||
+			(channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream")) {
 			requestPath = "/v1/images/generations"
 		}
 
@@ -783,6 +783,15 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		strings.Contains(strings.ToLower(model), "embed") {
 		// 返回 EmbeddingRequest
 		return buildTestEmbeddingRequest(model, channel)
+	}
+
+	if common.IsImageGenerationModel(model) {
+		return &dto.ImageRequest{
+			Model:  model,
+			Prompt: "a cute cat",
+			N:      lo.ToPtr(uint(1)),
+			Size:   "1024x1024",
+		}
 	}
 
 	// Responses compaction models (must use /v1/responses/compact)
