@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/types"
 )
 
@@ -110,7 +111,7 @@ func RelayErrorHandler(ctx context.Context, resp *http.Response, showBodyWhenFai
 		return
 	}
 
-	if common.GetJsonType(errResponse.Error) == "object" {
+	if common.GetJsonType(errResponse.Error) == "object" || common.GetJsonType(errResponse.Detail) == "object" {
 		// General format error (OpenAI, Anthropic, Gemini, etc.)
 		oaiError := errResponse.TryToOpenAIError()
 		if oaiError != nil {
@@ -212,10 +213,81 @@ func TaskErrorFromAPIError(apiErr *types.NewAPIError) *dto.TaskError {
 	if apiErr == nil {
 		return nil
 	}
+	oai := apiErr.ToOpenAIError()
+	message := oai.Message
+	if message == "" {
+		message = apiErr.Error()
+	}
 	return &dto.TaskError{
 		Code:       string(apiErr.GetErrorCode()),
-		Message:    apiErr.Err.Error(),
+		Message:    message,
 		StatusCode: apiErr.StatusCode,
-		Error:      apiErr.Err,
+		Error:      apiErr,
 	}
+}
+
+func TaskErrorToAPIError(taskErr *dto.TaskError) *types.NewAPIError {
+	if taskErr == nil {
+		return nil
+	}
+	var apiErr *types.NewAPIError
+	if errors.As(taskErr.Error, &apiErr) {
+		if apiErr.StatusCode == 0 && taskErr.StatusCode != 0 {
+			apiErr.StatusCode = taskErr.StatusCode
+		}
+		return apiErr
+	}
+
+	message := taskErr.Message
+	if message == "" && taskErr.Error != nil {
+		message = taskErr.Error.Error()
+	}
+	if message == "" {
+		message = taskErr.Code
+	}
+	code := taskErr.Code
+	if code == "" {
+		code = string(types.ErrorCodeBadResponseStatusCode)
+	}
+	statusCode := taskErr.StatusCode
+	if statusCode == 0 {
+		statusCode = http.StatusInternalServerError
+	}
+
+	oai := types.OpenAIError{
+		Message: message,
+		Type:    code,
+		Code:    code,
+	}
+	if IsViolationFeeCode(types.ErrorCode(code)) {
+		return types.WithOpenAIError(oai, statusCode, types.ErrOptionWithSkipRetry())
+	}
+	return types.WithOpenAIError(oai, statusCode)
+}
+
+func NormalizeViolationFeeTaskError(relayInfo *relaycommon.RelayInfo, taskErr *dto.TaskError) *dto.TaskError {
+	if taskErr == nil {
+		return nil
+	}
+	apiErr := NormalizeViolationFeeErrorForRelay(relayInfo, TaskErrorToAPIError(taskErr))
+	if apiErr == nil {
+		return taskErr
+	}
+	normalized := TaskErrorFromAPIError(apiErr)
+	if normalized == nil {
+		return taskErr
+	}
+	normalized.LocalError = taskErr.LocalError
+	return normalized
+}
+
+func IsViolationFeeTaskError(taskErr *dto.TaskError) bool {
+	if taskErr == nil {
+		return false
+	}
+	if IsViolationFeeCode(types.ErrorCode(taskErr.Code)) {
+		return true
+	}
+	apiErr := TaskErrorToAPIError(taskErr)
+	return apiErr != nil && IsViolationFeeCode(apiErr.GetErrorCode())
 }

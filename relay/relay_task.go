@@ -222,8 +222,10 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {
-		responseBody, _ := io.ReadAll(resp.Body)
-		return nil, service.TaskErrorWrapper(fmt.Errorf("%s", string(responseBody)), "fail_to_fetch_task", resp.StatusCode)
+		newAPIError := service.RelayErrorHandler(c.Request.Context(), resp, false)
+		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
+		newAPIError = service.NormalizeViolationFeeErrorForRelay(info, newAPIError)
+		return nil, service.TaskErrorFromAPIError(newAPIError)
 	}
 
 	// 10. 返回 OtherRatios 给下游（header 必须在 DoResponse 写 body 之前设置）

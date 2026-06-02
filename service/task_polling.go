@@ -410,7 +410,11 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 				}
 
 				// 其他错误认为是任务失败，记录错误信息并更新任务状态
-				taskResult = relaycommon.FailTaskInfo("upstream returned error")
+				reason := openaiError.Message
+				if reason == "" {
+					reason = errorResult.ToMessage()
+				}
+				taskResult = relaycommon.FailTaskInfo(reason)
 			} else {
 				// unknown error format, log original response
 				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
@@ -421,6 +425,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	shouldRefund := false
 	shouldSettle := false
+	shouldChargeViolationFee := false
+	violationFeeReason := taskViolationFeeReason(taskResult.Reason, responseBody)
 	quota := task.Quota
 
 	task.Status = model.TaskStatus(taskResult.Status)
@@ -458,11 +464,15 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			task.FinishTime = now
 		}
 		task.FailReason = taskResult.Reason
+		if HasViolationFeeMarkerText(violationFeeReason) && !HasViolationFeeMarkerText(task.FailReason) {
+			task.FailReason = violationFeeReason
+		}
 		logger.LogInfo(ctx, fmt.Sprintf("Task %s failed: %s", task.TaskID, task.FailReason))
 		taskResult.Progress = taskcommon.ProgressComplete
 		if quota != 0 {
 			shouldRefund = true
 		}
+		shouldChargeViolationFee = ShouldChargeTaskViolationFee(ch.Type, task, violationFeeReason)
 	default:
 		return fmt.Errorf("unknown task status %s for task %s", taskResult.Status, task.TaskID)
 	}
@@ -477,10 +487,12 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
 			shouldRefund = false
 			shouldSettle = false
+			shouldChargeViolationFee = false
 		} else if !won {
 			logger.LogWarn(ctx, fmt.Sprintf("Task %s already transitioned by another process, skip billing", task.TaskID))
 			shouldRefund = false
 			shouldSettle = false
+			shouldChargeViolationFee = false
 		}
 	} else if !snap.Equal(task.Snapshot()) {
 		if _, err := task.UpdateWithStatus(snap.Status); err != nil {
@@ -497,8 +509,26 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if shouldRefund {
 		RefundTaskQuota(ctx, task, task.FailReason)
 	}
+	if shouldChargeViolationFee {
+		ChargeTaskViolationFeeIfNeeded(ctx, task, ch.Type, resp.StatusCode, violationFeeReason)
+	}
 
 	return nil
+}
+
+func taskViolationFeeReason(reason string, responseBody []byte) string {
+	if HasViolationFeeMarkerText(reason) {
+		return strings.TrimSpace(reason)
+	}
+	body := strings.TrimSpace(string(responseBody))
+	if !HasViolationFeeMarkerText(body) {
+		return strings.TrimSpace(reason)
+	}
+	const maxReasonLen = 2048
+	if len(body) > maxReasonLen {
+		return body[:maxReasonLen] + "..."
+	}
+	return body
 }
 
 func redactVideoResponseBody(body []byte) []byte {

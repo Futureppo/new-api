@@ -2,6 +2,7 @@ package xai
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -64,6 +65,22 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
+	upstreamModelName := ""
+	if info != nil {
+		upstreamModelName = info.UpstreamModelName
+	}
+	if isXAIVideoModel(request.Model) || isXAIVideoModel(upstreamModelName) {
+		modelName := request.Model
+		if modelName == "" {
+			modelName = upstreamModelName
+		}
+		return nil, types.NewErrorWithStatusCode(
+			fmt.Errorf("model %s is a video generation model; use /v1/videos or /v1/videos/generations instead of /v1/chat/completions", modelName),
+			types.ErrorCodeInvalidRequest,
+			http.StatusBadRequest,
+			types.ErrOptionWithSkipRetry(),
+		)
+	}
 	if strings.HasSuffix(info.UpstreamModelName, "-search") {
 		info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-search")
 		request.Model = info.UpstreamModelName
@@ -89,6 +106,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		info.UpstreamModelName = request.Model
 	}
 	return request, nil
+}
+
+func isXAIVideoModel(modelName string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelName)), "grok-imagine-video")
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {

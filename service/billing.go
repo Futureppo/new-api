@@ -25,6 +25,17 @@ func PreConsumeBilling(c *gin.Context, preConsumedQuota int, relayInfo *relaycom
 	return nil
 }
 
+func RefundBilling(c *gin.Context, relayInfo *relaycommon.RelayInfo) {
+	if relayInfo == nil || relayInfo.Billing == nil {
+		return
+	}
+	if syncRefund, ok := relayInfo.Billing.(interface{ RefundSync(*gin.Context) }); ok {
+		syncRefund.RefundSync(c)
+		return
+	}
+	relayInfo.Billing.Refund(c)
+}
+
 // ---------------------------------------------------------------------------
 // SettleBilling — 后结算辅助函数
 // ---------------------------------------------------------------------------

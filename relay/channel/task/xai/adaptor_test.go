@@ -33,6 +33,24 @@ func TestParseTaskResultDone(t *testing.T) {
 	require.Equal(t, "https://vidgen.x.ai/result.mp4", taskInfo.Url)
 }
 
+func TestParseTaskResultFailureKeepsUpstreamErrorMessage(t *testing.T) {
+	body := []byte(`{
+		"status": "failed",
+		"error": {
+			"message": "Content violates usage guidelines",
+			"code": "safety_violation"
+		},
+		"progress": 100
+	}`)
+
+	taskInfo, err := (&TaskAdaptor{}).ParseTaskResult(body)
+
+	require.NoError(t, err)
+	require.Equal(t, model.TaskStatusFailure, taskInfo.Status)
+	require.Equal(t, "100%", taskInfo.Progress)
+	require.Equal(t, "Content violates usage guidelines", taskInfo.Reason)
+}
+
 func TestEstimateBillingUsesDurationAndResolution(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Set("xai_video_request", map[string]any{

@@ -35,6 +35,16 @@ type BillingSession struct {
 	mu               sync.Mutex
 }
 
+type billingRefundWork struct {
+	tokenId        int
+	tokenKey       string
+	isPlayground   bool
+	tokenConsumed  int
+	extraReserved  int
+	subscriptionId int
+	funding        FundingSource
+}
+
 // Settle 根据实际消耗额度进行结算。
 // 资金来源和令牌额度分两步提交：若资金来源已提交但令牌调整失败，
 // 会标记 fundingSettled 防止 Refund 对已提交的资金来源执行退款。
@@ -80,10 +90,28 @@ func (s *BillingSession) Settle(actualQuota int) error {
 
 // Refund 退还所有预扣费，幂等安全，异步执行。
 func (s *BillingSession) Refund(c *gin.Context) {
+	work := s.prepareRefund(c)
+	if work == nil {
+		return
+	}
+	gopool.Go(func() {
+		work.run()
+	})
+}
+
+func (s *BillingSession) RefundSync(c *gin.Context) {
+	work := s.prepareRefund(c)
+	if work == nil {
+		return
+	}
+	work.run()
+}
+
+func (s *BillingSession) prepareRefund(c *gin.Context) *billingRefundWork {
 	s.mu.Lock()
 	if s.settled || s.refunded || !s.needsRefundLocked() {
 		s.mu.Unlock()
-		return
+		return nil
 	}
 	s.refunded = true
 	s.mu.Unlock()
@@ -94,32 +122,36 @@ func (s *BillingSession) Refund(c *gin.Context) {
 		s.funding.Source(),
 	))
 
-	// 复制需要的值到闭包中
-	tokenId := s.relayInfo.TokenId
-	tokenKey := s.relayInfo.TokenKey
-	isPlayground := s.relayInfo.IsPlayground
-	tokenConsumed := s.tokenConsumed
-	extraReserved := s.extraReserved
-	subscriptionId := s.relayInfo.SubscriptionId
-	funding := s.funding
+	return &billingRefundWork{
+		tokenId:        s.relayInfo.TokenId,
+		tokenKey:       s.relayInfo.TokenKey,
+		isPlayground:   s.relayInfo.IsPlayground,
+		tokenConsumed:  s.tokenConsumed,
+		extraReserved:  s.extraReserved,
+		subscriptionId: s.relayInfo.SubscriptionId,
+		funding:        s.funding,
+	}
+}
 
-	gopool.Go(func() {
-		// 1) 退还资金来源
-		if err := funding.Refund(); err != nil {
-			common.SysLog("error refunding billing source: " + err.Error())
+func (w *billingRefundWork) run() {
+	if w == nil || w.funding == nil {
+		return
+	}
+	// 1) 退还资金来源
+	if err := w.funding.Refund(); err != nil {
+		common.SysLog("error refunding billing source: " + err.Error())
+	}
+	if w.extraReserved > 0 && w.funding.Source() == BillingSourceSubscription && w.subscriptionId > 0 {
+		if err := model.PostConsumeUserSubscriptionDelta(w.subscriptionId, -int64(w.extraReserved)); err != nil {
+			common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
 		}
-		if extraReserved > 0 && funding.Source() == BillingSourceSubscription && subscriptionId > 0 {
-			if err := model.PostConsumeUserSubscriptionDelta(subscriptionId, -int64(extraReserved)); err != nil {
-				common.SysLog("error refunding subscription extra reserved quota: " + err.Error())
-			}
+	}
+	// 2) 退还令牌额度
+	if w.tokenConsumed > 0 && !w.isPlayground {
+		if err := model.IncreaseTokenQuota(w.tokenId, w.tokenKey, w.tokenConsumed); err != nil {
+			common.SysLog("error refunding token quota: " + err.Error())
 		}
-		// 2) 退还令牌额度
-		if tokenConsumed > 0 && !isPlayground {
-			if err := model.IncreaseTokenQuota(tokenId, tokenKey, tokenConsumed); err != nil {
-				common.SysLog("error refunding token quota: " + err.Error())
-			}
-		}
-	})
+	}
 }
 
 // NeedsRefund 返回是否存在需要退还的预扣状态。

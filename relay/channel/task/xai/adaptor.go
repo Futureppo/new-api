@@ -202,6 +202,8 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusFailure
 		if res.Error != nil && res.Error.Message != "" {
 			taskResult.Reason = res.Error.Message
+		} else if res.Error != nil && res.Error.Code != "" {
+			taskResult.Reason = res.Error.Code
 		} else {
 			taskResult.Reason = "task failed"
 		}

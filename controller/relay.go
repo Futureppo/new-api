@@ -171,10 +171,8 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		// Only return quota if downstream failed and quota was actually pre-consumed
 		if newAPIError != nil {
-			newAPIError = service.NormalizeViolationFeeError(newAPIError)
-			if relayInfo.Billing != nil {
-				relayInfo.Billing.Refund(c)
-			}
+			newAPIError = service.NormalizeViolationFeeErrorForRelay(relayInfo, newAPIError)
+			service.RefundBilling(c, relayInfo)
 			service.ChargeViolationFeeIfNeeded(c, relayInfo, newAPIError)
 		}
 	}()
@@ -238,7 +236,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		}
 		model.ReleaseChannelDailySuccess(reservation)
 
-		newAPIError = service.NormalizeViolationFeeError(newAPIError)
+		newAPIError = service.NormalizeViolationFeeErrorForRelay(relayInfo, newAPIError)
 		relayInfo.LastError = newAPIError
 
 		processChannelError(c, *types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey, common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()), newAPIError)
@@ -573,8 +571,10 @@ func RelayTask(c *gin.Context) {
 	var result *relay.TaskSubmitResult
 	var taskErr *dto.TaskError
 	defer func() {
-		if taskErr != nil && relayInfo.Billing != nil {
-			relayInfo.Billing.Refund(c)
+		if taskErr != nil {
+			taskErr = service.NormalizeViolationFeeTaskError(relayInfo, taskErr)
+			service.RefundBilling(c, relayInfo)
+			service.ChargeViolationFeeIfNeeded(c, relayInfo, service.TaskErrorToAPIError(taskErr))
 		}
 	}()
 
@@ -639,13 +639,14 @@ func RelayTask(c *gin.Context) {
 		if taskErr == nil {
 			break
 		}
+		taskErr = service.NormalizeViolationFeeTaskError(relayInfo, taskErr)
 		model.ReleaseChannelDailySuccess(reservation)
 
 		if !taskErr.LocalError {
 			processChannelError(c,
 				*types.NewChannelError(channel.Id, channel.Type, channel.Name, channel.ChannelInfo.IsMultiKey,
 					common.GetContextKeyString(c, constant.ContextKeyChannelKey), channel.GetAutoBan()),
-				types.NewOpenAIError(taskErr.Error, types.ErrorCodeBadResponseStatusCode, taskErr.StatusCode))
+				service.TaskErrorToAPIError(taskErr))
 		}
 
 		if !shouldRetryTaskRelay(c, channel.Id, taskErr, retryParam.GetRemainingRetryTimes()) {
@@ -689,6 +690,7 @@ func RelayTask(c *gin.Context) {
 	}
 
 	if taskErr != nil {
+		taskErr = service.NormalizeViolationFeeTaskError(relayInfo, taskErr)
 		respondTaskError(c, taskErr)
 	}
 }
@@ -703,6 +705,9 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
 	if taskErr == nil {
+		return false
+	}
+	if service.IsViolationFeeTaskError(taskErr) {
 		return false
 	}
 	if service.ShouldSkipRetryAfterChannelAffinityFailure(c) {
