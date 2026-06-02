@@ -170,6 +170,9 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 		var bodyMap map[string]interface{}
 		if err := common.Unmarshal(cachedBody, &bodyMap); err == nil {
 			bodyMap["model"] = info.UpstreamModelName
+			if isXaiRelayInfo(info) {
+				normalizeXaiVideoRequestBody(bodyMap)
+			}
 			if newBody, err := common.Marshal(bodyMap); err == nil {
 				return bytes.NewReader(newBody), nil
 			}
@@ -338,6 +341,55 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 
 func isXaiVideoModel(modelName string) bool {
 	return strings.HasPrefix(modelName, "grok-imagine-video")
+}
+
+func normalizeXaiVideoRequestBody(req map[string]interface{}) {
+	if req == nil {
+		return
+	}
+
+	if image, ok := req["image"]; ok {
+		if imageURL, ok := image.(string); ok && strings.TrimSpace(imageURL) != "" {
+			req["image"] = map[string]interface{}{"url": imageURL}
+		}
+		return
+	}
+
+	if imageURL := getRequestString(req, "image_url"); imageURL != "" {
+		req["image"] = map[string]interface{}{"url": imageURL}
+		delete(req, "image_url")
+		return
+	}
+
+	if inputReference := getRequestString(req, "input_reference"); inputReference != "" {
+		req["image"] = map[string]interface{}{"url": inputReference}
+		delete(req, "input_reference")
+		return
+	}
+
+	if images, ok := req["images"].([]interface{}); ok && len(images) > 0 {
+		switch first := images[0].(type) {
+		case string:
+			if strings.TrimSpace(first) != "" {
+				req["image"] = map[string]interface{}{"url": first}
+				delete(req, "images")
+			}
+		case map[string]interface{}:
+			req["image"] = first
+			delete(req, "images")
+		}
+	}
+}
+
+func getRequestString(req map[string]interface{}, key string) string {
+	value, ok := req[key]
+	if !ok || value == nil {
+		return ""
+	}
+	if s, ok := value.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }
 
 func isXaiRelayInfo(info *relaycommon.RelayInfo) bool {

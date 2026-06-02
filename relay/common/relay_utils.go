@@ -86,12 +86,14 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	formData := c.Request.PostForm
 	req = TaskSubmitReq{
-		Prompt:   formData.Get("prompt"),
-		Model:    formData.Get("model"),
-		Mode:     formData.Get("mode"),
-		Image:    formData.Get("image"),
-		Size:     formData.Get("size"),
-		Metadata: make(map[string]interface{}),
+		Prompt:         formData.Get("prompt"),
+		Model:          formData.Get("model"),
+		Mode:           formData.Get("mode"),
+		Image:          formData.Get("image"),
+		ImageURL:       formData.Get("image_url"),
+		InputReference: formData.Get("input_reference"),
+		Size:           formData.Get("size"),
+		Metadata:       make(map[string]interface{}),
 	}
 
 	if durationStr := formData.Get("seconds"); durationStr != "" {
@@ -102,6 +104,12 @@ func validateMultipartTaskRequest(c *gin.Context, info *RelayInfo, action string
 
 	if images := formData["images"]; len(images) > 0 {
 		req.Images = images
+	}
+	if req.ImageURL != "" && len(req.Images) == 0 {
+		req.Images = []string{req.ImageURL}
+	}
+	if req.Image != "" && len(req.Images) == 0 {
+		req.Images = []string{req.Image}
 	}
 
 	for key, values := range formData {
@@ -140,6 +148,12 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 	if req.InputReference != "" {
 		req.Images = []string{req.InputReference}
 	}
+	if req.ImageURL != "" && len(req.Images) == 0 {
+		req.Images = []string{req.ImageURL}
+	}
+	if req.Image != "" && len(req.Images) == 0 {
+		req.Images = []string{req.Image}
+	}
 
 	if strings.TrimSpace(req.Model) == "" {
 		return createTaskError(fmt.Errorf("model field is required"), "missing_model", http.StatusBadRequest, true)
@@ -175,7 +189,6 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		}
 		// OtherRatios 已移到 Sora adaptor 的 EstimateBilling 中设置
 	}
-
 	storeTaskRequest(c, info, action, req)
 
 	return nil
@@ -187,6 +200,7 @@ func isKnownTaskField(field string) bool {
 		"model":           true,
 		"mode":            true,
 		"image":           true,
+		"image_url":       true,
 		"images":          true,
 		"size":            true,
 		"duration":        true,
@@ -217,6 +231,9 @@ func ValidateBasicTaskRequest(c *gin.Context, info *RelayInfo, action string) *d
 	if len(req.Images) == 0 && strings.TrimSpace(req.Image) != "" {
 		// 兼容单图上传
 		req.Images = []string{req.Image}
+	}
+	if len(req.Images) == 0 && strings.TrimSpace(req.ImageURL) != "" {
+		req.Images = []string{req.ImageURL}
 	}
 
 	storeTaskRequest(c, info, action, req)

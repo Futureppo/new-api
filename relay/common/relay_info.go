@@ -679,6 +679,7 @@ type TaskSubmitReq struct {
 	Model          string                 `json:"model,omitempty"`
 	Mode           string                 `json:"mode,omitempty"`
 	Image          string                 `json:"image,omitempty"`
+	ImageURL       string                 `json:"image_url,omitempty"`
 	Images         []string               `json:"images,omitempty"`
 	Size           string                 `json:"size,omitempty"`
 	Duration       int                    `json:"duration,omitempty"`
@@ -692,7 +693,10 @@ func (t *TaskSubmitReq) GetPrompt() string {
 }
 
 func (t *TaskSubmitReq) HasImage() bool {
-	return len(t.Images) > 0
+	return strings.TrimSpace(t.Image) != "" ||
+		strings.TrimSpace(t.ImageURL) != "" ||
+		strings.TrimSpace(t.InputReference) != "" ||
+		len(t.Images) > 0
 }
 
 func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
@@ -700,6 +704,7 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		Metadata json.RawMessage `json:"metadata,omitempty"`
 		Duration json.RawMessage `json:"duration,omitempty"`
+		Image    json.RawMessage `json:"image,omitempty"`
 		*Alias
 	}{
 		Alias: (*Alias)(t),
@@ -719,6 +724,20 @@ func (t *TaskSubmitReq) UnmarshalJSON(data []byte) error {
 				if v, err := strconv.Atoi(durationStr); err == nil {
 					t.Duration = v
 				}
+			}
+		}
+	}
+
+	if len(aux.Image) > 0 {
+		var imageStr string
+		if err := common.Unmarshal(aux.Image, &imageStr); err == nil {
+			t.Image = imageStr
+		} else {
+			var imageObj struct {
+				URL string `json:"url"`
+			}
+			if err := common.Unmarshal(aux.Image, &imageObj); err == nil {
+				t.Image = imageObj.URL
 			}
 		}
 	}
