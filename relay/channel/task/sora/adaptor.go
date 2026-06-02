@@ -55,6 +55,9 @@ type responseTask struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Video *struct {
+		Url string `json:"url"`
+	} `json:"video,omitempty"`
 }
 
 // ============================
@@ -130,8 +133,17 @@ func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if info.Action == constant.TaskActionRemix {
-		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, info.OriginTaskID), nil
+	action := ""
+	originTaskID := ""
+	if info != nil && info.TaskRelayInfo != nil {
+		action = info.TaskRelayInfo.Action
+		originTaskID = info.TaskRelayInfo.OriginTaskID
+	}
+	if action == constant.TaskActionRemix {
+		return fmt.Sprintf("%s/v1/videos/%s/remix", a.baseURL, originTaskID), nil
+	}
+	if isXaiRelayInfo(info) {
+		return fmt.Sprintf("%s/v1/videos/generations", a.baseURL), nil
 	}
 	return fmt.Sprintf("%s/v1/videos", a.baseURL), nil
 }
@@ -302,10 +314,13 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		taskResult.Status = model.TaskStatusQueued
 	case "processing", "in_progress":
 		taskResult.Status = model.TaskStatusInProgress
-	case "completed":
+	case "completed", "succeeded", "succeed", "done":
 		taskResult.Status = model.TaskStatusSuccess
-		// Url intentionally left empty — the caller constructs the proxy URL using the public task ID
-	case "failed", "cancelled":
+		if resTask.Video != nil {
+			taskResult.Url = resTask.Video.Url
+		}
+		// If no URL is returned, the caller constructs the proxy URL using the public task ID.
+	case "failed", "cancelled", "canceled":
 		taskResult.Status = model.TaskStatusFailure
 		if resTask.Error != nil {
 			taskResult.Reason = resTask.Error.Message
@@ -319,6 +334,23 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 
 	return &taskResult, nil
+}
+
+func isXaiVideoModel(modelName string) bool {
+	return strings.HasPrefix(modelName, "grok-imagine-video")
+}
+
+func isXaiRelayInfo(info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	if isXaiVideoModel(info.OriginModelName) {
+		return true
+	}
+	if info.ChannelMeta == nil {
+		return false
+	}
+	return isXaiVideoModel(info.ChannelMeta.UpstreamModelName)
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
