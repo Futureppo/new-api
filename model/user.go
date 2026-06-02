@@ -770,11 +770,22 @@ func IsAdmin(userId int) bool {
 //	return user.Status == common.UserStatusEnabled, nil
 //}
 
+func normalizeAccessToken(token string) string {
+	token = strings.TrimSpace(token)
+	if strings.EqualFold(token, "Bearer") {
+		return ""
+	}
+	if len(token) > len("Bearer ") && strings.EqualFold(token[:len("Bearer ")], "Bearer ") {
+		token = strings.TrimSpace(token[len("Bearer "):])
+	}
+	return token
+}
+
 func ValidateAccessToken(token string) (*User, error) {
+	token = normalizeAccessToken(token)
 	if token == "" {
 		return nil, nil
 	}
-	token = strings.Replace(token, "Bearer ", "", 1)
 	user := &User{}
 	err := DB.Where("access_token = ?", token).First(user).Error
 	if err != nil {
