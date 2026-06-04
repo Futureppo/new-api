@@ -349,6 +349,18 @@ func SetApiRouter(router *gin.Engine) {
 			groupRoute.GET("/", controller.GetGroups)
 		}
 
+		ipBanRoute := apiRouter.Group("/ip_ban")
+		ipBanRoute.Use(middleware.AdminAuth())
+		{
+			ipBanRoute.GET("/", controller.GetAllIPBans)
+			ipBanRoute.GET("/search", controller.SearchIPBans)
+			ipBanRoute.GET("/:id", controller.GetIPBan)
+			ipBanRoute.POST("/", controller.AddIPBan)
+			ipBanRoute.PUT("/", controller.UpdateIPBan)
+			ipBanRoute.DELETE("/:id", controller.DeleteIPBan)
+			ipBanRoute.POST("/batch", controller.BatchCreateIPBans)
+		}
+
 		prefillGroupRoute := apiRouter.Group("/prefill_group")
 		prefillGroupRoute.Use(middleware.AdminAuth())
 		{

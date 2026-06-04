@@ -51,6 +51,7 @@ import ModelPage from './pages/Model';
 import ModelDeploymentPage from './pages/ModelDeployment';
 import Playground from './pages/Playground';
 import Subscription from './pages/Subscription';
+import IPBan from './pages/IPBan';
 import Site from './pages/Site';
 import Enhancements, { ModelStatusPublicPage } from './pages/Enhancements';
 import OAuth2Callback from './components/auth/OAuth2Callback';
@@ -145,6 +146,14 @@ function App() {
           element={
             <AdminRoute>
               <Channel />
+            </AdminRoute>
+          }
+        />
+        <Route
+          path='/console/ip-ban'
+          element={
+            <AdminRoute>
+              <IPBan />
             </AdminRoute>
           }
         />

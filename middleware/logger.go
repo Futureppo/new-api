@@ -8,6 +8,7 @@ import (
 )
 
 const RouteTagKey = "route_tag"
+const SkipAccessLogKey = "skip_access_log"
 
 func RouteTag(tag string) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -18,6 +19,11 @@ func RouteTag(tag string) gin.HandlerFunc {
 
 func SetUpLogger(server *gin.Engine) {
 	server.Use(gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
+		if param.Keys != nil {
+			if skip, _ := param.Keys[SkipAccessLogKey].(bool); skip {
+				return ""
+			}
+		}
 		var requestID string
 		if param.Keys != nil {
 			requestID, _ = param.Keys[common.RequestIdKey].(string)

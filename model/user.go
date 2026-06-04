@@ -2,7 +2,6 @@ package model
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -80,7 +79,7 @@ func (user *User) SetAccessToken(token string) {
 func (user *User) GetSetting() dto.UserSetting {
 	setting := dto.UserSetting{}
 	if user.Setting != "" {
-		err := json.Unmarshal([]byte(user.Setting), &setting)
+		err := common.Unmarshal([]byte(user.Setting), &setting)
 		if err != nil {
 			common.SysLog("failed to unmarshal setting: " + err.Error())
 		}
@@ -91,7 +90,7 @@ func (user *User) GetSetting() dto.UserSetting {
 
 func (user *User) SetSetting(setting dto.UserSetting) {
 	setting.RecordIpLog = true
-	settingBytes, err := json.Marshal(setting)
+	settingBytes, err := common.Marshal(setting)
 	if err != nil {
 		common.SysLog("failed to marshal setting: " + err.Error())
 		return
@@ -132,8 +131,11 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 		// 管理员可以访问管理员区域，但不能访问系统设置
 		defaultConfig["admin"] = map[string]interface{}{
 			"enabled":      true,
+			"ip_ban":       true,
 			"channel":      true,
 			"models":       true,
+			"deployment":   true,
+			"subscription": true,
 			"redemption":   true,
 			"user":         true,
 			"enhancements": true,
@@ -144,8 +146,11 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 		// 超级管理员可以访问所有功能
 		defaultConfig["admin"] = map[string]interface{}{
 			"enabled":      true,
+			"ip_ban":       true,
 			"channel":      true,
 			"models":       true,
+			"deployment":   true,
+			"subscription": true,
 			"redemption":   true,
 			"user":         true,
 			"enhancements": true,
@@ -156,7 +161,7 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 	// 普通用户不包含admin区域
 
 	// 转换为JSON字符串
-	configBytes, err := json.Marshal(defaultConfig)
+	configBytes, err := common.Marshal(defaultConfig)
 	if err != nil {
 		common.SysLog("生成默认边栏配置失败: " + err.Error())
 		return ""

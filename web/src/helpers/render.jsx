@@ -82,6 +82,7 @@ import {
   Server,
   CalendarClock,
   Sparkles,
+  Ban,
 } from 'lucide-react';
 import {
   SiAtlassian,
@@ -152,6 +153,8 @@ export function getLucideIcon(key, selected = false) {
       return <Server {...commonProps} color={iconColor} />;
     case 'subscription':
       return <CalendarClock {...commonProps} color={iconColor} />;
+    case 'ip_ban':
+      return <Ban {...commonProps} color={iconColor} />;
     case 'enhancements':
       return <Sparkles {...commonProps} color={iconColor} />;
     case 'setting':

@@ -37,6 +37,7 @@ const routerMap = {
   redemption: '/console/redemption',
   topup: '/console/topup',
   user: '/console/user',
+  ip_ban: '/console/ip-ban',
   subscription: '/console/subscription',
   log: '/console/log',
   midjourney: '/console/midjourney',
@@ -149,6 +150,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
 
   const adminItems = useMemo(() => {
     const items = [
+      {
+        text: t('IP封禁'),
+        itemKey: 'ip_ban',
+        to: '/console/ip-ban',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
       {
         text: t('渠道管理'),
         itemKey: 'channel',
