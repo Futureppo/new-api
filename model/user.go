@@ -13,6 +13,7 @@ import (
 
 	"github.com/bytedance/gopkg/util/gopool"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const UserNameMaxLength = 20
@@ -200,7 +201,22 @@ func GetMaxUserId() int {
 	return user.Id
 }
 
-func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err error) {
+type UserListQuery struct {
+	Keyword    string
+	Group      string
+	Status     string
+	QuotaOrder string
+}
+
+func GetAllUsers(pageInfo *common.PageInfo, filter UserListQuery) (users []*User, total int64, err error) {
+	return listUsers(filter, pageInfo.GetStartIdx(), pageInfo.GetPageSize())
+}
+
+func SearchUsers(filter UserListQuery, startIdx int, num int) ([]*User, int64, error) {
+	return listUsers(filter, startIdx, num)
+}
+
+func listUsers(filter UserListQuery, startIdx int, num int) (users []*User, total int64, err error) {
 	// Start transaction
 	tx := DB.Begin()
 	if tx.Error != nil {
@@ -212,15 +228,17 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 		}
 	}()
 
+	query := applyUserListQuery(tx.Unscoped().Model(&User{}), filter)
+
 	// Get total count within transaction
-	err = tx.Unscoped().Model(&User{}).Count(&total).Error
+	err = query.Count(&total).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
 	}
 
 	// Get paginated users within same transaction
-	err = tx.Unscoped().Order("id desc").Limit(pageInfo.GetPageSize()).Offset(pageInfo.GetStartIdx()).Omit("password").Find(&users).Error
+	err = applyUserListOrder(query, filter.QuotaOrder).Limit(num).Offset(startIdx).Omit("password").Find(&users).Error
 	if err != nil {
 		tx.Rollback()
 		return nil, 0, err
@@ -234,71 +252,79 @@ func GetAllUsers(pageInfo *common.PageInfo) (users []*User, total int64, err err
 	return users, total, nil
 }
 
-func SearchUsers(keyword string, group string, startIdx int, num int) ([]*User, int64, error) {
-	var users []*User
-	var total int64
-	var err error
+func applyUserListQuery(query *gorm.DB, filter UserListQuery) *gorm.DB {
+	keyword := strings.TrimSpace(filter.Keyword)
+	group := strings.TrimSpace(filter.Group)
 
-	// 开始事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return nil, 0, tx.Error
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
+	if keyword != "" {
+		likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
+		keywordLike := "%" + keyword + "%"
 
-	// 构建基础查询
-	query := tx.Unscoped().Model(&User{})
-
-	// 构建搜索条件
-	likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
-
-	// 尝试将关键字转换为整数ID
-	keywordInt, err := strconv.Atoi(keyword)
-	if err == nil {
-		// 如果是数字，同时搜索ID和其他字段
-		likeCondition = "id = ? OR " + likeCondition
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				keywordInt, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", group)
+		if keywordInt, err := strconv.Atoi(keyword); err == nil {
+			likeCondition = "id = ? OR " + likeCondition
+			query = query.Where("("+likeCondition+")", keywordInt, keywordLike, keywordLike, keywordLike)
 		} else {
-			query = query.Where(likeCondition,
-				keywordInt, "%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
-		}
-	} else {
-		// 非数字关键字，只搜索字符串字段
-		if group != "" {
-			query = query.Where("("+likeCondition+") AND "+commonGroupCol+" = ?",
-				"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%", group)
-		} else {
-			query = query.Where(likeCondition,
-				"%"+keyword+"%", "%"+keyword+"%", "%"+keyword+"%")
+			query = query.Where(likeCondition, keywordLike, keywordLike, keywordLike)
 		}
 	}
 
-	// 获取总数
-	err = query.Count(&total).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
+	if group != "" {
+		query = query.Where(commonGroupCol+" = ?", group)
 	}
 
-	// 获取分页数据
-	err = query.Omit("password").Order("id desc").Limit(num).Offset(startIdx).Find(&users).Error
-	if err != nil {
-		tx.Rollback()
-		return nil, 0, err
+	switch normalizeUserListStatus(filter.Status) {
+	case "enabled":
+		query = query.Where("deleted_at IS NULL").Where("status = ?", common.UserStatusEnabled)
+	case "disabled":
+		query = query.Where("deleted_at IS NULL").Where("status = ?", common.UserStatusDisabled)
+	case "deleted":
+		query = query.Where("deleted_at IS NOT NULL")
 	}
 
-	// 提交事务
-	if err = tx.Commit().Error; err != nil {
-		return nil, 0, err
+	return query
+}
+
+func normalizeUserListStatus(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "enabled", "active", "1":
+		return "enabled"
+	case "disabled", "2":
+		return "disabled"
+	case "deleted", "soft_deleted", "soft-deleted":
+		return "deleted"
+	default:
+		return ""
+	}
+}
+
+func normalizeQuotaOrder(order string) string {
+	normalized := strings.ToLower(strings.TrimSpace(order))
+	switch normalized {
+	case "asc", "desc":
+		return normalized
+	default:
+		return ""
+	}
+}
+
+func applyUserListOrder(query *gorm.DB, quotaOrder string) *gorm.DB {
+	normalizedQuotaOrder := normalizeQuotaOrder(quotaOrder)
+	if normalizedQuotaOrder != "" {
+		return query.
+			Order(clause.OrderByColumn{
+				Column: clause.Column{Name: "quota"},
+				Desc:   normalizedQuotaOrder == "desc",
+			}).
+			Order(clause.OrderByColumn{
+				Column: clause.Column{Name: "id"},
+				Desc:   true,
+			})
 	}
 
-	return users, total, nil
+	return query.Order(clause.OrderByColumn{
+		Column: clause.Column{Name: "id"},
+		Desc:   true,
+	})
 }
 
 func GetUserById(id int, selectAll bool) (*User, error) {

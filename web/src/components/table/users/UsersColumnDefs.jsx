@@ -97,6 +97,10 @@ const renderUsername = (text, record) => {
  */
 const renderStatistics = (text, record, showEnableDisableModal, t) => {
   const isDeleted = record.DeletedAt !== null;
+  const disableReason =
+    !isDeleted && record.status === 2
+      ? (record.disable_reason || '').trim()
+      : '';
 
   // Determine tag text & color like original status column
   let tagColor = 'grey';
@@ -127,9 +131,18 @@ const renderStatistics = (text, record, showEnableDisableModal, t) => {
   );
 
   return (
-    <Tooltip content={tooltipContent} position='top'>
-      {content}
-    </Tooltip>
+    <div className='flex flex-col items-start gap-1'>
+      <Tooltip content={tooltipContent} position='top'>
+        {content}
+      </Tooltip>
+      {disableReason ? (
+        <Tooltip content={disableReason} position='top'>
+          <span className='max-w-[140px] truncate text-xs text-red-600 dark:text-red-400'>
+            {disableReason}
+          </span>
+        </Tooltip>
+      ) : null}
+    </div>
   );
 };
 

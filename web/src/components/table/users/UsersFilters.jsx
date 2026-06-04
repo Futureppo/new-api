@@ -34,6 +34,15 @@ const UsersFilters = ({
   t,
 }) => {
   const formApiRef = useRef(null);
+  const statusOptions = [
+    { label: t('已启用'), value: 'enabled' },
+    { label: t('已禁用'), value: 'disabled' },
+    { label: t('已注销'), value: 'deleted' },
+  ];
+  const quotaOrderOptions = [
+    { label: `${t('剩余额度')} ↑`, value: 'asc' },
+    { label: `${t('剩余额度')} ↓`, value: 'desc' },
+  ];
 
   const handleReset = () => {
     if (!formApiRef.current) return;
@@ -60,7 +69,7 @@ const UsersFilters = ({
       stopValidateWithError={false}
       className='w-full md:w-auto order-1 md:order-2'
     >
-      <div className='flex flex-col md:flex-row items-center gap-2 w-full md:w-auto'>
+      <div className='flex flex-col md:flex-row md:flex-wrap items-center gap-2 w-full md:w-auto'>
         <div className='relative w-full md:w-64'>
           <Form.Input
             field='searchKeyword'
@@ -78,6 +87,38 @@ const UsersFilters = ({
             optionList={groupOptions}
             onChange={(value) => {
               // Group change triggers automatic search
+              setTimeout(() => {
+                searchUsers(1, pageSize);
+              }, 100);
+            }}
+            className='w-full'
+            showClear
+            pure
+            size='small'
+          />
+        </div>
+        <div className='w-full md:w-36'>
+          <Form.Select
+            field='statusFilter'
+            placeholder={t('状态')}
+            optionList={statusOptions}
+            onChange={() => {
+              setTimeout(() => {
+                searchUsers(1, pageSize);
+              }, 100);
+            }}
+            className='w-full'
+            showClear
+            pure
+            size='small'
+          />
+        </div>
+        <div className='w-full md:w-40'>
+          <Form.Select
+            field='quotaOrder'
+            placeholder={t('排序')}
+            optionList={quotaOrderOptions}
+            onChange={() => {
               setTimeout(() => {
                 searchUsers(1, pageSize);
               }, 100);

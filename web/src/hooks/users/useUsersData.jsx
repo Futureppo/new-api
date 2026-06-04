@@ -35,8 +35,7 @@ export const useUsersData = () => {
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
-  const [purgingSoftDeletedUsers, setPurgingSoftDeletedUsers] =
-    useState(false);
+  const [purgingSoftDeletedUsers, setPurgingSoftDeletedUsers] = useState(false);
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -49,6 +48,8 @@ export const useUsersData = () => {
   const formInitValues = {
     searchKeyword: '',
     searchGroup: '',
+    statusFilter: '',
+    quotaOrder: '',
   };
 
   // Form API reference
@@ -60,7 +61,42 @@ export const useUsersData = () => {
     return {
       searchKeyword: formValues.searchKeyword || '',
       searchGroup: formValues.searchGroup || '',
+      statusFilter: formValues.statusFilter || '',
+      quotaOrder: formValues.quotaOrder || '',
     };
+  };
+
+  const hasActiveFilters = ({
+    searchKeyword,
+    searchGroup,
+    statusFilter,
+    quotaOrder,
+  }) => {
+    return (
+      searchKeyword !== '' ||
+      searchGroup !== '' ||
+      statusFilter !== '' ||
+      quotaOrder !== ''
+    );
+  };
+
+  const buildUsersQueryParams = (page, pageSize, filters = {}) => {
+    const params = new URLSearchParams();
+    params.set('p', page);
+    params.set('page_size', pageSize);
+    if (filters.searchKeyword) {
+      params.set('keyword', filters.searchKeyword);
+    }
+    if (filters.searchGroup) {
+      params.set('group', filters.searchGroup);
+    }
+    if (filters.statusFilter) {
+      params.set('status', filters.statusFilter);
+    }
+    if (filters.quotaOrder) {
+      params.set('quota_order', filters.quotaOrder);
+    }
+    return params.toString();
   };
 
   // Set user format with key field
@@ -72,9 +108,10 @@ export const useUsersData = () => {
   };
 
   // Load users data
-  const loadUsers = async (startIdx, pageSize) => {
+  const loadUsers = async (startIdx, pageSize, filters = {}) => {
     setLoading(true);
-    const res = await API.get(`/api/user/?p=${startIdx}&page_size=${pageSize}`);
+    const query = buildUsersQueryParams(startIdx, pageSize, filters);
+    const res = await API.get(`/api/user/?${query}`);
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -93,23 +130,37 @@ export const useUsersData = () => {
     pageSize,
     searchKeyword = null,
     searchGroup = null,
+    statusFilter = null,
+    quotaOrder = null,
   ) => {
     // If no parameters passed, get values from form
-    if (searchKeyword === null || searchGroup === null) {
+    if (
+      searchKeyword === null ||
+      searchGroup === null ||
+      statusFilter === null ||
+      quotaOrder === null
+    ) {
       const formValues = getFormValues();
       searchKeyword = formValues.searchKeyword;
       searchGroup = formValues.searchGroup;
+      statusFilter = formValues.statusFilter;
+      quotaOrder = formValues.quotaOrder;
     }
 
-    if (searchKeyword === '' && searchGroup === '') {
-      // If keyword is blank, load files instead
+    const filters = {
+      searchKeyword,
+      searchGroup,
+      statusFilter,
+      quotaOrder,
+    };
+
+    if (!hasActiveFilters(filters)) {
       await loadUsers(startIdx, pageSize);
       return;
     }
     setSearching(true);
-    const res = await API.get(
-      `/api/user/search?keyword=${searchKeyword}&group=${searchGroup}&p=${startIdx}&page_size=${pageSize}`,
-    );
+    const query = buildUsersQueryParams(startIdx, pageSize, filters);
+    const res = await API.get(`/api/user/search?${query}`);
     const { success, message, data } = res.data;
     if (success) {
       const newPageData = data.items;
@@ -206,11 +257,18 @@ export const useUsersData = () => {
   // Handle page change
   const handlePageChange = (page) => {
     setActivePage(page);
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const filters = getFormValues();
+    if (!hasActiveFilters(filters)) {
       loadUsers(page, pageSize).then();
     } else {
-      searchUsers(page, pageSize, searchKeyword, searchGroup).then();
+      searchUsers(
+        page,
+        pageSize,
+        filters.searchKeyword,
+        filters.searchGroup,
+        filters.statusFilter,
+        filters.quotaOrder,
+      ).then();
     }
   };
 
@@ -219,11 +277,20 @@ export const useUsersData = () => {
     localStorage.setItem('page-size', size + '');
     setPageSize(size);
     setActivePage(1);
-    loadUsers(activePage, size)
-      .then()
-      .catch((reason) => {
-        showError(reason);
-      });
+    const filters = getFormValues();
+    const request = hasActiveFilters(filters)
+      ? searchUsers(
+          1,
+          size,
+          filters.searchKeyword,
+          filters.searchGroup,
+          filters.statusFilter,
+          filters.quotaOrder,
+        )
+      : loadUsers(1, size);
+    request.then().catch((reason) => {
+      showError(reason);
+    });
   };
 
   // Handle table row styling for disabled/deleted users
@@ -241,11 +308,18 @@ export const useUsersData = () => {
 
   // Refresh data
   const refresh = async (page = activePage) => {
-    const { searchKeyword, searchGroup } = getFormValues();
-    if (searchKeyword === '' && searchGroup === '') {
+    const filters = getFormValues();
+    if (!hasActiveFilters(filters)) {
       await loadUsers(page, pageSize);
     } else {
-      await searchUsers(page, pageSize, searchKeyword, searchGroup);
+      await searchUsers(
+        page,
+        pageSize,
+        filters.searchKeyword,
+        filters.searchGroup,
+        filters.statusFilter,
+        filters.quotaOrder,
+      );
     }
   };
 
