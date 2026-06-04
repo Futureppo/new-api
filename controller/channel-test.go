@@ -57,6 +57,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		}
 		return string(constant.EndpointTypeCohereChat)
 	}
+	if common.IsVideoGenerationModel(modelName) {
+		return string(constant.EndpointTypeOpenAIVideo)
+	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
 		return string(constant.EndpointTypeOpenAIResponseCompact)
 	}
@@ -131,6 +134,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			requestPath = "/v1/images/generations"
 		}
 
+		if common.IsVideoGenerationModel(testModel) {
+			requestPath = "/v1/videos"
+		}
+
 		// responses-only models
 		if strings.Contains(strings.ToLower(testModel), "codex") {
 			requestPath = "/v1/responses"
@@ -199,6 +206,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
+		case constant.EndpointTypeOpenAIVideo:
+			relayFormat = types.RelayFormatTask
 		default:
 			relayFormat = types.RelayFormatOpenAI
 		}
@@ -226,6 +235,13 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if strings.HasPrefix(c.Request.URL.Path, "/v1/responses/compact") {
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		}
+		if c.Request.URL.Path == "/v1/videos" {
+			relayFormat = types.RelayFormatTask
+		}
+	}
+
+	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo {
+		return testTaskChannel(c, channel, testModel, tik)
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
@@ -522,6 +538,239 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Other:            other,
 	})
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	testSucceeded = true
+	return testResult{
+		context:     c,
+		localErr:    nil,
+		newAPIError: nil,
+	}
+}
+
+func buildTestVideoRequestBody(modelName string) ([]byte, error) {
+	body := map[string]any{
+		"model":  modelName,
+		"prompt": "A short cinematic video of a cat walking through a garden.",
+	}
+
+	lowerModel := strings.ToLower(strings.TrimSpace(modelName))
+	switch {
+	case strings.HasPrefix(lowerModel, "sora-"):
+		body["seconds"] = "4"
+		body["size"] = "720x1280"
+	case strings.HasPrefix(lowerModel, "veo-"):
+		body["duration"] = 8
+		body["size"] = "1280x720"
+	}
+
+	return common.Marshal(body)
+}
+
+func taskErrorToTestResult(c *gin.Context, taskErr *dto.TaskError) testResult {
+	if taskErr == nil {
+		return testResult{context: c}
+	}
+	message := taskErr.Message
+	if message == "" && taskErr.Error != nil {
+		message = taskErr.Error.Error()
+	}
+	if message == "" {
+		message = taskErr.Code
+	}
+	if message == "" {
+		message = "task request failed"
+	}
+	return testResult{
+		context:     c,
+		localErr:    errors.New(message),
+		newAPIError: service.TaskErrorToAPIError(taskErr),
+	}
+}
+
+func applyTaskTestOtherRatios(info *relaycommon.RelayInfo, ratios map[string]float64) {
+	if info == nil || len(ratios) == 0 {
+		return
+	}
+	for key, ratio := range ratios {
+		info.PriceData.AddOtherRatio(key, ratio)
+	}
+	if common.StringsContains(constant.TaskPricePatches, info.OriginModelName) {
+		return
+	}
+	for _, ratio := range info.PriceData.OtherRatios {
+		if ratio != 1.0 {
+			info.PriceData.Quota = int(float64(info.PriceData.Quota) * ratio)
+		}
+	}
+}
+
+func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID string) map[string]interface{} {
+	other := map[string]interface{}{
+		"is_task":      true,
+		"request_path": "/v1/videos",
+		"task_id":      taskID,
+		"model_price":  info.PriceData.ModelPrice,
+	}
+	if info.PriceData.ModelRatio > 0 {
+		other["model_ratio"] = info.PriceData.ModelRatio
+	}
+	other["group_ratio"] = info.PriceData.GroupRatioInfo.GroupRatio
+	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
+		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
+	}
+	for key, ratio := range info.PriceData.OtherRatios {
+		other[key] = ratio
+	}
+	if info.IsModelMapped {
+		other["is_model_mapped"] = true
+		other["upstream_model_name"] = info.UpstreamModelName
+	}
+	return other
+}
+
+func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, tik time.Time) testResult {
+	jsonData, err := buildTestVideoRequestBody(testModel)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+		}
+	}
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(jsonData))
+	c.Request.ContentLength = int64(len(jsonData))
+
+	info, err := relaycommon.GenRelayInfo(c, types.RelayFormatTask, nil, nil)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeGenRelayInfoFailed),
+		}
+	}
+	info.IsChannelTest = true
+	info.InitChannelMeta(c)
+	if info.TaskRelayInfo == nil {
+		info.TaskRelayInfo = &relaycommon.TaskRelayInfo{}
+	}
+	if info.PublicTaskID == "" {
+		info.PublicTaskID = model.GenerateTaskID()
+	}
+
+	platform := relay.GetTaskPlatform(c)
+	adaptor := relay.GetTaskAdaptor(platform)
+	if adaptor == nil {
+		err := fmt.Errorf("invalid api platform: %s", platform)
+		taskErr := service.TaskErrorWrapperLocal(err, "invalid_api_platform", http.StatusBadRequest)
+		return taskErrorToTestResult(c, taskErr)
+	}
+	adaptor.Init(info)
+	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
+		return taskErrorToTestResult(c, taskErr)
+	}
+
+	modelName := info.OriginModelName
+	if modelName == "" {
+		modelName = service.CoverTaskActionToModelName(platform, info.Action)
+	}
+	info.OriginModelName = modelName
+	info.UpstreamModelName = modelName
+	if err := helper.ModelMappedHelper(c, info, nil); err != nil {
+		taskErr := service.TaskErrorWrapperLocal(err, "model_mapping_failed", http.StatusBadRequest)
+		return taskErrorToTestResult(c, taskErr)
+	}
+
+	priceData, err := helper.ModelPriceHelperPerCall(c, info)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewError(err, types.ErrorCodeModelPriceError, types.ErrOptionWithStatusCode(http.StatusBadRequest)),
+		}
+	}
+	info.PriceData = priceData
+	applyTaskTestOtherRatios(info, adaptor.EstimateBilling(c, info))
+
+	requestBody, err := adaptor.BuildRequestBody(c, info)
+	if err != nil {
+		taskErr := service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
+		return taskErrorToTestResult(c, taskErr)
+	}
+
+	reservation, reserveErr := reserveChannelDailySuccess(channel)
+	if reserveErr != nil {
+		return testResult{
+			context:     c,
+			localErr:    reserveErr.Err,
+			newAPIError: reserveErr,
+		}
+	}
+	testSucceeded := false
+	defer func() {
+		if !testSucceeded {
+			model.ReleaseChannelDailySuccess(reservation)
+		}
+	}()
+
+	resp, err := adaptor.DoRequest(c, info, requestBody)
+	if err != nil {
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError),
+		}
+	}
+	if resp == nil {
+		err := errors.New("empty upstream response")
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+		}
+	}
+	if resp != nil && resp.StatusCode != http.StatusOK {
+		err := service.RelayErrorHandler(c.Request.Context(), resp, false)
+		common.SysError(fmt.Sprintf(
+			"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
+			channel.Id,
+			channel.Name,
+			channel.Type,
+			testModel,
+			constant.EndpointTypeOpenAIVideo,
+			resp.StatusCode,
+			err,
+		))
+		return testResult{
+			context:     c,
+			localErr:    err,
+			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+		}
+	}
+
+	taskID, _, taskErr := adaptor.DoResponse(c, resp, info)
+	if taskErr != nil {
+		return taskErrorToTestResult(c, taskErr)
+	}
+
+	tok := time.Now()
+	milliseconds := tok.Sub(tik).Milliseconds()
+	consumedTime := float64(milliseconds) / 1000.0
+	userID := info.UserId
+	if userID == 0 {
+		userID = 1
+	}
+	model.RecordConsumeLog(c, userID, model.RecordConsumeLogParams{
+		ChannelId:      channel.Id,
+		ModelName:      info.OriginModelName,
+		TokenName:      "模型测试",
+		Quota:          info.PriceData.Quota,
+		Content:        "模型测试",
+		TokenId:        info.TokenId,
+		UseTimeSeconds: int(consumedTime),
+		IsStream:       false,
+		Group:          info.UsingGroup,
+		Other:          buildTaskTestLogOther(info, taskID),
+	})
+	common.SysLog(fmt.Sprintf("testing channel #%d, video task id: %s", channel.Id, taskID))
 	testSucceeded = true
 	return testResult{
 		context:     c,

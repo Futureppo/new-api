@@ -67,6 +67,7 @@ const ModelTestModal = ({
     'jina-rerank',
     'cohere-rerank',
     'openai-response-compact',
+    'openai-video',
   ].includes(selectedEndpointType);
 
   React.useEffect(() => {
@@ -117,6 +118,7 @@ const ModelTestModal = ({
       value: 'image-generation',
       label: t('图像生成') + ' (/v1/images/generations)',
     },
+    { value: 'openai-video', label: 'OpenAI Video (/v1/videos)' },
     { value: 'embeddings', label: 'Embeddings (/v1/embeddings)' },
   ];
 
