@@ -4191,6 +4191,8 @@
     "ChatCompletions→Responses 兼容配置": "Cấu hình tương thích ChatCompletions→Responses",
     "ChatCompletions→Responses 兼容配置（Beta）": "Tương thích ChatCompletions→Responses (Beta)",
     "Claude 强制 beta=true": "Claude buộc beta=true",
+    "xAI Codex 兼容模式（按 User-Agent 触发）": "Chế độ tương thích xAI Codex (kích hoạt bằng User-Agent)",
+    "开启后，仅当入口请求 User-Agent 包含 codex 时，将 Codex Responses 请求映射为 xAI 兼容格式；无法映射的字段会被清除。": "Khi bật, chỉ các yêu cầu đầu vào có User-Agent chứa codex mới ánh xạ yêu cầu Codex Responses sang định dạng tương thích xAI; các trường không thể ánh xạ sẽ bị xóa.",
     "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。": "Claude sẽ thêm các giá trị này vào các tiêu đề yêu cầu hiện có. Các tiêu đề cùng tên sẽ không bị ghi đè và các giá trị trùng lặp sẽ tự động bị bỏ qua.",
     "Claude请求头覆盖": "Ghi đè tiêu đề yêu cầu Claude",
     "Claude请求头追加": "Thêm tiêu đề yêu cầu Claude",

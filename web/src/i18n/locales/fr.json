@@ -3670,6 +3670,8 @@
     "ChatCompletions→Responses 兼容配置": "Configuration de compatibilité ChatCompletions→Responses",
     "ChatCompletions→Responses 兼容配置（Beta）": "Compatibilité ChatCompletions→Responses (bêta)",
     "Claude 强制 beta=true": "Claude forcer beta=true",
+    "xAI Codex 兼容模式（按 User-Agent 触发）": "Mode de compatibilité xAI Codex (déclenché par User-Agent)",
+    "开启后，仅当入口请求 User-Agent 包含 codex 时，将 Codex Responses 请求映射为 xAI 兼容格式；无法映射的字段会被清除。": "Une fois activé, seules les requêtes entrantes dont le User-Agent contient codex verront les requêtes Codex Responses converties dans un format compatible xAI ; les champs impossibles à convertir seront supprimés.",
     "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。": "Claude ajoute ces valeurs aux en-tetes de requete existants. Les en-tetes existants ne sont pas remplaces et les valeurs en double sont ignorees automatiquement.",
     "Claude请求头覆盖": "Remplacement de l'en-tête de la requête Claude",
     "Claude请求头追加": "Ajout des en-tetes de requete Claude",

@@ -214,6 +214,7 @@ const EditChannelModal = (props) => {
     allow_inference_geo: false,
     allow_speed: false,
     claude_beta_query: false,
+    xai_codex_compatibility_enabled: false,
     custom_model_list_url: '',
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
@@ -902,6 +903,8 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_inference_geo || false;
           data.allow_speed = parsedSettings.allow_speed || false;
           data.claude_beta_query = parsedSettings.claude_beta_query || false;
+          data.xai_codex_compatibility_enabled =
+            parsedSettings.xai_codex_compatibility_enabled === true;
           data.custom_model_list_url =
             parsedSettings.custom_model_list_url || '';
           data.upstream_model_update_check_enabled =
@@ -935,6 +938,7 @@ const EditChannelModal = (props) => {
           data.allow_inference_geo = false;
           data.allow_speed = false;
           data.claude_beta_query = false;
+          data.xai_codex_compatibility_enabled = false;
           data.custom_model_list_url = '';
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
@@ -955,6 +959,7 @@ const EditChannelModal = (props) => {
         data.allow_inference_geo = false;
         data.allow_speed = false;
         data.claude_beta_query = false;
+        data.xai_codex_compatibility_enabled = false;
         data.custom_model_list_url = '';
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
@@ -1811,6 +1816,12 @@ const EditChannelModal = (props) => {
         settings.claude_beta_query = localInputs.claude_beta_query === true;
       }
     }
+    if (localInputs.type === 48) {
+      settings.xai_codex_compatibility_enabled =
+        localInputs.xai_codex_compatibility_enabled === true;
+    } else if ('xai_codex_compatibility_enabled' in settings) {
+      delete settings.xai_codex_compatibility_enabled;
+    }
     if (isRoot()) {
       settings.conversation_log_enabled =
         localInputs.conversation_log_enabled === true;
@@ -1862,6 +1873,7 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
     delete localInputs.claude_beta_query;
+    delete localInputs.xai_codex_compatibility_enabled;
     delete localInputs.custom_model_list_url;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
@@ -2594,6 +2606,10 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 14 && (
                     <Form.Switch field='claude_beta_query' label={t('Claude 强制 beta=true')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('claude_beta_query', value)} extraText={t('开启后，该渠道请求 Claude 时将强制追加 ?beta=true（无需客户端手动传参）')} />
+                  )}
+
+                  {inputs.type === 48 && (
+                    <Form.Switch field='xai_codex_compatibility_enabled' label={t('xAI Codex 兼容模式（按 User-Agent 触发）')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('xai_codex_compatibility_enabled', value)} extraText={t('开启后，仅当入口请求 User-Agent 包含 codex 时，将 Codex Responses 请求映射为 xAI 兼容格式；无法映射的字段会被清除。')} />
                   )}
 
                   {inputs.type === 1 && (

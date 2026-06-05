@@ -23,10 +23,12 @@ type Adaptor struct {
 }
 
 type imageRequest struct {
-	Model     string         `json:"model"`
-	Prompt    string         `json:"prompt"`
-	Size      string         `json:"size,omitempty"`
-	ExtraBody map[string]any `json:"extra_body,omitempty"`
+	Model        string          `json:"model"`
+	Prompt       string          `json:"prompt"`
+	Size         string          `json:"size,omitempty"`
+	Image        []string        `json:"image,omitempty"`
+	ReturnBase64 json.RawMessage `json:"return_base64,omitempty"`
+	ExtraBody    map[string]any  `json:"extra_body,omitempty"`
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
@@ -90,52 +92,47 @@ func convertImageRequest(info *relaycommon.RelayInfo, request dto.ImageRequest, 
 		modelName = ModelImage21Flash
 	}
 
-	extraBody, err := buildExtraBody(request)
+	extraBody, images, err := buildImageFields(request)
 	if err != nil {
 		return nil, err
 	}
-	if requireImage && !hasImageInput(extraBody) {
+	if requireImage && len(images) == 0 {
 		return nil, errors.New("agnes image edits require an image URL in image or extra_body.image; file uploads are not supported")
 	}
 
 	converted := imageRequest{
-		Model:     modelName,
-		Prompt:    request.Prompt,
-		Size:      request.Size,
-		ExtraBody: extraBody,
+		Model:        modelName,
+		Prompt:       request.Prompt,
+		Size:         request.Size,
+		Image:        images,
+		ReturnBase64: getRawExtra(request, "return_base64"),
+		ExtraBody:    extraBody,
 	}
 
 	return converted, nil
 }
 
-func hasImageInput(extraBody map[string]any) bool {
-	if len(extraBody) == 0 {
-		return false
-	}
-	images, ok := extraBody["image"].([]string)
-	return ok && len(images) > 0
-}
-
-func buildExtraBody(request dto.ImageRequest) (map[string]any, error) {
+func buildImageFields(request dto.ImageRequest) (map[string]any, []string, error) {
 	extraBody := make(map[string]any)
+	var images []string
 
 	if request.Extra != nil {
 		if raw, ok := request.Extra["extra_body"]; ok && len(bytes.TrimSpace(raw)) > 0 {
 			var parsed map[string]json.RawMessage
 			if err := common.Unmarshal(raw, &parsed); err != nil {
-				return nil, fmt.Errorf("invalid extra_body: %w", err)
+				return nil, nil, fmt.Errorf("invalid extra_body: %w", err)
 			}
 			for key, value := range parsed {
 				if len(bytes.TrimSpace(value)) == 0 {
 					continue
 				}
 				if key == "image" {
-					images, ok, err := normalizeImageValue(value)
+					normalized, ok, err := normalizeImageValue(value)
 					if err != nil {
-						return nil, err
+						return nil, nil, err
 					}
 					if ok {
-						extraBody[key] = images
+						images = normalized
 					}
 				} else {
 					extraBody[key] = value
@@ -144,13 +141,13 @@ func buildExtraBody(request dto.ImageRequest) (map[string]any, error) {
 		}
 	}
 
-	if _, ok := extraBody["image"]; !ok && len(bytes.TrimSpace(request.Image)) > 0 {
-		images, ok, err := normalizeImageValue(request.Image)
+	if len(bytes.TrimSpace(request.Image)) > 0 {
+		normalized, ok, err := normalizeImageValue(request.Image)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if ok {
-			extraBody["image"] = images
+			images = normalized
 		}
 	}
 
@@ -159,9 +156,21 @@ func buildExtraBody(request dto.ImageRequest) (map[string]any, error) {
 	}
 
 	if len(extraBody) == 0 {
-		return nil, nil
+		return nil, images, nil
 	}
-	return extraBody, nil
+	return extraBody, images, nil
+}
+
+func getRawExtra(request dto.ImageRequest, key string) json.RawMessage {
+	if request.Extra == nil {
+		return nil
+	}
+	raw := request.Extra[key]
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return nil
+	}
+	return raw
 }
 
 func normalizeImageValue(raw json.RawMessage) ([]string, bool, error) {

@@ -43,14 +43,14 @@ func TestConvertImageRequestBuildsAgnesExtraBody(t *testing.T) {
 	}
 
 	var payload struct {
-		Model          string `json:"model"`
-		Prompt         string `json:"prompt"`
-		Size           string `json:"size"`
-		ResponseFormat string `json:"response_format"`
-		Image          any    `json:"image"`
+		Model          string   `json:"model"`
+		Prompt         string   `json:"prompt"`
+		Size           string   `json:"size"`
+		ResponseFormat string   `json:"response_format"`
+		Image          []string `json:"image"`
 		ExtraBody      struct {
-			Image          []string `json:"image"`
-			ResponseFormat string   `json:"response_format"`
+			Image          any    `json:"image"`
+			ResponseFormat string `json:"response_format"`
 		} `json:"extra_body"`
 	}
 	if err := common.Unmarshal(data, &payload); err != nil {
@@ -69,11 +69,11 @@ func TestConvertImageRequestBuildsAgnesExtraBody(t *testing.T) {
 	if payload.ResponseFormat != "" {
 		t.Fatalf("top-level response_format = %q, want omitted", payload.ResponseFormat)
 	}
-	if payload.Image != nil {
-		t.Fatalf("top-level image = %#v, want omitted", payload.Image)
+	if len(payload.Image) != 1 || payload.Image[0] != "https://example.com/input.png" {
+		t.Fatalf("image = %#v", payload.Image)
 	}
-	if len(payload.ExtraBody.Image) != 1 || payload.ExtraBody.Image[0] != "https://example.com/input.png" {
-		t.Fatalf("extra_body.image = %#v", payload.ExtraBody.Image)
+	if payload.ExtraBody.Image != nil {
+		t.Fatalf("extra_body.image = %#v, want omitted", payload.ExtraBody.Image)
 	}
 	if payload.ExtraBody.ResponseFormat != "url" {
 		t.Fatalf("extra_body.response_format = %q", payload.ExtraBody.ResponseFormat)
@@ -120,16 +120,49 @@ func TestConvertImageEditsRequestMapsTopLevelImage(t *testing.T) {
 	}
 
 	var payload struct {
-		ExtraBody struct {
-			Image []string `json:"image"`
-		} `json:"extra_body"`
+		Image []string `json:"image"`
 	}
 	if err := common.Unmarshal(data, &payload); err != nil {
 		t.Fatalf("unmarshal converted payload: %v", err)
 	}
 
-	if len(payload.ExtraBody.Image) != 1 || payload.ExtraBody.Image[0] != "https://example.com/edit-source.png" {
-		t.Fatalf("extra_body.image = %#v", payload.ExtraBody.Image)
+	if len(payload.Image) != 1 || payload.Image[0] != "https://example.com/edit-source.png" {
+		t.Fatalf("image = %#v", payload.Image)
+	}
+}
+
+func TestConvertImageRequestForwardsReturnBase64(t *testing.T) {
+	var request dto.ImageRequest
+	err := common.Unmarshal([]byte(`{
+		"model": "agnes-image-2.1-flash",
+		"prompt": "a watercolor city map",
+		"size": "1024x1024",
+		"return_base64": false
+	}`), &request)
+	if err != nil {
+		t.Fatalf("unmarshal request: %v", err)
+	}
+
+	converted, err := (&Adaptor{}).ConvertImageRequest(nil, &relaycommon.RelayInfo{
+		RelayMode: relayconstant.RelayModeImagesGenerations,
+	}, request)
+	if err != nil {
+		t.Fatalf("convert image request: %v", err)
+	}
+
+	data, err := common.Marshal(converted)
+	if err != nil {
+		t.Fatalf("marshal converted request: %v", err)
+	}
+
+	var payload struct {
+		ReturnBase64 *bool `json:"return_base64"`
+	}
+	if err := common.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("unmarshal converted payload: %v", err)
+	}
+	if payload.ReturnBase64 == nil || *payload.ReturnBase64 {
+		t.Fatalf("return_base64 = %#v, want explicit false", payload.ReturnBase64)
 	}
 }
 
@@ -186,5 +219,24 @@ func TestSetupRequestHeaderForcesJSONForImageEdits(t *testing.T) {
 	}
 	if got := header.Get("Authorization"); got != "Bearer test-key" {
 		t.Fatalf("authorization = %q", got)
+	}
+}
+
+func TestGetModelListIncludesCurrentAgnesModels(t *testing.T) {
+	models := (&Adaptor{}).GetModelList()
+	seen := make(map[string]bool, len(models))
+	for _, model := range models {
+		seen[model] = true
+	}
+	for _, model := range []string{
+		ModelText15Flash,
+		ModelText20Flash,
+		ModelImage20Flash,
+		ModelImage21Flash,
+		ModelVideoV20,
+	} {
+		if !seen[model] {
+			t.Fatalf("model list missing %s", model)
+		}
 	}
 }

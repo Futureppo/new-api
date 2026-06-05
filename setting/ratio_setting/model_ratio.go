@@ -98,6 +98,8 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5-mini-2025-08-07":            0.125,
 	"gpt-5-nano":                       0.025,
 	"gpt-5-nano-2025-08-07":            0.025,
+	"agnes-1.5-flash":                  0.035, // $0.07 / 1M input tokens
+	"agnes-2.0-flash":                  0.05,  // $0.10 / 1M input tokens
 	//"gpt-3.5-turbo-0301":           0.75, //deprecated
 	"gpt-3.5-turbo":          0.25,
 	"gpt-3.5-turbo-0613":     0.75,
@@ -280,6 +282,7 @@ var defaultModelPrice = map[string]float64{
 	"suno_music":                     0.1,
 	"suno_lyrics":                    0.01,
 	"dall-e-3":                       0.04,
+	"agnes-image-2.0-flash":          0,
 	"agnes-image-2.1-flash":          0.003,
 	"agnes-video-v2.0":               0.005,
 	"imagen-3.0-generate-002":        0.03,
@@ -336,10 +339,12 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
-	"gpt-4-gizmo-*":  2,
-	"gpt-4o-gizmo-*": 3,
-	"gpt-4-all":      2,
-	"gpt-image-1":    8,
+	"gpt-4-gizmo-*":   2,
+	"gpt-4o-gizmo-*":  3,
+	"gpt-4-all":       2,
+	"gpt-image-1":     8,
+	"agnes-1.5-flash": 15.0 / 7.0, // $0.15 output / $0.07 input
+	"agnes-2.0-flash": 2,
 }
 
 // InitRatioSettings initializes all model related settings maps

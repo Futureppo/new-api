@@ -3761,6 +3761,8 @@
     "ChatCompletions→Responses 兼容配置": "ChatCompletions→Responses Compatibility Configuration",
     "ChatCompletions→Responses 兼容配置（Beta）": "ChatCompletions→Responses Compatibility (Beta)",
     "Claude 强制 beta=true": "Claude Force beta=true",
+    "xAI Codex 兼容模式（按 User-Agent 触发）": "xAI Codex compatibility mode (triggered by User-Agent)",
+    "开启后，仅当入口请求 User-Agent 包含 codex 时，将 Codex Responses 请求映射为 xAI 兼容格式；无法映射的字段会被清除。": "When enabled, only incoming requests whose User-Agent contains codex will have Codex Responses requests mapped to an xAI-compatible format; fields that cannot be mapped are removed.",
     "Claude会在原有请求头基础上追加这些值，不会覆盖已有同名请求头；重复值会自动忽略。": "Claude appends these values on top of existing request headers. Existing headers are not overwritten, and duplicate values are ignored automatically.",
     "Claude请求头覆盖": "Claude request header override",
     "Claude请求头追加": "Claude request header append",

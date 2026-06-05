@@ -58,6 +58,11 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	req.Set("Authorization", "Bearer "+info.ApiKey)
+	if IsCodexCompatibilityRequest(c, info) {
+		if sessionID := strings.TrimSpace(c.GetHeader("Session_id")); sessionID != "" && req.Get(xaiGrokConversationID) == "" {
+			req.Set(xaiGrokConversationID, sessionID)
+		}
+	}
 	return nil
 }
 
@@ -125,6 +130,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 	if request.Model == "" && info != nil {
 		request.Model = info.UpstreamModelName
 	}
+	if IsCodexCompatibilityRequest(c, info) {
+		return convertCodexResponsesRequestForXAI(request, info.RelayMode == constant.RelayModeResponsesCompact), nil
+	}
 	return request, nil
 }
 
@@ -142,6 +150,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		} else {
 			usage, err = openai.OaiResponsesHandler(c, info, resp)
 		}
+	case constant.RelayModeResponsesCompact:
+		usage, err = openai.OaiResponsesCompactionHandler(c, resp)
 	default:
 		if info.IsStream {
 			usage, err = xAIStreamHandler(c, info, resp)
