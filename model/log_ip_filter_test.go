@@ -35,7 +35,7 @@ func TestGetAllLogsFiltersByIP(t *testing.T) {
 		},
 	}).Error)
 
-	logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 10, 0, "", "", "203.0.113.10")
+	logs, total, err := GetAllLogs(LogTypeConsume, 0, 0, "", "", "", 0, 10, 0, "", "", "203.0.113.10", "")
 
 	require.NoError(t, err)
 	require.EqualValues(t, 2, total)
@@ -73,7 +73,7 @@ func TestGetUserLogsFiltersByIPAndUserID(t *testing.T) {
 		},
 	}).Error)
 
-	logs, total, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "203.0.113.10")
+	logs, total, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "203.0.113.10", "")
 
 	require.NoError(t, err)
 	require.EqualValues(t, 1, total)
@@ -109,7 +109,7 @@ func TestSumUsedQuotaFiltersByIP(t *testing.T) {
 		},
 	}).Error)
 
-	stat, err := SumUsedQuota(LogTypeConsume, now-10, now+10, "", "alice", "", 0, "", "203.0.113.10")
+	stat, err := SumUsedQuota(LogTypeConsume, now-10, now+10, "", "alice", "", 0, "", "203.0.113.10", "")
 
 	require.NoError(t, err)
 	require.Equal(t, 10, stat.Quota)

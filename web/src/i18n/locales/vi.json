@@ -4252,6 +4252,7 @@
     "include_obfuscation 用于控制 Responses 流混淆字段。默认关闭以避免客户端关闭该安全保护": "include_obfuscation kiểm soát trường làm mờ trong luồng Responses. Mặc định tắt để tránh client vô hiệu hóa bảo vệ bảo mật này",
     "inference_geo 字段用于控制 Claude 数据驻留推理区域。默认关闭以避免未经授权透传地域信息": "Trường inference_geo kiểm soát vùng lưu trữ dữ liệu suy luận của Claude. Mặc định tắt để ngăn truyền thông tin địa lý trái phép",
     "IP": "IP",
+    "User-Agent": "User-Agent",
     "IP白名单": "IP Whitelist",
     "IP白名单（支持CIDR表达式）": "Danh sách trắng IP (hỗ trợ biểu thức CIDR)",
     "IP黑名单": "Danh sách đen IP",

@@ -111,6 +111,15 @@ const LogsFilters = ({
             size='small'
           />
 
+          <Form.Input
+            field='user_agent'
+            prefix={<IconSearch />}
+            placeholder={t('User-Agent')}
+            showClear
+            pure
+            size='small'
+          />
+
           {isAdminUser && (
             <>
               <Form.Input

@@ -3824,6 +3824,7 @@
     "include_obfuscation 用于控制 Responses 流混淆字段。默认关闭以避免客户端关闭该安全保护": "include_obfuscation controls obfuscation fields in Responses stream. Disabled by default to prevent clients from disabling this security protection",
     "inference_geo 字段用于控制 Claude 数据驻留推理区域。默认关闭以避免未经授权透传地域信息": "The inference_geo field controls Claude's data residency inference region. Disabled by default to prevent unauthorized pass-through of geographic information",
     "IP": "IP",
+    "User-Agent": "User-Agent",
     "IP白名单": "IP Whitelist",
     "IP白名单（支持CIDR表达式）": "IP whitelist (supports CIDR expressions)",
     "IP黑名单": "IP blacklist",

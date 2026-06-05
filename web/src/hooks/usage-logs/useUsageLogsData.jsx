@@ -61,6 +61,7 @@ export const useLogsData = () => {
     COST: 'cost',
     RETRY: 'retry',
     IP: 'ip',
+    USER_AGENT: 'user_agent',
     DETAILS: 'details',
   };
 
@@ -102,6 +103,7 @@ export const useLogsData = () => {
     group: '',
     request_id: '',
     ip: '',
+    user_agent: '',
     dateRange: [
       timestamp2string(getTodayStartTimestamp()),
       timestamp2string(now.getTime() / 1000 + 3600),
@@ -125,6 +127,7 @@ export const useLogsData = () => {
       [COLUMN_KEYS.COST]: true,
       [COLUMN_KEYS.RETRY]: isAdminUser,
       [COLUMN_KEYS.IP]: true,
+      [COLUMN_KEYS.USER_AGENT]: true,
       [COLUMN_KEYS.DETAILS]: true,
     };
   };
@@ -259,6 +262,7 @@ export const useLogsData = () => {
       group: formValues.group || '',
       request_id: formValues.request_id || '',
       ip: formValues.ip || '',
+      user_agent: formValues.user_agent || '',
       logType: formValues.logType ? parseInt(formValues.logType) : 0,
     };
   };
@@ -272,6 +276,7 @@ export const useLogsData = () => {
       end_timestamp,
       group,
       ip,
+      user_agent,
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
@@ -279,6 +284,7 @@ export const useLogsData = () => {
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
+    url += `&user_agent=${encodeURIComponent(user_agent)}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -298,6 +304,7 @@ export const useLogsData = () => {
       channel,
       group,
       ip,
+      user_agent,
       logType: formLogType,
     } = getFormValues();
     const currentLogType = formLogType !== undefined ? formLogType : logType;
@@ -305,6 +312,7 @@ export const useLogsData = () => {
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
+    url += `&user_agent=${encodeURIComponent(user_agent)}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -744,6 +752,7 @@ export const useLogsData = () => {
       group,
       request_id,
       ip,
+      user_agent,
       logType: formLogType,
     } = getFormValues();
 
@@ -762,6 +771,7 @@ export const useLogsData = () => {
       url = `/api/log/self/?p=${startIdx}&page_size=${pageSize}&type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&request_id=${request_id}&ip=${ip}`;
     }
     url = encodeURI(url);
+    url += `&user_agent=${encodeURIComponent(user_agent)}`;
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {

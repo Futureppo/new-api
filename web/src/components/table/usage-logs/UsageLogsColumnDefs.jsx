@@ -921,6 +921,42 @@ export const getLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.USER_AGENT,
+      title: t('User-Agent'),
+      dataIndex: 'user_agent',
+      width: 180,
+      render: (text, record, index) => {
+        return text ? (
+          <Tooltip
+            content={
+              <div style={{ maxWidth: 480, wordBreak: 'break-word' }}>
+                {text}
+              </div>
+            }
+          >
+            <Typography.Text
+              style={{
+                display: 'inline-block',
+                maxWidth: 180,
+                cursor: 'pointer',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                verticalAlign: 'middle',
+              }}
+              onClick={(event) => {
+                copyText(event, text);
+              }}
+            >
+              {text}
+            </Typography.Text>
+          </Tooltip>
+        ) : (
+          <></>
+        );
+      },
+    },
+    {
       key: COLUMN_KEYS.RETRY,
       title: t('重试'),
       dataIndex: 'retry',

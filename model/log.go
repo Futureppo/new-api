@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -35,6 +36,7 @@ type Log struct {
 	TokenId          int    `json:"token_id" gorm:"default:0;index"`
 	Group            string `json:"group" gorm:"index"`
 	Ip               string `json:"ip" gorm:"index;default:''"`
+	UserAgent        string `json:"user_agent" gorm:"type:text"`
 	RequestId        string `json:"request_id,omitempty" gorm:"type:varchar(64);index:idx_logs_request_id;default:''"`
 	Other            string `json:"other"`
 }
@@ -49,6 +51,38 @@ const (
 	LogTypeError   = 5
 	LogTypeRefund  = 6
 )
+
+const maxUserAgentLogLength = 1024
+
+func requestUserAgent(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return ""
+	}
+	userAgent := strings.TrimSpace(c.Request.UserAgent())
+	if userAgent == "" {
+		return ""
+	}
+	runes := []rune(userAgent)
+	if len(runes) > maxUserAgentLogLength {
+		return string(runes[:maxUserAgentLogLength])
+	}
+	return userAgent
+}
+
+func containsLikePattern(input string) string {
+	pattern := strings.TrimSpace(strings.ToLower(input))
+	pattern = strings.ReplaceAll(pattern, "!", "!!")
+	pattern = strings.ReplaceAll(pattern, "%", "!%")
+	pattern = strings.ReplaceAll(pattern, "_", "!_")
+	return "%" + pattern + "%"
+}
+
+func applyUserAgentFilter(tx *gorm.DB, column string, userAgent string) *gorm.DB {
+	if strings.TrimSpace(userAgent) == "" {
+		return tx
+	}
+	return tx.Where("LOWER("+column+") LIKE ? ESCAPE '!'", containsLikePattern(userAgent))
+}
 
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
@@ -177,6 +211,7 @@ func RecordErrorLog(c *gin.Context, userId int, channelId int, modelName string,
 			}
 			return ""
 		}(),
+		UserAgent: requestUserAgent(c),
 		RequestId: requestId,
 		Other:     otherStr,
 	}
@@ -238,6 +273,7 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 			}
 			return ""
 		}(),
+		UserAgent: requestUserAgent(c),
 		RequestId: requestId,
 		Other:     otherStr,
 	}
@@ -295,7 +331,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 	}
 }
 
-func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, ip string) (logs []*Log, total int64, err error) {
+func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, startIdx int, num int, channel int, group string, requestId string, ip string, userAgent string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB
@@ -318,6 +354,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	if ip != "" {
 		tx = tx.Where("logs.ip = ?", ip)
 	}
+	tx = applyUserAgentFilter(tx, "logs.user_agent", userAgent)
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
 	}
@@ -384,7 +421,7 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 
 const logSearchCountLimit = 10000
 
-func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, ip string) (logs []*Log, total int64, err error) {
+func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, ip string, userAgent string) (logs []*Log, total int64, err error) {
 	var tx *gorm.DB
 	if logType == LogTypeUnknown {
 		tx = LOG_DB.Where("logs.user_id = ?", userId)
@@ -408,6 +445,7 @@ func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int
 	if ip != "" {
 		tx = tx.Where("logs.ip = ?", ip)
 	}
+	tx = applyUserAgentFilter(tx, "logs.user_agent", userAgent)
 	if startTimestamp != 0 {
 		tx = tx.Where("logs.created_at >= ?", startTimestamp)
 	}
@@ -438,7 +476,7 @@ type Stat struct {
 	Tpm   int `json:"tpm"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string) (stat Stat, err error) {
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string, userAgent string) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
 	// 为rpm和tpm创建单独的查询
@@ -456,6 +494,8 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 		tx = tx.Where("ip = ?", ip)
 		rpmTpmQuery = rpmTpmQuery.Where("ip = ?", ip)
 	}
+	tx = applyUserAgentFilter(tx, "user_agent", userAgent)
+	rpmTpmQuery = applyUserAgentFilter(rpmTpmQuery, "user_agent", userAgent)
 	if startTimestamp != 0 {
 		tx = tx.Where("created_at >= ?", startTimestamp)
 	}
