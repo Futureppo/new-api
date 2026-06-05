@@ -87,6 +87,22 @@ func TestNormalizeChannelTestEndpointVideoModels(t *testing.T) {
 	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(nil, "sora-2", string(constant.EndpointTypeOpenAI)))
 }
 
+func TestNormalizeChannelTestEndpointVolcEngineModels(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeVolcEngine}
+
+	require.Equal(t, "", normalizeChannelTestEndpoint(channel, "doubao-seed-2-0-pro-260215", ""))
+	require.Equal(t, "", normalizeChannelTestEndpoint(channel, "deepseek-v4-flash-260425", ""))
+	require.Equal(t, string(constant.EndpointTypeEmbeddings), normalizeChannelTestEndpoint(channel, "doubao-embedding-text-240715", ""))
+	require.Equal(t, string(constant.EndpointTypeEmbeddings), normalizeChannelTestEndpoint(channel, "doubao-embedding-vision-251215", ""))
+	require.Equal(t, string(constant.EndpointTypeImageGeneration), normalizeChannelTestEndpoint(channel, "doubao-seedream-5-0-260128", ""))
+	require.Equal(t, string(constant.EndpointTypeImageGeneration), normalizeChannelTestEndpoint(channel, "doubao-seededit-3-0-i2i-250628", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(channel, "doubao-seedance-2-0-fast-260128", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(channel, "wan2-1-14b-i2v-250225", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(channel, "doubao-seed3d-2-0-260328", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(channel, "hyper3d-gen2-260112", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(channel, "doubao-seedream-5-0-260128", string(constant.EndpointTypeOpenAI)))
+}
+
 func TestBuildTestVideoRequestBody(t *testing.T) {
 	data, err := buildTestVideoRequestBody("sora-2")
 	require.NoError(t, err)
@@ -103,6 +119,16 @@ func TestBuildTestVideoRequestBody(t *testing.T) {
 	require.NoError(t, common.Unmarshal(data, &body))
 	require.Equal(t, float64(8), body["duration"])
 	require.Equal(t, "1280x720", body["size"])
+
+	data, err = buildTestVideoRequestBody("doubao-seed3d-2-0-260328")
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(data, &body))
+	require.NotEmpty(t, body["image_url"])
+
+	data, err = buildTestVideoRequestBody("wan2-1-14b-flf2v-250417")
+	require.NoError(t, err)
+	require.NoError(t, common.Unmarshal(data, &body))
+	require.Len(t, body["images"], 2)
 }
 
 func TestBuildTestRequestCohereEmbeddingIncludesInputType(t *testing.T) {

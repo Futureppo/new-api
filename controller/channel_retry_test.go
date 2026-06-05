@@ -218,6 +218,21 @@ func TestResolveFetchModelsURL(t *testing.T) {
 		"https://dashscope.aliyuncs.com/compatible-mode/v1/models",
 		resolveFetchModelsURL(constant.ChannelTypeAli, "https://dashscope.aliyuncs.com", ""),
 	)
+	require.Equal(
+		t,
+		"https://ark.cn-beijing.volces.com/api/v3/models",
+		resolveFetchModelsURL(constant.ChannelTypeVolcEngine, "https://ark.cn-beijing.volces.com", ""),
+	)
+	require.Equal(
+		t,
+		"https://ark.cn-beijing.volces.com/api/v3/models",
+		resolveFetchModelsURL(constant.ChannelTypeVolcEngine, "https://ark.cn-beijing.volces.com/api/v3/", ""),
+	)
+	require.Equal(
+		t,
+		"https://ark.cn-beijing.volces.com/api/coding/v3/models",
+		resolveFetchModelsURL(constant.ChannelTypeVolcEngine, "doubao-coding-plan", ""),
+	)
 }
 
 func TestFetchModelsUsesCustomModelListURL(t *testing.T) {

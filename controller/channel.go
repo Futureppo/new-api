@@ -221,9 +221,9 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 		return fmt.Sprintf("%s/api/paas/v4/models", baseURL)
 	case constant.ChannelTypeVolcEngine:
 		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
-			return fmt.Sprintf("%s/v1/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
+			return fmt.Sprintf("%s/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
 		}
-		return fmt.Sprintf("%s/v1/models", baseURL)
+		return fmt.Sprintf("%s/models", common.GetVolcEngineArkDataPlaneBaseURL(baseURL))
 	case constant.ChannelTypeMoonshot:
 		if plan, ok := constant.ChannelSpecialBases[baseURL]; ok && plan.OpenAIBaseURL != "" {
 			return fmt.Sprintf("%s/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))

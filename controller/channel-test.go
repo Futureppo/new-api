@@ -57,6 +57,17 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		}
 		return string(constant.EndpointTypeCohereChat)
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeVolcEngine {
+		if common.IsVolcEngineContentGenerationTaskModel(modelName) {
+			return string(constant.EndpointTypeOpenAIVideo)
+		}
+		if common.IsVolcEngineImageGenerationModel(modelName) {
+			return string(constant.EndpointTypeImageGeneration)
+		}
+		if common.IsVolcEngineEmbeddingModel(modelName) {
+			return string(constant.EndpointTypeEmbeddings)
+		}
+	}
 	if common.IsVideoGenerationModel(modelName) {
 		return string(constant.EndpointTypeOpenAIVideo)
 	}
@@ -130,11 +141,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 
 		if common.IsImageGenerationModel(testModel) ||
-			(channel.Type == constant.ChannelTypeVolcEngine && strings.Contains(testModel, "seedream")) {
+			(channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineImageGenerationModel(testModel)) {
 			requestPath = "/v1/images/generations"
 		}
 
-		if common.IsVideoGenerationModel(testModel) {
+		if common.IsVideoGenerationModel(testModel) ||
+			(channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineContentGenerationTaskModel(testModel)) {
 			requestPath = "/v1/videos"
 		}
 
@@ -553,6 +565,17 @@ func buildTestVideoRequestBody(modelName string) ([]byte, error) {
 	}
 
 	lowerModel := strings.ToLower(strings.TrimSpace(modelName))
+	if common.IsVolcEngine3DGenerationModel(modelName) {
+		body["prompt"] = "Create a simple 3D model from the reference image."
+		body["image_url"] = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/JPEG_example_flower.jpg/320px-JPEG_example_flower.jpg"
+	} else if strings.Contains(lowerModel, "i2v") {
+		body["image_url"] = "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/JPEG_example_flower.jpg/320px-JPEG_example_flower.jpg"
+	} else if strings.Contains(lowerModel, "flf2v") {
+		body["images"] = []string{
+			"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/JPEG_example_flower.jpg/320px-JPEG_example_flower.jpg",
+			"https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Example.jpg/320px-Example.jpg",
+		}
+	}
 	switch {
 	case strings.HasPrefix(lowerModel, "sora-"):
 		body["seconds"] = "4"
@@ -964,12 +987,19 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			return buildTestEmbeddingRequest(model, channel)
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
-			return &dto.ImageRequest{
+			imageRequest := &dto.ImageRequest{
 				Model:  model,
 				Prompt: "a cute cat",
 				N:      lo.ToPtr(uint(1)),
 				Size:   "1024x1024",
 			}
+			if channel != nil && channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineImageGenerationModel(model) {
+				imageRequest.Size = "2K"
+				if strings.Contains(strings.ToLower(model), "seededit") {
+					imageRequest.Image = json.RawMessage(`"https://upload.wikimedia.org/wikipedia/commons/thumb/3/3f/JPEG_example_flower.jpg/320px-JPEG_example_flower.jpg"`)
+				}
+			}
+			return imageRequest
 		case constant.EndpointTypeJinaRerank, constant.EndpointTypeCohereRerank:
 			// 返回 RerankRequest
 			return &dto.RerankRequest{
