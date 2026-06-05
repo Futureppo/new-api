@@ -281,6 +281,7 @@ var defaultModelPrice = map[string]float64{
 	"suno_lyrics":                    0.01,
 	"dall-e-3":                       0.04,
 	"agnes-image-2.1-flash":          0.003,
+	"agnes-video-v2.0":               0.005,
 	"imagen-3.0-generate-002":        0.03,
 	"black-forest-labs/flux-1.1-pro": 0.04,
 	"gpt-4-gizmo-*":                  0.1,

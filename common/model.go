@@ -19,6 +19,7 @@ var (
 		"flux.1-",
 	}
 	VideoGenerationModels = []string{
+		"agnes-video-",
 		"grok-imagine-video",
 		"sora-",
 		"veo-",
