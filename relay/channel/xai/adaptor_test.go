@@ -127,6 +127,99 @@ func TestConvertOpenAIResponsesRequestCodexCompatibilityNormalizesToolsAndToolCh
 	require.Equal(t, "lookup", gjson.GetBytes(body, "tool_choice.name").String())
 }
 
+func TestConvertOpenAIResponsesRequestCodexCompatibilityNormalizesInputItems(t *testing.T) {
+	c := newXAICodexCompatTestContext("codex-cli")
+	info := newXAICodexCompatRelayInfo(true, relayconstant.RelayModeResponses)
+	req := dto.OpenAIResponsesRequest{
+		Model: "grok-4",
+		Input: mustRawMessage(t, []any{
+			map[string]any{
+				"type":    "reasoning",
+				"id":      "rs_123",
+				"summary": []any{map[string]any{"type": "summary_text", "text": "thinking"}},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "developer",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "developer note"},
+				},
+			},
+			map[string]any{
+				"type": "message",
+				"role": "assistant",
+				"content": []any{
+					map[string]any{"type": "output_text", "text": "previous answer"},
+				},
+			},
+			map[string]any{
+				"type":      "function_call",
+				"call_id":   "call_fn",
+				"name":      "lookup",
+				"arguments": map[string]any{"query": "xai"},
+				"status":    "completed",
+			},
+			map[string]any{
+				"type":    "function_call_output",
+				"call_id": "call_fn",
+				"output":  map[string]any{"result": "ok"},
+			},
+			map[string]any{
+				"type":    "computer_call_output",
+				"call_id": "call_computer",
+				"output": map[string]any{
+					"type":      "input_image",
+					"image_url": "data:image/png;base64,AAAA",
+				},
+			},
+			map[string]any{
+				"type":    "local_shell_call_output",
+				"call_id": "call_shell",
+				"output":  "shell ok",
+			},
+			map[string]any{
+				"type":    "computer_call",
+				"call_id": "call_computer",
+				"action":  map[string]any{"type": "click", "x": 1, "y": 2},
+			},
+			map[string]any{
+				"type":   "image_generation_call",
+				"id":     "ig_123",
+				"status": "completed",
+			},
+			map[string]any{
+				"type": "message",
+				"role": "user",
+				"content": []any{
+					map[string]any{"type": "input_text", "text": "next question"},
+				},
+			},
+		}),
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIResponsesRequest(c, info, req)
+	require.NoError(t, err)
+	body := marshalConvertedResponseRequest(t, converted)
+
+	require.Equal(t, int64(6), gjson.GetBytes(body, "input.#").Int())
+	require.Equal(t, "system", gjson.GetBytes(body, "input.0.role").String())
+	require.Equal(t, "developer note", gjson.GetBytes(body, "input.0.content").String())
+	require.Equal(t, "assistant", gjson.GetBytes(body, "input.1.role").String())
+	require.Equal(t, "previous answer", gjson.GetBytes(body, "input.1.content").String())
+	require.Equal(t, "function_call", gjson.GetBytes(body, "input.2.type").String())
+	require.Equal(t, `{"query":"xai"}`, gjson.GetBytes(body, "input.2.arguments").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(body, "input.3.type").String())
+	require.Equal(t, `{"result":"ok"}`, gjson.GetBytes(body, "input.3.output").String())
+	require.Equal(t, "user", gjson.GetBytes(body, "input.4.role").String())
+	require.Contains(t, gjson.GetBytes(body, "input.4.content").String(), "local_shell_call_output call_shell output:")
+	require.Equal(t, "user", gjson.GetBytes(body, "input.5.role").String())
+	require.Equal(t, "next question", gjson.GetBytes(body, "input.5.content").String())
+	require.NotContains(t, string(body), "computer_call")
+	require.NotContains(t, string(body), "image_generation_call")
+	require.NotContains(t, string(body), "reasoning")
+	require.NotContains(t, string(body), "data:image/png")
+}
+
 func TestConvertOpenAIResponsesRequestCodexCompatibilityDeletesUnsupportedFieldsAndPreservesZeroValues(t *testing.T) {
 	c := newXAICodexCompatTestContext("codex-cli")
 	info := newXAICodexCompatRelayInfo(true, relayconstant.RelayModeResponses)

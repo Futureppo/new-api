@@ -28,6 +28,7 @@ func IsCodexCompatibilityRequest(c *gin.Context, info *relaycommon.RelayInfo) bo
 
 func convertCodexResponsesRequestForXAI(request dto.OpenAIResponsesRequest, compact bool) dto.OpenAIResponsesRequest {
 	request = moveInstructionsIntoInput(request)
+	request.Input = normalizeXAIResponsesInput(request.Input)
 	if compact {
 		return dto.OpenAIResponsesRequest{
 			Model: request.Model,
@@ -51,6 +52,265 @@ func convertCodexResponsesRequestForXAI(request dto.OpenAIResponsesRequest, comp
 	request.MaxToolCalls = nil
 
 	return request
+}
+
+func normalizeXAIResponsesInput(raw []byte) []byte {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	switch common.GetJsonType(raw) {
+	case "string":
+		return raw
+	case "object":
+		var item map[string]any
+		if err := common.Unmarshal(raw, &item); err != nil {
+			return nil
+		}
+		normalized, ok := normalizeXAIResponsesInputItem(item)
+		if !ok {
+			return nil
+		}
+		return mustMarshalRaw([]any{normalized})
+	case "array":
+		var items []any
+		if err := common.Unmarshal(raw, &items); err != nil {
+			return nil
+		}
+		normalized := make([]any, 0, len(items))
+		for _, item := range items {
+			if next, ok := normalizeXAIResponsesInputItem(item); ok {
+				normalized = append(normalized, next)
+			}
+		}
+		if len(normalized) == 0 {
+			return nil
+		}
+		return mustMarshalRaw(normalized)
+	default:
+		return raw
+	}
+}
+
+func normalizeXAIResponsesInputItem(item any) (any, bool) {
+	switch v := item.(type) {
+	case string:
+		if strings.TrimSpace(v) == "" {
+			return nil, false
+		}
+		return map[string]any{"role": "user", "content": v}, true
+	case map[string]any:
+		itemType, _ := v["type"].(string)
+		itemType = strings.ToLower(strings.TrimSpace(itemType))
+		if itemType == "" {
+			if _, ok := v["role"].(string); ok {
+				return normalizeXAIResponsesMessageInput(v)
+			}
+			return nil, false
+		}
+
+		switch itemType {
+		case "message":
+			return normalizeXAIResponsesMessageInput(v)
+		case "function_call":
+			return normalizeXAIResponsesFunctionCallInput(v)
+		case "function_call_output":
+			return normalizeXAIResponsesFunctionCallOutputInput(v)
+		case "local_shell_call_output", "custom_tool_call_output":
+			return normalizeUnsupportedCallOutputAsUserMessage(v, itemType)
+		case "computer_call_output":
+			return normalizeUnsupportedCallOutputAsUserMessage(v, itemType)
+		case "reasoning", "web_search_call", "file_search_call",
+			"computer_call", "local_shell_call", "custom_tool_call",
+			"image_generation_call":
+			return nil, false
+		default:
+			if _, ok := v["role"].(string); ok {
+				return normalizeXAIResponsesMessageInput(v)
+			}
+			return nil, false
+		}
+	default:
+		return nil, false
+	}
+}
+
+func normalizeXAIResponsesMessageInput(item map[string]any) (map[string]any, bool) {
+	role, _ := item["role"].(string)
+	role = strings.ToLower(strings.TrimSpace(role))
+	switch role {
+	case "developer":
+		role = "system"
+	case "system", "user", "assistant":
+	default:
+		return nil, false
+	}
+
+	content, ok := normalizeXAIResponsesMessageContent(item["content"])
+	if !ok {
+		return nil, false
+	}
+	return map[string]any{
+		"role":    role,
+		"content": content,
+	}, true
+}
+
+func normalizeXAIResponsesMessageContent(content any) (any, bool) {
+	switch v := content.(type) {
+	case string:
+		return v, true
+	case []any:
+		parts := make([]map[string]any, 0, len(v))
+		onlyText := true
+		textParts := make([]string, 0, len(v))
+		for _, part := range v {
+			normalized, isText, ok := normalizeXAIResponsesContentPart(part)
+			if !ok {
+				continue
+			}
+			if isText {
+				if text, _ := normalized["text"].(string); text != "" {
+					textParts = append(textParts, text)
+				}
+			} else {
+				onlyText = false
+			}
+			parts = append(parts, normalized)
+		}
+		if len(parts) == 0 {
+			return nil, false
+		}
+		if onlyText {
+			return strings.Join(textParts, "\n"), true
+		}
+		return parts, true
+	case map[string]any:
+		part, _, ok := normalizeXAIResponsesContentPart(v)
+		if !ok {
+			return nil, false
+		}
+		return []map[string]any{part}, true
+	default:
+		return nil, false
+	}
+}
+
+func normalizeXAIResponsesContentPart(part any) (map[string]any, bool, bool) {
+	partMap, ok := part.(map[string]any)
+	if !ok {
+		return nil, false, false
+	}
+	partType, _ := partMap["type"].(string)
+	partType = strings.ToLower(strings.TrimSpace(partType))
+	switch partType {
+	case "input_text", "output_text", "text":
+		text, _ := partMap["text"].(string)
+		return map[string]any{
+			"type": "input_text",
+			"text": text,
+		}, true, text != ""
+	case "input_image":
+		out := map[string]any{"type": "input_image"}
+		copyIfPresent(out, partMap, "image_url")
+		copyIfPresent(out, partMap, "file_id")
+		copyIfPresent(out, partMap, "detail")
+		if _, hasImageURL := out["image_url"]; !hasImageURL {
+			if _, hasFileID := out["file_id"]; !hasFileID {
+				return nil, false, false
+			}
+		}
+		return out, false, true
+	default:
+		if text, ok := partMap["text"].(string); ok && strings.TrimSpace(text) != "" {
+			return map[string]any{
+				"type": "input_text",
+				"text": text,
+			}, true, true
+		}
+		return nil, false, false
+	}
+}
+
+func normalizeXAIResponsesFunctionCallInput(item map[string]any) (map[string]any, bool) {
+	out := map[string]any{"type": "function_call"}
+	copyIfPresent(out, item, "call_id")
+	copyIfPresent(out, item, "name")
+	copyIfPresent(out, item, "status")
+	if arguments, ok := callOutputString(item["arguments"]); ok {
+		out["arguments"] = arguments
+	}
+	if _, ok := out["call_id"].(string); !ok {
+		return nil, false
+	}
+	if _, ok := out["name"].(string); !ok {
+		return nil, false
+	}
+	return out, true
+}
+
+func normalizeXAIResponsesFunctionCallOutputInput(item map[string]any) (map[string]any, bool) {
+	callID, _ := item["call_id"].(string)
+	callID = strings.TrimSpace(callID)
+	output, ok := callOutputString(item["output"])
+	if callID == "" || !ok {
+		return nil, false
+	}
+	return map[string]any{
+		"type":    "function_call_output",
+		"call_id": callID,
+		"output":  output,
+	}, true
+}
+
+func normalizeUnsupportedCallOutputAsUserMessage(item map[string]any, itemType string) (map[string]any, bool) {
+	output, ok := callOutputString(item["output"])
+	if !ok || isImageOnlyToolOutput(item["output"]) {
+		return nil, false
+	}
+	callID, _ := item["call_id"].(string)
+	prefix := itemType
+	if strings.TrimSpace(callID) != "" {
+		prefix += " " + strings.TrimSpace(callID)
+	}
+	return map[string]any{
+		"role":    "user",
+		"content": prefix + " output:\n" + output,
+	}, true
+}
+
+func callOutputString(value any) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, strings.TrimSpace(v) != ""
+	case nil:
+		return "", false
+	default:
+		raw, err := common.Marshal(v)
+		if err != nil {
+			return "", false
+		}
+		out := strings.TrimSpace(string(raw))
+		if out == "" || out == "null" {
+			return "", false
+		}
+		return out, true
+	}
+}
+
+func isImageOnlyToolOutput(value any) bool {
+	part, ok := value.(map[string]any)
+	if !ok {
+		return false
+	}
+	partType, _ := part["type"].(string)
+	if strings.EqualFold(strings.TrimSpace(partType), "input_image") {
+		return true
+	}
+	if _, ok := part["image_url"]; ok {
+		return true
+	}
+	return false
 }
 
 func moveInstructionsIntoInput(request dto.OpenAIResponsesRequest) dto.OpenAIResponsesRequest {
