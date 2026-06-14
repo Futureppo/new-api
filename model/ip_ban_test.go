@@ -73,6 +73,10 @@ func TestIsIPBanTargetMatchClient(t *testing.T) {
 		{name: "ipv4 cidr", target: "203.0.113.0/24", clientIP: "203.0.113.88", expected: true},
 		{name: "same ipv6", target: "2001:db8::1", clientIP: "2001:db8::1", expected: true},
 		{name: "ipv6 cidr", target: "2001:db8::/64", clientIP: "2001:db8::abcd", expected: true},
+		{name: "ipv6 cidr first hextet only", target: "2602::/16", clientIP: "2602:feda:f39f:c871:1b89:b115:c8a6:e8a1", expected: true},
+		{name: "ipv6 cidr first two hextets", target: "2602:feda::/32", clientIP: "2602:feda:f396:d312:84ad:4993:10ae:95aa", expected: true},
+		{name: "ipv6 cidr exact routed /64", target: "2602:feda:f39f:c871::/64", clientIP: "2602:feda:f39f:c871:1b89:b115:c8a6:e8a1", expected: true},
+		{name: "ipv6 /64 does not wildcard omitted hextets", target: "2602::/64", clientIP: "2602:feda:f39f:c871:1b89:b115:c8a6:e8a1", expected: false},
 	}
 
 	for _, tt := range tests {

@@ -36,6 +36,7 @@ import {
   Space,
   Spin,
   Tag,
+  Tooltip,
   Typography,
 } from '@douyinfe/semi-ui';
 import {
@@ -43,6 +44,7 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import {
+  Info,
   Pencil,
   Plus,
   RefreshCw,
@@ -104,6 +106,19 @@ const renderStatus = (record, t) => {
     </Tag>
   );
 };
+
+const renderTargetLabel = (t, labelKey = 'IP或IP段') => (
+  <span className='inline-flex items-center gap-1'>
+    {t(labelKey)}
+    <Tooltip
+      content={t(
+        'IPv6 CIDR 按位匹配：2602::/64 只匹配 2602:0:0:0:*；要封禁 2602:feda:* 请使用 2602:feda::/32。',
+      )}
+    >
+      <Info size={14} strokeWidth={2} className='text-gray-400 cursor-help' />
+    </Tooltip>
+  </span>
+);
 
 const useIPBanList = (type) => {
   const { t } = useTranslation();
@@ -305,7 +320,7 @@ const EditIPBanModal = ({ visible, type, record, onClose, onSaved }) => {
           <div className='p-4'>
             <Form.Input
               field='target'
-              label={t('IP或IP段')}
+              label={renderTargetLabel(t)}
               placeholder={t('IP或IP段示例')}
               rules={[{ required: true, message: t('请输入IP或IP段') }]}
               showClear
@@ -420,8 +435,8 @@ const BatchImportModal = ({ visible, type, onClose, onSaved }) => {
       <Form getFormApi={(api) => (formApiRef.current = api)} onSubmit={submit}>
         <Form.TextArea
           field='lines'
-          label={t('IP或IP段列表')}
-          placeholder={`203.0.113.10\n203.0.113.0/24 ${t('封禁原因')}\n2001:db8::/64 ${t('封禁原因')}`}
+          label={renderTargetLabel(t, 'IP或IP段列表')}
+          placeholder={`203.0.113.10\n203.0.113.0/24 ${t('封禁原因')}\n2602:feda::/32 ${t('封禁原因')}`}
           rows={8}
           autosize
           rules={[{ required: true, message: t('请输入IP或IP段') }]}
