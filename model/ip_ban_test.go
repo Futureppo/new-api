@@ -31,7 +31,7 @@ func TestNormalizeIPBanTarget(t *testing.T) {
 func TestMatchIPBanSupportsIPv4IPv6AndCIDR(t *testing.T) {
 	truncateTables(t)
 	now := common.GetTimestamp()
-	require.NoError(t, CreateIPBan(&IPBan{Target: "203.0.113.10", Reason: "single ipv4"}))
+	require.NoError(t, CreateIPBan(&IPBan{Target: "203.0.113.10", Reason: "single ipv4", AutoBanUser: true}))
 	require.NoError(t, CreateIPBan(&IPBan{Target: "198.51.100.0/24", Reason: "cidr ipv4"}))
 	require.NoError(t, CreateIPBan(&IPBan{Target: "2001:db8::1", Reason: "single ipv6"}))
 	require.NoError(t, CreateIPBan(&IPBan{Target: "2001:db8:abcd::/48", Reason: "cidr ipv6"}))
@@ -41,6 +41,7 @@ func TestMatchIPBanSupportsIPv4IPv6AndCIDR(t *testing.T) {
 	ban, ok := MatchIPBan("203.0.113.10")
 	require.True(t, ok)
 	require.Equal(t, "single ipv4", ban.Reason)
+	require.True(t, ban.AutoBanUser)
 
 	ban, ok = MatchIPBan("198.51.100.88")
 	require.True(t, ok)

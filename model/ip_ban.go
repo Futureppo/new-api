@@ -18,24 +18,26 @@ const (
 )
 
 type IPBan struct {
-	Id        int            `json:"id"`
-	Target    string         `json:"target" gorm:"type:varchar(128);index"`
-	Reason    string         `json:"reason" gorm:"type:varchar(255);not null"`
-	ExpiresAt int64          `json:"expires_at" gorm:"bigint;index;default:0"`
-	CreatedAt int64          `json:"created_at" gorm:"bigint;index"`
-	UpdatedAt int64          `json:"updated_at" gorm:"bigint"`
-	CreatedBy int            `json:"created_by" gorm:"index"`
-	DeletedAt gorm.DeletedAt `gorm:"index"`
+	Id          int            `json:"id"`
+	Target      string         `json:"target" gorm:"type:varchar(128);index"`
+	Reason      string         `json:"reason" gorm:"type:varchar(255);not null"`
+	ExpiresAt   int64          `json:"expires_at" gorm:"bigint;index;default:0"`
+	AutoBanUser bool           `json:"auto_ban_user" gorm:"default:false"`
+	CreatedAt   int64          `json:"created_at" gorm:"bigint;index"`
+	UpdatedAt   int64          `json:"updated_at" gorm:"bigint"`
+	CreatedBy   int            `json:"created_by" gorm:"index"`
+	DeletedAt   gorm.DeletedAt `gorm:"index"`
 }
 
 type ipBanCacheEntry struct {
-	Id        int
-	Target    string
-	Reason    string
-	ExpiresAt int64
-	Addr      netip.Addr
-	Prefix    netip.Prefix
-	IsPrefix  bool
+	Id          int
+	Target      string
+	Reason      string
+	ExpiresAt   int64
+	AutoBanUser bool
+	Addr        netip.Addr
+	Prefix      netip.Prefix
+	IsPrefix    bool
 }
 
 var (
@@ -66,10 +68,11 @@ func NormalizeIPBanTarget(target string) (string, error) {
 
 func parseIPBanCacheEntry(ban *IPBan) (ipBanCacheEntry, error) {
 	entry := ipBanCacheEntry{
-		Id:        ban.Id,
-		Target:    ban.Target,
-		Reason:    ban.Reason,
-		ExpiresAt: ban.ExpiresAt,
+		Id:          ban.Id,
+		Target:      ban.Target,
+		Reason:      ban.Reason,
+		ExpiresAt:   ban.ExpiresAt,
+		AutoBanUser: ban.AutoBanUser,
 	}
 	if strings.Contains(ban.Target, "/") {
 		prefix, err := netip.ParsePrefix(ban.Target)
@@ -144,20 +147,22 @@ func MatchIPBan(clientIP string) (*IPBan, bool) {
 		if entry.IsPrefix {
 			if entry.Prefix.Contains(addr) {
 				return &IPBan{
-					Id:        entry.Id,
-					Target:    entry.Target,
-					Reason:    entry.Reason,
-					ExpiresAt: entry.ExpiresAt,
+					Id:          entry.Id,
+					Target:      entry.Target,
+					Reason:      entry.Reason,
+					ExpiresAt:   entry.ExpiresAt,
+					AutoBanUser: entry.AutoBanUser,
 				}, true
 			}
 			continue
 		}
 		if entry.Addr == addr {
 			return &IPBan{
-				Id:        entry.Id,
-				Target:    entry.Target,
-				Reason:    entry.Reason,
-				ExpiresAt: entry.ExpiresAt,
+				Id:          entry.Id,
+				Target:      entry.Target,
+				Reason:      entry.Reason,
+				ExpiresAt:   entry.ExpiresAt,
+				AutoBanUser: entry.AutoBanUser,
 			}, true
 		}
 	}
@@ -248,7 +253,7 @@ func CreateIPBan(ban *IPBan) error {
 
 func UpdateIPBan(ban *IPBan) error {
 	ban.UpdatedAt = common.GetTimestamp()
-	return DB.Model(ban).Select("target", "reason", "expires_at", "updated_at").Updates(ban).Error
+	return DB.Model(ban).Select("target", "reason", "expires_at", "auto_ban_user", "updated_at").Updates(ban).Error
 }
 
 func DeleteIPBanById(id int) error {

@@ -227,6 +227,7 @@ const EditIPBanModal = ({ visible, type, record, onClose, onSaved }) => {
     () => ({
       target: record?.target || '',
       reason: record?.reason || '',
+      auto_ban_user: Boolean(record?.auto_ban_user),
       expires_at: record?.expires_at
         ? new Date(record.expires_at * 1000)
         : null,
@@ -258,6 +259,8 @@ const EditIPBanModal = ({ visible, type, record, onClose, onSaved }) => {
         target: values.target,
         reason: values.reason,
         expires_at: expiresAt,
+        auto_ban_user:
+          type === IP_BAN_TYPES.PERMANENT && Boolean(values.auto_ban_user),
         confirm_self_lock: confirmSelfLock,
       };
       const res = isEdit
@@ -334,6 +337,17 @@ const EditIPBanModal = ({ visible, type, record, onClose, onSaved }) => {
               rules={[{ required: true, message: t('请输入封禁原因') }]}
               showClear
             />
+            {type === IP_BAN_TYPES.PERMANENT && (
+              <Form.Switch
+                field='auto_ban_user'
+                label={t('命中后封禁账号')}
+                checkedText={t('开')}
+                uncheckedText={t('关')}
+                extraText={t(
+                  '开启后，后续命中该IP规则的普通用户账号会被同步封禁，封禁原因沿用当前IP封禁原因。',
+                )}
+              />
+            )}
             {type === IP_BAN_TYPES.TEMPORARY && (
               <Form.DatePicker
                 field='expires_at'
@@ -521,6 +535,22 @@ const IPBanSection = ({ type, title, description }) => {
         dataIndex: 'expires_at',
         render: (_text, record) => renderStatus(record, t),
       },
+      ...(type === IP_BAN_TYPES.PERMANENT
+        ? [
+            {
+              title: t('封账号'),
+              dataIndex: 'auto_ban_user',
+              render: (enabled) =>
+                enabled ? (
+                  <Tag color='red' shape='circle'>
+                    {t('命中后封禁账号')}
+                  </Tag>
+                ) : (
+                  <Text type='tertiary'>{t('否')}</Text>
+                ),
+            },
+          ]
+        : []),
       {
         title: t('原因'),
         dataIndex: 'reason',
@@ -557,7 +587,7 @@ const IPBanSection = ({ type, title, description }) => {
         ),
       },
     ],
-    [t],
+    [t, type],
   );
 
   return (

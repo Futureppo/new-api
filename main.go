@@ -171,8 +171,6 @@ func main() {
 	server.Use(middleware.RequestId())
 	server.Use(middleware.PoweredBy())
 	server.Use(middleware.I18n())
-	server.Use(middleware.IPBan())
-	middleware.SetUpLogger(server)
 	// Initialize session store
 	store := cookie.NewStore([]byte(common.SessionSecret))
 	store.Options(sessions.Options{
@@ -183,6 +181,8 @@ func main() {
 		SameSite: http.SameSiteStrictMode,
 	})
 	server.Use(sessions.Sessions("session", store))
+	server.Use(middleware.IPBan())
+	middleware.SetUpLogger(server)
 
 	InjectUmamiAnalytics()
 	InjectGoogleAnalytics()

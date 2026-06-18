@@ -358,6 +358,31 @@ func DeleteUserById(id int) (err error) {
 	return user.Delete()
 }
 
+func DisableUserByIPBan(id int, reason string) (bool, error) {
+	if id == 0 {
+		return false, errors.New("id 为空！")
+	}
+	result := DB.Model(&User{}).
+		Where("id = ? AND role = ? AND status <> ?", id, common.RoleCommonUser, common.UserStatusDisabled).
+		Updates(map[string]interface{}{
+			"status":         common.UserStatusDisabled,
+			"disable_reason": strings.TrimSpace(reason),
+		})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, nil
+	}
+	if err := InvalidateUserCache(id); err != nil {
+		return true, err
+	}
+	if err := InvalidateUserTokensCache(id); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
 func HardDeleteUserById(id int) error {
 	if id == 0 {
 		return errors.New("id 为空！")

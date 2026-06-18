@@ -1,9 +1,17 @@
 package controller
 
 import (
+	"bytes"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
+	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestParseIPBanBatchLinesUsesDefaultAndInlineReasons(t *testing.T) {
@@ -46,4 +54,36 @@ func TestParseIPBanBatchLinesDeduplicatesNormalizedTargets(t *testing.T) {
 	require.Len(t, entries, 1)
 	require.Equal(t, "203.0.113.0/24", entries[0].Target)
 	require.Equal(t, "first", entries[0].Reason)
+}
+
+func TestAddIPBanForcesTemporaryAutoBanUserOff(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	originalDB := model.DB
+	model.DB = db
+	t.Cleanup(func() {
+		model.DB = originalDB
+	})
+	require.NoError(t, db.AutoMigrate(&model.IPBan{}))
+
+	body, err := common.Marshal(IPBanRequest{
+		Target:      "203.0.113.10",
+		Reason:      "temporary abuse",
+		ExpiresAt:   common.GetTimestamp() + 3600,
+		AutoBanUser: true,
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/ip_ban/", bytes.NewReader(body))
+	c.Set("id", 1)
+
+	AddIPBan(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var ban model.IPBan
+	require.NoError(t, db.First(&ban, "target = ?", "203.0.113.10").Error)
+	require.False(t, ban.AutoBanUser)
 }
