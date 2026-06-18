@@ -48,6 +48,22 @@ func TestRecordErrorLogRecordsTruncatedUserAgent(t *testing.T) {
 	require.Equal(t, strings.Repeat("A", maxUserAgentLogLength), log.UserAgent)
 }
 
+func TestRecordLogWithContextRecordsIPAndTruncatedUserAgent(t *testing.T) {
+	truncateTables(t)
+
+	longUserAgent := strings.Repeat("A", maxUserAgentLogLength+10)
+	c := newLogTestContext("  " + longUserAgent + "  ")
+	c.Request.RemoteAddr = "203.0.113.10:1234"
+	RecordLogWithContext(c, 1, LogTypeSystem, "用户签到，获得额度 $ 1.000000")
+
+	var log Log
+	require.NoError(t, LOG_DB.Where("user_id = ? AND type = ?", 1, LogTypeSystem).First(&log).Error)
+	require.Equal(t, "alice", log.Username)
+	require.Equal(t, "203.0.113.10", log.Ip)
+	require.Len(t, []rune(log.UserAgent), maxUserAgentLogLength)
+	require.Equal(t, strings.Repeat("A", maxUserAgentLogLength), log.UserAgent)
+}
+
 func TestGetAllLogsFiltersByUserAgent(t *testing.T) {
 	truncateTables(t)
 

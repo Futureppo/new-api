@@ -1169,7 +1169,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
-	quota, err := model.Redeem(req.Key, id)
+	quota, redemptionId, err := model.Redeem(req.Key, id)
 	if err != nil {
 		if errors.Is(err, model.ErrRedeemFailed) {
 			common.ApiErrorI18n(c, i18n.MsgRedeemFailed)
@@ -1178,6 +1178,7 @@ func TopUp(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	model.RecordLogWithContext(c, id, model.LogTypeTopup, fmt.Sprintf("通过兑换码充值 %s，兑换码ID %d", logger.LogQuota(quota), redemptionId))
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",

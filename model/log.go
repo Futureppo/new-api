@@ -124,6 +124,44 @@ func RecordLog(userId int, logType int, content string) {
 	}
 }
 
+func shouldRecordIPLog(userId int) bool {
+	settingMap, err := GetUserSetting(userId, false)
+	return err == nil && settingMap.RecordIpLog
+}
+
+func requestIP(c *gin.Context, userId int) string {
+	if c == nil || c.Request == nil || !shouldRecordIPLog(userId) {
+		return ""
+	}
+	return c.ClientIP()
+}
+
+func RecordLogWithContext(c *gin.Context, userId int, logType int, content string) {
+	if logType == LogTypeConsume && !common.LogConsumeEnabled {
+		return
+	}
+	username := ""
+	if c != nil {
+		username = strings.TrimSpace(c.GetString("username"))
+	}
+	if username == "" {
+		username, _ = GetUsernameById(userId, false)
+	}
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      logType,
+		Content:   content,
+		Ip:        requestIP(c, userId),
+		UserAgent: requestUserAgent(c),
+	}
+	err := LOG_DB.Create(log).Error
+	if err != nil {
+		common.SysLog("failed to record log: " + err.Error())
+	}
+}
+
 // RecordLogWithAdminInfo 记录操作日志，并将管理员相关信息存入 Other.admin_info，
 func RecordLogWithAdminInfo(userId int, logType int, content string, adminInfo map[string]interface{}) {
 	if logType == LogTypeConsume && !common.LogConsumeEnabled {
