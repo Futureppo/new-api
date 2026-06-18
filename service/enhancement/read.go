@@ -989,9 +989,13 @@ func buildModelStatus(groupName string, modelName string, window string, public 
 		return status, err
 	}
 
+	ignoredErrorKeywords := modelStatusIgnoredErrorKeywordsForMatch()
 	var useTimeTotal int64
 	for _, row := range rows {
 		if row.CreatedAt < resolved.Start || row.CreatedAt > resolved.End {
+			continue
+		}
+		if row.Type == model.LogTypeError && shouldIgnoreModelStatusError(row, ignoredErrorKeywords) {
 			continue
 		}
 		slotIndex := int((row.CreatedAt - resolved.Start) / resolved.SlotSeconds)
@@ -1043,6 +1047,35 @@ func buildModelStatus(groupName string, modelName string, window string, public 
 	status.SlotData = slots
 
 	return status, nil
+}
+
+func modelStatusIgnoredErrorKeywordsForMatch() []string {
+	cfg := setting.GetEnhancementSetting()
+	if !cfg.ModelStatusIgnoreErrorKeywordsEnabled || len(cfg.ModelStatusIgnoredErrorKeywords) == 0 {
+		return nil
+	}
+	keywords, err := normalizeModelStatusIgnoredErrorKeywords(cfg.ModelStatusIgnoredErrorKeywords)
+	if err != nil || len(keywords) == 0 {
+		return nil
+	}
+	matchers := make([]string, 0, len(keywords))
+	for _, keyword := range keywords {
+		matchers = append(matchers, strings.ToLower(keyword))
+	}
+	return matchers
+}
+
+func shouldIgnoreModelStatusError(row model.Log, keywords []string) bool {
+	if len(keywords) == 0 {
+		return false
+	}
+	haystack := strings.ToLower(row.Content + "\n" + row.Other)
+	for _, keyword := range keywords {
+		if keyword != "" && strings.Contains(haystack, keyword) {
+			return true
+		}
+	}
+	return false
 }
 
 func ModelStatusFor(modelName string, minutes int, public bool) (ModelStatus, error) {
@@ -1206,6 +1239,9 @@ func ModelStatusConfig(public bool) map[string]interface{} {
 	}
 	if public {
 		base["public"] = true
+	} else {
+		base["model_status_ignore_error_keywords_enabled"] = cfg.ModelStatusIgnoreErrorKeywordsEnabled
+		base["model_status_ignored_error_keywords"] = append([]string{}, cfg.ModelStatusIgnoredErrorKeywords...)
 	}
 	return base
 }

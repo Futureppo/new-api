@@ -365,6 +365,19 @@ function getModelStatusThreshold(config = {}, key, fallback) {
   return Math.min(100, Math.max(1, value));
 }
 
+function formatModelStatusIgnoredErrorKeywords(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (typeof value === 'string') {
+    return value;
+  }
+  return '';
+}
+
 function modelStatusWindowToMinutes(windowValue) {
   switch (windowValue) {
     case 'today':
@@ -2495,6 +2508,14 @@ function ModelStatusPanel({ data }) {
   const [showZeroRequestModels, setShowZeroRequestModels] = useState(
     !!data?.config?.show_zero_request_models,
   );
+  const [ignoreErrorKeywordsEnabled, setIgnoreErrorKeywordsEnabled] = useState(
+    !!data?.config?.model_status_ignore_error_keywords_enabled,
+  );
+  const [ignoredErrorKeywordsText, setIgnoredErrorKeywordsText] = useState(
+    formatModelStatusIgnoredErrorKeywords(
+      data?.config?.model_status_ignored_error_keywords,
+    ),
+  );
   const [refreshMinutes, setRefreshMinutes] = useState(
     getModelStatusRefreshMinutes(data?.config),
   );
@@ -2510,23 +2531,19 @@ function ModelStatusPanel({ data }) {
   const [saving, setSaving] = useState(false);
   const publicUrl = getModelStatusPublicUrl(config);
 
-  const loadConfig = async () => {
-    try {
-      const nextConfig = await API.get(
-        '/api/enhancements/model-status/config/time-window',
-      ).then(unwrap);
-      setConfig(nextConfig || {});
-    } catch (error) {
-      showError(error.message);
-    }
-  };
-
-  useEffect(() => {
-    const nextConfig = data?.config || {};
+  const syncConfig = useCallback((nextConfig = {}) => {
     setConfig(nextConfig);
     setWindowValue(getModelStatusConfigWindow(nextConfig));
     setPublicEnabled(!!nextConfig.public_embed_enabled);
     setShowZeroRequestModels(!!nextConfig.show_zero_request_models);
+    setIgnoreErrorKeywordsEnabled(
+      !!nextConfig.model_status_ignore_error_keywords_enabled,
+    );
+    setIgnoredErrorKeywordsText(
+      formatModelStatusIgnoredErrorKeywords(
+        nextConfig.model_status_ignored_error_keywords,
+      ),
+    );
     setRefreshMinutes(getModelStatusRefreshMinutes(nextConfig));
     setSlotMinutes(getModelStatusSlotMinutes(nextConfig));
     setGreenThreshold(
@@ -2535,7 +2552,22 @@ function ModelStatusPanel({ data }) {
     setYellowThreshold(
       getModelStatusThreshold(nextConfig, 'yellow_threshold', 80),
     );
-  }, [data]);
+  }, []);
+
+  const loadConfig = async () => {
+    try {
+      const nextConfig = await API.get(
+        '/api/enhancements/model-status/config/time-window',
+      ).then(unwrap);
+      syncConfig(nextConfig || {});
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+
+  useEffect(() => {
+    syncConfig(data?.config || {});
+  }, [data, syncConfig]);
 
   const handleSaveSettings = async () => {
     setSaving(true);
@@ -2565,6 +2597,18 @@ function ModelStatusPanel({ data }) {
           '/api/enhancements/model-status/config/show-zero-request-models',
           {
             value: showZeroRequestModels,
+          },
+        ).then(unwrap),
+        API.put(
+          '/api/enhancements/model-status/config/ignore-error-keywords-enabled',
+          {
+            value: ignoreErrorKeywordsEnabled,
+          },
+        ).then(unwrap),
+        API.put(
+          '/api/enhancements/model-status/config/ignored-error-keywords',
+          {
+            value: ignoredErrorKeywordsText,
           },
         ).then(unwrap),
         API.put('/api/enhancements/model-status/config/time-window', {
@@ -2602,7 +2646,7 @@ function ModelStatusPanel({ data }) {
     <div className='space-y-4'>
       <Card className='!rounded-lg'>
         <div className='flex flex-col gap-4'>
-          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
             <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
               <div className='flex items-center gap-3'>
                 <div className='h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
@@ -2641,7 +2685,43 @@ function ModelStatusPanel({ data }) {
                 uncheckedText={t('关闭')}
               />
             </div>
+            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
+              <div className='flex items-center gap-3'>
+                <div className='h-10 w-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center'>
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <div className='text-base font-semibold text-semi-color-text-0'>
+                    {t('忽略错误关键词')}
+                  </div>
+                  <div className='text-sm text-semi-color-text-2'>
+                    {t('匹配关键词的错误不计入模型状态')}
+                  </div>
+                </div>
+              </div>
+              <Switch
+                checked={ignoreErrorKeywordsEnabled}
+                onChange={setIgnoreErrorKeywordsEnabled}
+                checkedText={t('开启')}
+                uncheckedText={t('关闭')}
+              />
+            </div>
           </div>
+
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('错误关键词')}</Text>
+            <TextArea
+              value={ignoredErrorKeywordsText}
+              onChange={(value) => setIgnoredErrorKeywordsText(value || '')}
+              autosize={{ minRows: 3, maxRows: 8 }}
+              placeholder={t(
+                '一行一个关键词，例如 unsupported_feature_for_model',
+              )}
+            />
+            <div className='text-xs text-semi-color-text-2'>
+              {t('不区分大小写，匹配错误内容或错误详情')}
+            </div>
+          </label>
 
           <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5'>
             <label className='space-y-1'>

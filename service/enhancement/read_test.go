@@ -103,6 +103,117 @@ func seedModelStatusTargets(t *testing.T, db *gorm.DB) {
 	}).Error)
 }
 
+func configureModelStatusIgnoredErrorKeywords(t *testing.T, enabled bool, keywords []string) {
+	t.Helper()
+
+	cfg := setting.GetEnhancementSetting()
+	originalEnabled := cfg.ModelStatusIgnoreErrorKeywordsEnabled
+	originalKeywords := append([]string{}, cfg.ModelStatusIgnoredErrorKeywords...)
+
+	t.Cleanup(func() {
+		cfg.ModelStatusIgnoreErrorKeywordsEnabled = originalEnabled
+		cfg.ModelStatusIgnoredErrorKeywords = originalKeywords
+	})
+
+	cfg.ModelStatusIgnoreErrorKeywordsEnabled = enabled
+	cfg.ModelStatusIgnoredErrorKeywords = append([]string{}, keywords...)
+}
+
+func seedModelStatusLogs(t *testing.T, db *gorm.DB, logs ...model.Log) {
+	t.Helper()
+	require.NoError(t, db.Create(&logs).Error)
+}
+
+func TestModelStatusIgnoredErrorKeywordsDisabledCountsErrors(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	configureModelStatusIgnoredErrorKeywords(t, false, []string{"unsupported_feature_for_model"})
+	now := common.GetTimestamp()
+	modelName := "zz-ignore-disabled-model"
+
+	seedModelStatusLogs(t, db,
+		model.Log{CreatedAt: now - 60, Type: model.LogTypeConsume, ModelName: modelName, Group: "default", UseTime: 2},
+		model.Log{CreatedAt: now - 30, Type: model.LogTypeError, ModelName: modelName, Group: "default", Content: "unsupported_feature_for_model"},
+	)
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), status.TotalRequests)
+	require.Equal(t, int64(1), status.SuccessCount)
+	require.Equal(t, int64(1), status.ErrorCount)
+	require.Equal(t, 50.0, status.SuccessRate)
+}
+
+func TestModelStatusIgnoredErrorKeywordsMatchContentCaseInsensitive(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	configureModelStatusIgnoredErrorKeywords(t, true, []string{"UNSUPPORTED_FEATURE"})
+	now := common.GetTimestamp()
+	modelName := "zz-ignore-content-model"
+
+	seedModelStatusLogs(t, db,
+		model.Log{CreatedAt: now - 60, Type: model.LogTypeConsume, ModelName: modelName, Group: "default", UseTime: 2},
+		model.Log{CreatedAt: now - 30, Type: model.LogTypeError, ModelName: modelName, Group: "default", Content: "unsupported_feature_for_model"},
+	)
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), status.TotalRequests)
+	require.Equal(t, int64(1), status.SuccessCount)
+	require.Equal(t, int64(0), status.ErrorCount)
+	require.Equal(t, 100.0, status.SuccessRate)
+}
+
+func TestModelStatusIgnoredErrorKeywordsMatchOtherJSONText(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	configureModelStatusIgnoredErrorKeywords(t, true, []string{"content_policy_violation", `"status_code":400`})
+	now := common.GetTimestamp()
+	modelName := "zz-ignore-other-model"
+
+	seedModelStatusLogs(t, db,
+		model.Log{CreatedAt: now - 60, Type: model.LogTypeConsume, ModelName: modelName, Group: "default", UseTime: 2},
+		model.Log{
+			CreatedAt: now - 30,
+			Type:      model.LogTypeError,
+			ModelName: modelName,
+			Group:     "default",
+			Content:   "request rejected",
+			Other:     `{"error_code":"content_policy_violation","status_code":400}`,
+		},
+	)
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), status.TotalRequests)
+	require.Equal(t, int64(1), status.SuccessCount)
+	require.Equal(t, int64(0), status.ErrorCount)
+	require.Equal(t, 100.0, status.SuccessRate)
+}
+
+func TestModelStatusIgnoredErrorKeywordsOnlyIgnoredErrorsLooksEmpty(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	configureModelStatusIgnoredErrorKeywords(t, true, []string{"invalid_parameter"})
+	now := common.GetTimestamp()
+	modelName := "zz-ignore-only-model"
+
+	seedModelStatusLogs(t, db,
+		model.Log{CreatedAt: now - 60, Type: model.LogTypeError, ModelName: modelName, Group: "default", Content: "invalid_parameter: bad value"},
+		model.Log{CreatedAt: now - 30, Type: model.LogTypeError, ModelName: modelName, Group: "default", Other: `{"error_code":"invalid_parameter","status_code":400}`},
+	)
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), status.TotalRequests)
+	require.Equal(t, int64(0), status.SuccessCount)
+	require.Equal(t, int64(0), status.ErrorCount)
+	require.Equal(t, 100.0, status.SuccessRate)
+	require.Equal(t, "green", status.CurrentStatus)
+}
+
+func TestNormalizeModelStatusIgnoredErrorKeywordsTrimsAndDeduplicates(t *testing.T) {
+	keywords, err := parseModelStatusIgnoredErrorKeywords(" Foo \nfoo\n\nBAR\r\nbar ")
+	require.NoError(t, err)
+	require.Equal(t, []string{"Foo", "BAR"}, keywords)
+}
+
 func TestPublicModelStatusesFilterGroupsByMarketplaceDisplay(t *testing.T) {
 	configurePublicModelStatusGroups(
 		t,

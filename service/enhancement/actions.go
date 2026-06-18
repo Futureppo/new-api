@@ -452,18 +452,68 @@ func SaveSelectedModels(models []string, operatorId int) error {
 	return nil
 }
 
+const (
+	maxModelStatusIgnoredErrorKeywords     = 100
+	maxModelStatusIgnoredErrorKeywordRunes = 200
+)
+
+func parseModelStatusIgnoredErrorKeywords(value string) ([]string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return []string{}, nil
+	}
+
+	var raw []string
+	if strings.HasPrefix(value, "[") {
+		if err := common.Unmarshal([]byte(value), &raw); err != nil {
+			return nil, errors.New("ignored error keywords must be a JSON string array or newline separated text")
+		}
+	} else {
+		value = strings.ReplaceAll(value, "\r\n", "\n")
+		value = strings.ReplaceAll(value, "\r", "\n")
+		raw = strings.Split(value, "\n")
+	}
+	return normalizeModelStatusIgnoredErrorKeywords(raw)
+}
+
+func normalizeModelStatusIgnoredErrorKeywords(raw []string) ([]string, error) {
+	keywords := make([]string, 0, len(raw))
+	seen := make(map[string]struct{}, len(raw))
+	for _, item := range raw {
+		keyword := strings.TrimSpace(item)
+		if keyword == "" {
+			continue
+		}
+		if len([]rune(keyword)) > maxModelStatusIgnoredErrorKeywordRunes {
+			return nil, fmt.Errorf("ignored error keyword must be at most %d characters", maxModelStatusIgnoredErrorKeywordRunes)
+		}
+		key := strings.ToLower(keyword)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		keywords = append(keywords, keyword)
+		if len(keywords) > maxModelStatusIgnoredErrorKeywords {
+			return nil, fmt.Errorf("ignored error keywords must be at most %d entries", maxModelStatusIgnoredErrorKeywords)
+		}
+	}
+	return keywords, nil
+}
+
 func SaveModelStatusOption(key string, value string, operatorId int) error {
 	allowed := map[string]struct{}{
-		"public_embed_enabled":            {},
-		"model_status_time_window_mins":   {},
-		"model_status_refresh_seconds":    {},
-		"model_status_slot_minutes":       {},
-		"model_status_green_threshold":    {},
-		"model_status_yellow_threshold":   {},
-		"model_status_show_zero_requests": {},
-		"model_status_theme":              {},
-		"model_status_sort_mode":          {},
-		"model_status_site_title":         {},
+		"public_embed_enabled":                       {},
+		"model_status_time_window_mins":              {},
+		"model_status_refresh_seconds":               {},
+		"model_status_slot_minutes":                  {},
+		"model_status_green_threshold":               {},
+		"model_status_yellow_threshold":              {},
+		"model_status_show_zero_requests":            {},
+		"model_status_ignore_error_keywords_enabled": {},
+		"model_status_ignored_error_keywords":        {},
+		"model_status_theme":                         {},
+		"model_status_sort_mode":                     {},
+		"model_status_site_title":                    {},
 	}
 	if _, ok := allowed[key]; !ok {
 		return errors.New("unsupported model status option")
@@ -502,6 +552,20 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		if _, err := strconv.ParseBool(value); err != nil {
 			return errors.New("show zero request models must be boolean")
 		}
+	case "model_status_ignore_error_keywords_enabled":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return errors.New("ignore error keywords enabled must be boolean")
+		}
+	case "model_status_ignored_error_keywords":
+		keywords, err := parseModelStatusIgnoredErrorKeywords(value)
+		if err != nil {
+			return err
+		}
+		bytes, err := common.Marshal(keywords)
+		if err != nil {
+			return err
+		}
+		value = string(bytes)
 	case "model_status_theme":
 		if value != "light" && value != "dark" && value != "system" {
 			return errors.New("unsupported model status theme")
