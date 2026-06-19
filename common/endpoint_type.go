@@ -36,6 +36,8 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeXai:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
+	case constant.ChannelTypePoe:
+		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
 	case constant.ChannelTypeSora:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
 	case constant.ChannelTypeVolcEngine:
@@ -53,11 +55,11 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 		}
 	}
-	if IsImageGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineImageGenerationModel(modelName)) {
+	if channelType != constant.ChannelTypePoe && (IsImageGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineImageGenerationModel(modelName))) {
 		// add to first
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
-	if IsVideoGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineContentGenerationTaskModel(modelName)) {
+	if channelType != constant.ChannelTypePoe && (IsVideoGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineContentGenerationTaskModel(modelName))) {
 		endpointTypes = prependEndpointType(endpointTypes, constant.EndpointTypeOpenAIVideo)
 	}
 	return endpointTypes

@@ -85,6 +85,7 @@ func TestNormalizeChannelTestEndpointVideoModels(t *testing.T) {
 	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(nil, "sora-2", ""))
 	require.Equal(t, string(constant.EndpointTypeOpenAIVideo), normalizeChannelTestEndpoint(nil, "grok-imagine-video-1.5-preview", ""))
 	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(nil, "sora-2", string(constant.EndpointTypeOpenAI)))
+	require.Equal(t, "", normalizeChannelTestEndpoint(&model.Channel{Type: constant.ChannelTypePoe}, "sora-2", ""))
 }
 
 func TestNormalizeChannelTestEndpointVolcEngineModels(t *testing.T) {

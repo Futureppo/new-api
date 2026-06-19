@@ -68,7 +68,7 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 			return string(constant.EndpointTypeEmbeddings)
 		}
 	}
-	if common.IsVideoGenerationModel(modelName) {
+	if (channel == nil || channel.Type != constant.ChannelTypePoe) && common.IsVideoGenerationModel(modelName) {
 		return string(constant.EndpointTypeOpenAIVideo)
 	}
 	if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
@@ -140,12 +140,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			requestPath = "/v1/embeddings" // 修改请求路径
 		}
 
-		if common.IsImageGenerationModel(testModel) ||
+		if (channel.Type != constant.ChannelTypePoe && common.IsImageGenerationModel(testModel)) ||
 			(channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineImageGenerationModel(testModel)) {
 			requestPath = "/v1/images/generations"
 		}
 
-		if common.IsVideoGenerationModel(testModel) ||
+		if (channel.Type != constant.ChannelTypePoe && common.IsVideoGenerationModel(testModel)) ||
 			(channel.Type == constant.ChannelTypeVolcEngine && common.IsVolcEngineContentGenerationTaskModel(testModel)) {
 			requestPath = "/v1/videos"
 		}

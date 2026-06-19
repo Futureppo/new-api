@@ -125,6 +125,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &codex.Adaptor{}
 	case constant.APITypeAgnesAI:
 		return &agnes.Adaptor{}
+	case constant.APITypePoe:
+		return &openai.Adaptor{}
 	}
 	return nil
 }

@@ -233,6 +233,11 @@ func TestResolveFetchModelsURL(t *testing.T) {
 		"https://ark.cn-beijing.volces.com/api/coding/v3/models",
 		resolveFetchModelsURL(constant.ChannelTypeVolcEngine, "doubao-coding-plan", ""),
 	)
+	require.Equal(
+		t,
+		"https://api.poe.com/v1/models",
+		resolveFetchModelsURL(constant.ChannelTypePoe, constant.ChannelBaseURLs[constant.ChannelTypePoe], ""),
+	)
 }
 
 func TestFetchModelsUsesCustomModelListURL(t *testing.T) {

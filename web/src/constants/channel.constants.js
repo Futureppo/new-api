@@ -194,11 +194,16 @@ export const CHANNEL_OPTIONS = [
     color: 'green',
     label: 'Agnes AI',
   },
+  {
+    value: 59,
+    color: 'blue',
+    label: 'Poe',
+  },
 ];
 
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
-  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58,
+  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
 ]);
 
 export const MODEL_TABLE_PAGE_SIZE = 10;

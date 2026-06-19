@@ -25,6 +25,18 @@ func TestGetEndpointTypesByChannelTypeCohere(t *testing.T) {
 	)
 }
 
+func TestPoeChannelTypeMappingAndEndpoints(t *testing.T) {
+	apiType, ok := ChannelType2APIType(constant.ChannelTypePoe)
+	require.True(t, ok)
+	require.Equal(t, constant.APITypePoe, apiType)
+
+	require.Equal(
+		t,
+		[]constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse},
+		GetEndpointTypesByChannelType(constant.ChannelTypePoe, "sora-2"),
+	)
+}
+
 func TestGetEndpointTypesByChannelTypeVolcEngine(t *testing.T) {
 	tests := []struct {
 		model string
