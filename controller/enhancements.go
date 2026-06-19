@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 
 	"github.com/QuantumNous/new-api/common"
@@ -74,6 +75,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		risk.GET("/ip-log-coverage", enhancementIPLogCoverage)
 		risk.POST("/ip-log/enable-all", enhancementEnableAllRecordIPLog)
 		risk.GET("/shared-token-ips", enhancementSharedTokenIPs)
+		risk.POST("/shared-token-ips/:ip/ban-users", enhancementBanSharedTokenIPUsers)
 		risk.GET("/token-multi-ips", enhancementTokenMultiIPs)
 		risk.GET("/leaderboards", enhancementRiskLeaderboards)
 		risk.GET("/users/:user_id/analysis", enhancementUserRiskAnalysis)
@@ -481,6 +483,19 @@ func ipRiskQuery(c *gin.Context) enhancement.IPRiskQuery {
 
 func enhancementSharedTokenIPs(c *gin.Context) {
 	data, err := enhancement.SharedTokenIPs(ipRiskQuery(c))
+	respondPublic(c, data, err)
+}
+
+func enhancementBanSharedTokenIPUsers(c *gin.Context) {
+	var req enhancement.BanUserRequest
+	_ = common.DecodeJson(c.Request.Body, &req)
+	ip, err := url.PathUnescape(c.Param("ip"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, role := operator(c)
+	data, err := enhancement.BanSharedTokenIPUsers(ip, ipRiskQuery(c), operatorId, role, req.Reason)
 	respondPublic(c, data, err)
 }
 

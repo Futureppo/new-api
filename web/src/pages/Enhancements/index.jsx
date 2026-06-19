@@ -44,11 +44,13 @@ import {
 import {
   Activity,
   AlertTriangle,
+  Ban,
   Bot,
   CheckCircle2,
   Copy as CopyIcon,
   CreditCard,
   Database,
+  Eye,
   ExternalLink,
   Gift,
   Globe2,
@@ -1769,6 +1771,14 @@ function compactRiskLabels(items, renderLabel, max = 4) {
   );
 }
 
+function riskUserLabel(user) {
+  return `${user?.username || '-'} (#${user?.user_id || '-'})`;
+}
+
+function riskTokenLabel(token) {
+  return `${token?.token_name || '-'} (#${token?.token_id || '-'}, U${token?.user_id || '-'})`;
+}
+
 function RiskPanel({ data }) {
   const { t } = useTranslation();
   const currency = getCurrencyConfig();
@@ -1794,6 +1804,8 @@ function RiskPanel({ data }) {
   const [sharedLoading, setSharedLoading] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [selectedSharedIP, setSelectedSharedIP] = useState(null);
+  const [banLoadingIP, setBanLoadingIP] = useState('');
 
   useEffect(() => {
     setCoverage(data?.coverage || {});
@@ -1905,6 +1917,76 @@ function RiskPanel({ data }) {
     });
   };
 
+  const copyRiskItems = async (items, renderLabel) => {
+    const text = (items || []).map(renderLabel).join('\n');
+    if (!text) return;
+    if (await copy(text)) {
+      showSuccess(t('复制成功'));
+    } else {
+      showError(t('复制失败'));
+    }
+  };
+
+  const banSharedIPUsers = (record) => {
+    const ip = record?.ip;
+    const users = record?.users || [];
+    if (!ip || users.length === 0) {
+      showError(t('该 IP 下没有可封禁用户'));
+      return;
+    }
+    let reason = `共享 IP 风控封禁：${ip}`;
+    Modal.confirm({
+      title: t('封禁该 IP 下的用户'),
+      content: (
+        <div className='space-y-3'>
+          <div>
+            {t('将封禁当前时间范围内使用该 IP 的全部用户')}：{ip}
+          </div>
+          <div className='text-semi-color-text-1'>
+            {t('用户数')}：{formatNumber(users.length)}
+          </div>
+          <TextArea
+            autosize
+            rows={2}
+            defaultValue={reason}
+            placeholder={t('封禁原因')}
+            onChange={(value) => {
+              reason = value;
+            }}
+          />
+        </div>
+      ),
+      okText: t('确认封禁'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setBanLoadingIP(ip);
+        try {
+          const res = await API.post(
+            `/api/enhancements/risk/shared-token-ips/${encodeURIComponent(ip)}/ban-users`,
+            { reason },
+            { params: riskParams(1, sharedPageSize, filters, sharedSort) },
+          );
+          const result = unwrap(res);
+          const success = result?.success || 0;
+          const total = result?.total_users || users.length;
+          if (success > 0) {
+            showSuccess(
+              `${t('已封禁用户')}：${formatNumber(success)} / ${formatNumber(total)}`,
+            );
+          }
+          if (result?.failures?.length) {
+            showError(`${t('部分用户封禁失败')}：${result.failures.length}`);
+          }
+          await loadSharedIPs(sharedIPs?.page || 1, sharedPageSize);
+        } catch (error) {
+          showError(error.message || error);
+        } finally {
+          setBanLoadingIP('');
+        }
+      },
+    });
+  };
+
   const totalUsers = coverage?.total_users || 0;
   const enabledUsers = coverage?.enabled_users || 0;
   const disabledUsers = coverage?.disabled_users || 0;
@@ -1955,24 +2037,43 @@ function RiskPanel({ data }) {
       title: t('用户'),
       dataIndex: 'users',
       width: 260,
-      render: (users) =>
-        compactRiskLabels(
-          users,
-          (user) => `${user.username || '-'} (#${user.user_id})`,
-          3,
-        ),
+      render: (users) => compactRiskLabels(users, riskUserLabel, 3),
     },
     {
       title: t('令牌'),
       dataIndex: 'tokens',
       width: 300,
-      render: (tokens) =>
-        compactRiskLabels(
-          tokens,
-          (token) =>
-            `${token.token_name || '-'} (#${token.token_id}, U${token.user_id})`,
-          3,
-        ),
+      render: (tokens) => compactRiskLabels(tokens, riskTokenLabel, 3),
+    },
+    {
+      title: t('操作'),
+      dataIndex: 'operate',
+      fixed: 'right',
+      width: 190,
+      render: (_, record) => (
+        <Space>
+          <Button
+            size='small'
+            type='primary'
+            theme='borderless'
+            icon={<Eye size={14} />}
+            onClick={() => setSelectedSharedIP(record)}
+          >
+            {t('查看')}
+          </Button>
+          <Button
+            size='small'
+            type='danger'
+            theme='borderless'
+            icon={<Ban size={14} />}
+            loading={banLoadingIP === record.ip}
+            disabled={!record?.users?.length}
+            onClick={() => banSharedIPUsers(record)}
+          >
+            {t('封禁用户')}
+          </Button>
+        </Space>
+      ),
     },
   ];
 
@@ -2035,6 +2136,51 @@ function RiskPanel({ data }) {
       dataIndex: 'ips',
       width: 300,
       render: (ips) => compactRiskLabels(ips, (ip) => ip, 5),
+    },
+  ];
+
+  const selectedSharedUsers = selectedSharedIP?.users || [];
+  const selectedSharedTokens = selectedSharedIP?.tokens || [];
+  const selectedUserColumns = [
+    {
+      title: t('用户 ID'),
+      dataIndex: 'user_id',
+      width: 100,
+    },
+    {
+      title: t('用户名'),
+      dataIndex: 'username',
+      render: (value) => value || '-',
+    },
+    {
+      title: t('请求数'),
+      dataIndex: 'request_count',
+      width: 110,
+      render: (value) => formatNumber(value),
+    },
+  ];
+  const selectedTokenColumns = [
+    {
+      title: t('令牌 ID'),
+      dataIndex: 'token_id',
+      width: 100,
+    },
+    {
+      title: t('令牌名称'),
+      dataIndex: 'token_name',
+      render: (value) => value || '-',
+    },
+    {
+      title: t('用户'),
+      dataIndex: 'username',
+      width: 180,
+      render: (_, record) => riskUserLabel(record),
+    },
+    {
+      title: t('请求数'),
+      dataIndex: 'request_count',
+      width: 110,
+      render: (value) => formatNumber(value),
     },
   ];
 
@@ -2259,6 +2405,144 @@ function RiskPanel({ data }) {
           }}
         />
       </Card>
+
+      <SideSheet
+        placement='right'
+        title={
+          <Space>
+            <Tag color='red' shape='circle'>
+              {t('风控')}
+            </Tag>
+            <Title heading={4} style={{ margin: 0 }}>
+              {selectedSharedIP?.ip || '-'}
+            </Title>
+          </Space>
+        }
+        visible={Boolean(selectedSharedIP)}
+        width={760}
+        closeIcon={null}
+        onCancel={() => setSelectedSharedIP(null)}
+        footer={
+          <div className='flex justify-end bg-semi-color-bg-0'>
+            <Space>
+              <Button
+                type='danger'
+                icon={<Ban size={16} />}
+                loading={banLoadingIP === selectedSharedIP?.ip}
+                disabled={!selectedSharedUsers.length}
+                onClick={() => banSharedIPUsers(selectedSharedIP)}
+              >
+                {t('封禁全部用户')}
+              </Button>
+              <Button
+                theme='light'
+                type='primary'
+                icon={<X size={16} />}
+                onClick={() => setSelectedSharedIP(null)}
+              >
+                {t('关闭')}
+              </Button>
+            </Space>
+          </div>
+        }
+      >
+        {selectedSharedIP && (
+          <div className='p-3 space-y-4'>
+            <Card className='!rounded-lg'>
+              <div className='grid grid-cols-2 md:grid-cols-4 gap-3'>
+                <div>
+                  <Text type='secondary' size='small'>
+                    {t('用户数')}
+                  </Text>
+                  <div className='text-lg font-semibold'>
+                    {formatNumber(selectedSharedIP.user_count)}
+                  </div>
+                </div>
+                <div>
+                  <Text type='secondary' size='small'>
+                    {t('令牌数')}
+                  </Text>
+                  <div className='text-lg font-semibold'>
+                    {formatNumber(selectedSharedIP.token_count)}
+                  </div>
+                </div>
+                <div>
+                  <Text type='secondary' size='small'>
+                    {t('请求数')}
+                  </Text>
+                  <div className='text-lg font-semibold'>
+                    {formatNumber(selectedSharedIP.request_count)}
+                  </div>
+                </div>
+                <div>
+                  <Text type='secondary' size='small'>
+                    {t('错误数')}
+                  </Text>
+                  <div className='text-lg font-semibold'>
+                    {formatNumber(selectedSharedIP.error_count)}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className='!rounded-lg'>
+              <div className='flex items-center justify-between gap-3 mb-3'>
+                <Title heading={5} style={{ margin: 0 }}>
+                  {t('完整用户列表')}
+                </Title>
+                <Button
+                  size='small'
+                  icon={<CopyIcon size={14} />}
+                  onClick={() =>
+                    copyRiskItems(selectedSharedUsers, riskUserLabel)
+                  }
+                >
+                  {t('复制')}
+                </Button>
+              </div>
+              <Table
+                size='small'
+                columns={selectedUserColumns}
+                dataSource={selectedSharedUsers.map((row) => ({
+                  ...row,
+                  _rowKey: row.user_id,
+                }))}
+                rowKey='_rowKey'
+                pagination={false}
+                empty={<Empty description={t('暂无数据')} />}
+              />
+            </Card>
+
+            <Card className='!rounded-lg'>
+              <div className='flex items-center justify-between gap-3 mb-3'>
+                <Title heading={5} style={{ margin: 0 }}>
+                  {t('完整令牌列表')}
+                </Title>
+                <Button
+                  size='small'
+                  icon={<CopyIcon size={14} />}
+                  onClick={() =>
+                    copyRiskItems(selectedSharedTokens, riskTokenLabel)
+                  }
+                >
+                  {t('复制')}
+                </Button>
+              </div>
+              <Table
+                size='small'
+                columns={selectedTokenColumns}
+                dataSource={selectedSharedTokens.map((row) => ({
+                  ...row,
+                  _rowKey: row.token_id,
+                }))}
+                rowKey='_rowKey'
+                pagination={false}
+                empty={<Empty description={t('暂无数据')} />}
+              />
+            </Card>
+          </div>
+        )}
+      </SideSheet>
     </div>
   );
 }

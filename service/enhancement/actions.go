@@ -358,6 +358,79 @@ func EnableAllRecordIPLog(operatorId int) (map[string]interface{}, error) {
 	}, nil
 }
 
+func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operatorRole int, reason string) (map[string]interface{}, error) {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return nil, errors.New("ip cannot be empty")
+	}
+	query = normalizeIPRiskQuery(query)
+	rows, err := listIPRiskLogs(query.Start, query.End)
+	if err != nil {
+		return nil, err
+	}
+
+	usersByID := make(map[int]*IPRiskUserRef)
+	for _, row := range rows {
+		if row.IP != ip || row.UserId <= 0 || row.TokenId <= 0 {
+			continue
+		}
+		if user, ok := usersByID[row.UserId]; ok {
+			user.RequestCount++
+			if user.Username == "" {
+				user.Username = row.Username
+			}
+			continue
+		}
+		usersByID[row.UserId] = &IPRiskUserRef{
+			UserId:       row.UserId,
+			Username:     row.Username,
+			RequestCount: 1,
+		}
+	}
+
+	users := sortedIPRiskUsers(usersByID)
+	if len(users) == 0 {
+		return nil, errors.New("no users found for this ip in the selected window")
+	}
+	if len(users) > MaxBatchOperation {
+		return nil, fmt.Errorf("users under this ip exceeds limit %d", MaxBatchOperation)
+	}
+
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = fmt.Sprintf("risk shared ip ban: %s", ip)
+	}
+	success := 0
+	failures := make([]map[string]interface{}, 0)
+	for _, user := range users {
+		if err := BanUser(user.UserId, operatorId, operatorRole, reason); err != nil {
+			failures = append(failures, map[string]interface{}{
+				"id":       user.UserId,
+				"username": user.Username,
+				"message":  err.Error(),
+			})
+			continue
+		}
+		success++
+	}
+
+	audit(operatorId, "enhancements.risk", "ban_shared_ip_users", map[string]interface{}{
+		"ip":      ip,
+		"total":   len(users),
+		"success": success,
+		"fail":    len(failures),
+		"start":   query.Start,
+		"end":     query.End,
+	})
+	return map[string]interface{}{
+		"ip":          ip,
+		"total_users": len(users),
+		"success":     success,
+		"failures":    failures,
+		"users":       users,
+	}, nil
+}
+
 func UpdateToken(tokenId int, req UpdateTokenRequest, operatorId int) (TokenSummary, error) {
 	if tokenId <= 0 {
 		return TokenSummary{}, errors.New("invalid token id")
