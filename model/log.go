@@ -50,6 +50,7 @@ const (
 	LogTypeSystem  = 4
 	LogTypeError   = 5
 	LogTypeRefund  = 6
+	LogTypeEmail   = 7
 )
 
 const maxUserAgentLogLength = 1024
@@ -272,6 +273,59 @@ type RecordConsumeLogParams struct {
 	IsStream         bool                   `json:"is_stream"`
 	Group            string                 `json:"group"`
 	Other            map[string]interface{} `json:"other"`
+}
+
+type RecordEmailLogParams struct {
+	Receiver string
+	Subject  string
+	Source   string
+	Success  bool
+	Error    string
+}
+
+func RecordEmailLog(c *gin.Context, userId int, params RecordEmailLogParams) {
+	username := ""
+	requestId := ""
+	ip := ""
+	if c != nil {
+		username = strings.TrimSpace(c.GetString("username"))
+		requestId = c.GetString(common.RequestIdKey)
+		if c.Request != nil {
+			ip = c.ClientIP()
+		}
+	}
+	if username == "" && userId > 0 {
+		username, _ = GetUsernameById(userId, false)
+	}
+
+	status := "成功"
+	if !params.Success {
+		status = "失败"
+	}
+	other := map[string]interface{}{
+		"receiver": params.Receiver,
+		"subject":  params.Subject,
+		"source":   params.Source,
+		"success":  params.Success,
+	}
+	if params.Error != "" {
+		other["error"] = params.Error
+	}
+
+	log := &Log{
+		UserId:    userId,
+		Username:  username,
+		CreatedAt: common.GetTimestamp(),
+		Type:      LogTypeEmail,
+		Content:   fmt.Sprintf("发送邮件至 %s，主题：%s，状态：%s", params.Receiver, params.Subject, status),
+		Ip:        ip,
+		UserAgent: requestUserAgent(c),
+		RequestId: requestId,
+		Other:     common.MapToJsonStr(other),
+	}
+	if err := LOG_DB.Create(log).Error; err != nil {
+		common.SysLog("failed to record email log: " + err.Error())
+	}
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {

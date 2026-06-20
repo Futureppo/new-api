@@ -167,6 +167,7 @@ const LogsFilters = ({
               <Form.Select.Option value='4'>{t('系统')}</Form.Select.Option>
               <Form.Select.Option value='5'>{t('错误')}</Form.Select.Option>
               <Form.Select.Option value='6'>{t('退款')}</Form.Select.Option>
+              <Form.Select.Option value='7'>{t('邮件')}</Form.Select.Option>
             </Form.Select>
           </div>
 

@@ -133,6 +133,12 @@ function renderType(type, t) {
           {t('退款')}
         </Tag>
       );
+    case 7:
+      return (
+        <Tag color='blue' shape='circle'>
+          {t('邮件')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='grey' shape='circle'>
@@ -899,6 +905,7 @@ export const getLogsColumns = ({
         const showIp =
           (record.type === 2 ||
             record.type === 5 ||
+            record.type === 7 ||
             (isAdminUser && record.type === 1)) &&
           text;
         return showIp ? (
