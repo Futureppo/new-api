@@ -278,7 +278,8 @@ func UpdateOption(c *gin.Context) {
 		"probe_guard_setting.second_ip_ban_minutes",
 		"probe_guard_setting.permanent_offense_count",
 		"probe_guard_setting.offense_dedupe_seconds",
-		"probe_guard_setting.max_ips_per_offense":
+		"probe_guard_setting.max_ips_per_offense",
+		"probe_guard_setting.whitelist_user_ids":
 		err = setting.CheckProbeGuardOption(option.Key, option.Value.(string))
 		if err != nil {
 			c.JSON(http.StatusOK, gin.H{

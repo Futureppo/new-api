@@ -44,6 +44,7 @@ const RateLimitSetting = () => {
     'probe_guard_setting.permanent_offense_count': 3,
     'probe_guard_setting.offense_dedupe_seconds': 60,
     'probe_guard_setting.max_ips_per_offense': 32,
+    'probe_guard_setting.whitelist_user_ids': '',
   });
 
   let [loading, setLoading] = useState(false);

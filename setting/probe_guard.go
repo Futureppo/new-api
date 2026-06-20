@@ -9,15 +9,16 @@ import (
 )
 
 type ProbeGuardSetting struct {
-	Enabled               bool `json:"enabled"`
-	DryRun                bool `json:"dry_run"`
-	WindowSeconds         int  `json:"window_seconds"`
-	DistinctModelCount    int  `json:"distinct_model_count"`
-	FirstIPBanMinutes     int  `json:"first_ip_ban_minutes"`
-	SecondIPBanMinutes    int  `json:"second_ip_ban_minutes"`
-	PermanentOffenseCount int  `json:"permanent_offense_count"`
-	OffenseDedupeSeconds  int  `json:"offense_dedupe_seconds"`
-	MaxIPsPerOffense      int  `json:"max_ips_per_offense"`
+	Enabled               bool   `json:"enabled"`
+	DryRun                bool   `json:"dry_run"`
+	WindowSeconds         int    `json:"window_seconds"`
+	DistinctModelCount    int    `json:"distinct_model_count"`
+	FirstIPBanMinutes     int    `json:"first_ip_ban_minutes"`
+	SecondIPBanMinutes    int    `json:"second_ip_ban_minutes"`
+	PermanentOffenseCount int    `json:"permanent_offense_count"`
+	OffenseDedupeSeconds  int    `json:"offense_dedupe_seconds"`
+	MaxIPsPerOffense      int    `json:"max_ips_per_offense"`
+	WhitelistUserIDs      string `json:"whitelist_user_ids"`
 }
 
 var probeGuardSetting = ProbeGuardSetting{
@@ -30,6 +31,7 @@ var probeGuardSetting = ProbeGuardSetting{
 	PermanentOffenseCount: 3,
 	OffenseDedupeSeconds:  60,
 	MaxIPsPerOffense:      32,
+	WhitelistUserIDs:      "",
 }
 
 func init() {
@@ -64,6 +66,42 @@ func (cfg *ProbeGuardSetting) Normalize() {
 	if cfg.MaxIPsPerOffense < 1 {
 		cfg.MaxIPsPerOffense = 32
 	}
+	cfg.WhitelistUserIDs = strings.TrimSpace(cfg.WhitelistUserIDs)
+}
+
+func (cfg ProbeGuardSetting) IsUserWhitelisted(userId int) bool {
+	if userId <= 0 {
+		return false
+	}
+	ids, err := ParseProbeGuardWhitelistUserIDs(cfg.WhitelistUserIDs)
+	if err != nil {
+		return false
+	}
+	_, ok := ids[userId]
+	return ok
+}
+
+func ParseProbeGuardWhitelistUserIDs(raw string) (map[int]struct{}, error) {
+	result := make(map[int]struct{})
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return result, nil
+	}
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	for _, field := range fields {
+		field = strings.TrimSpace(field)
+		if field == "" {
+			continue
+		}
+		id, err := strconv.Atoi(field)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("whitelist user id %q is invalid", field)
+		}
+		result[id] = struct{}{}
+	}
+	return result, nil
 }
 
 func CheckProbeGuardOption(key string, value string) error {
@@ -86,6 +124,9 @@ func CheckProbeGuardOption(key string, value string) error {
 		return checkProbeGuardIntRange(key, value, 10, 3600)
 	case "max_ips_per_offense":
 		return checkProbeGuardIntRange(key, value, 1, 1024)
+	case "whitelist_user_ids":
+		_, err := ParseProbeGuardWhitelistUserIDs(value)
+		return err
 	default:
 		return nil
 	}

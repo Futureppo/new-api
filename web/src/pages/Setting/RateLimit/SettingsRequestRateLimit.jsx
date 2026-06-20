@@ -38,7 +38,7 @@ const probeGuardDefaults = {
   'probe_guard_setting.second_ip_ban_minutes': 60,
   'probe_guard_setting.permanent_offense_count': 3,
   'probe_guard_setting.offense_dedupe_seconds': 60,
-  'probe_guard_setting.max_ips_per_offense': 32,
+  'probe_guard_setting.whitelist_user_ids': '',
 };
 
 export default function RequestRateLimit(props) {
@@ -354,7 +354,7 @@ export function ProbeGuardRateLimit(props) {
         <Form.Section
           text={t('批量测活防护')}
           extraText={t(
-            '同一账号在检测窗口内请求过多不同模型时，自动按违规次数封禁 IP 或账号',
+            '同一 IP 在检测窗口内请求过多不同模型时，自动按违规次数封禁该 IP',
           )}
         >
           <Row gutter={16}>
@@ -466,17 +466,16 @@ export function ProbeGuardRateLimit(props) {
             </Col>
           </Row>
           <Row gutter={16}>
-            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
-              <Form.InputNumber
-                field='probe_guard_setting.max_ips_per_offense'
-                label={t('单次最多封禁 IP')}
-                min={1}
-                max={1024}
-                step={1}
-                suffix={t('个')}
+            <Col xs={24} sm={24} md={16} lg={16} xl={16}>
+              <Form.TextArea
+                field='probe_guard_setting.whitelist_user_ids'
+                label={t('用户白名单')}
+                placeholder={t('输入用户 ID，支持逗号、空格或换行分隔，如：1, 2, 3')}
+                autosize={{ minRows: 3, maxRows: 8 }}
                 disabled={!enabled}
+                extraText={t('白名单用户会完全跳过批量测活检测；管理员和超级管理员默认跳过')}
                 onChange={handleFieldChange(
-                  'probe_guard_setting.max_ips_per_offense',
+                  'probe_guard_setting.whitelist_user_ids',
                 )}
               />
             </Col>

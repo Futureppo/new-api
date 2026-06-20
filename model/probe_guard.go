@@ -8,50 +8,48 @@ import (
 	"gorm.io/gorm"
 )
 
-type ProbeAbuseState struct {
+type ProbeIPAbuseState struct {
 	Id            int    `json:"id"`
-	UserId        int    `json:"user_id" gorm:"uniqueIndex;not null"`
+	TargetIP      string `json:"target_ip" gorm:"type:varchar(128);uniqueIndex;not null"`
+	LastUserId    int    `json:"last_user_id" gorm:"index;default:0"`
 	OffenseCount  int    `json:"offense_count" gorm:"not null;default:0"`
 	LastOffenseAt int64  `json:"last_offense_at" gorm:"bigint;index;default:0"`
-	LastIPs       string `json:"last_ips" gorm:"type:text"`
 	LastModels    string `json:"last_models" gorm:"type:text"`
 	CreatedAt     int64  `json:"created_at" gorm:"bigint;index"`
 	UpdatedAt     int64  `json:"updated_at" gorm:"bigint"`
 }
 
-func GetProbeAbuseState(userId int) (*ProbeAbuseState, error) {
-	if userId <= 0 {
-		return nil, errors.New("user id is invalid")
+func GetProbeIPAbuseState(targetIP string) (*ProbeIPAbuseState, error) {
+	targetIP = strings.TrimSpace(targetIP)
+	if targetIP == "" {
+		return nil, errors.New("target ip is invalid")
 	}
-	state := &ProbeAbuseState{}
-	err := DB.Where("user_id = ?", userId).First(state).Error
+	state := &ProbeIPAbuseState{}
+	err := DB.Where("target_ip = ?", targetIP).First(state).Error
 	return state, err
 }
 
-func IncrementProbeAbuseOffense(userId int, ips []string, models []string) (*ProbeAbuseState, error) {
-	if userId <= 0 {
-		return nil, errors.New("user id is invalid")
+func IncrementProbeIPAbuseOffense(targetIP string, lastUserId int, models []string) (*ProbeIPAbuseState, error) {
+	targetIP = strings.TrimSpace(targetIP)
+	if targetIP == "" {
+		return nil, errors.New("target ip is invalid")
 	}
 	now := common.GetTimestamp()
-	ipsJSON, err := marshalProbeGuardStrings(ips)
-	if err != nil {
-		return nil, err
-	}
 	modelsJSON, err := marshalProbeGuardStrings(models)
 	if err != nil {
 		return nil, err
 	}
 
-	var out ProbeAbuseState
+	var out ProbeIPAbuseState
 	err = DB.Transaction(func(tx *gorm.DB) error {
-		state := ProbeAbuseState{}
-		err := tx.Where("user_id = ?", userId).First(&state).Error
+		state := ProbeIPAbuseState{}
+		err := tx.Where("target_ip = ?", targetIP).First(&state).Error
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			state = ProbeAbuseState{
-				UserId:        userId,
+			state = ProbeIPAbuseState{
+				TargetIP:      targetIP,
+				LastUserId:    lastUserId,
 				OffenseCount:  1,
 				LastOffenseAt: now,
-				LastIPs:       ipsJSON,
 				LastModels:    modelsJSON,
 				CreatedAt:     now,
 				UpdatedAt:     now,
@@ -66,11 +64,11 @@ func IncrementProbeAbuseOffense(userId int, ips []string, models []string) (*Pro
 			return err
 		}
 		state.OffenseCount++
+		state.LastUserId = lastUserId
 		state.LastOffenseAt = now
-		state.LastIPs = ipsJSON
 		state.LastModels = modelsJSON
 		state.UpdatedAt = now
-		if err := tx.Model(&state).Select("offense_count", "last_offense_at", "last_ips", "last_models", "updated_at").Updates(&state).Error; err != nil {
+		if err := tx.Model(&state).Select("last_user_id", "offense_count", "last_offense_at", "last_models", "updated_at").Updates(&state).Error; err != nil {
 			return err
 		}
 		out = state

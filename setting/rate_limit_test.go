@@ -68,6 +68,7 @@ func TestCheckProbeGuardOption(t *testing.T) {
 		"probe_guard_setting.permanent_offense_count": "3",
 		"probe_guard_setting.offense_dedupe_seconds":  "60",
 		"probe_guard_setting.max_ips_per_offense":     "32",
+		"probe_guard_setting.whitelist_user_ids":      "1, 2\n3",
 	}
 	for key, value := range valid {
 		require.NoError(t, CheckProbeGuardOption(key, value))
@@ -81,4 +82,18 @@ func TestCheckProbeGuardOption(t *testing.T) {
 	require.Error(t, CheckProbeGuardOption("probe_guard_setting.permanent_offense_count", "0"))
 	require.Error(t, CheckProbeGuardOption("probe_guard_setting.offense_dedupe_seconds", "9"))
 	require.Error(t, CheckProbeGuardOption("probe_guard_setting.max_ips_per_offense", "0"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.whitelist_user_ids", "1, abc"))
+	require.NoError(t, CheckProbeGuardOption("probe_guard_setting.whitelist_user_ids", ""))
+}
+
+func TestProbeGuardWhitelistParser(t *testing.T) {
+	ids, err := ParseProbeGuardWhitelistUserIDs("1, 2\n3;4\t5")
+	require.NoError(t, err)
+	for _, id := range []int{1, 2, 3, 4, 5} {
+		_, ok := ids[id]
+		require.True(t, ok)
+	}
+
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.whitelist_user_ids", "0"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.whitelist_user_ids", "-1"))
 }

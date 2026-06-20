@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"net/http"
@@ -26,7 +27,6 @@ const probeGuardKeyPrefix = "probe_guard"
 type probeGuardEvent struct {
 	timestamp int64
 	model     string
-	ip        string
 }
 
 type probeGuardSnapshot struct {
@@ -36,13 +36,16 @@ type probeGuardSnapshot struct {
 
 var (
 	probeGuardWindowLock sync.Mutex
-	probeGuardWindows    = map[int][]probeGuardEvent{}
-	probeGuardCooldowns  = map[int]int64{}
+	probeGuardWindows    = map[string][]probeGuardEvent{}
+	probeGuardCooldowns  = map[string]int64{}
 )
 
 func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.NewAPIError {
 	cfg := setting.GetProbeGuardSetting()
 	if !cfg.Enabled || relayInfo == nil || relayInfo.UserId <= 0 {
+		return nil
+	}
+	if isProbeGuardExcludedUser(c, relayInfo.UserId, cfg) {
 		return nil
 	}
 
@@ -55,41 +58,41 @@ func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.Ne
 	if c != nil {
 		clientIP = strings.TrimSpace(c.ClientIP())
 	}
+	targetIP, ok := normalizePublicProbeGuardIP(clientIP)
+	if !ok {
+		return nil
+	}
 
-	snapshot, triggered, err := recordProbeGuardRequest(c, cfg, relayInfo.UserId, modelName, clientIP)
+	snapshot, triggered, err := recordProbeGuardRequest(c, cfg, targetIP, modelName)
 	if err != nil {
-		common.SysLog(fmt.Sprintf("probe guard failed open for user %d: %s", relayInfo.UserId, err.Error()))
+		common.SysLog(fmt.Sprintf("probe guard failed open for ip %s user %d: %s", targetIP, relayInfo.UserId, err.Error()))
 		return nil
 	}
 	if !triggered {
 		return nil
 	}
 
-	publicIPs := publicProbeGuardIPs(snapshot.ips, cfg.MaxIPsPerOffense)
 	if cfg.DryRun {
-		recordProbeGuardLog(c, relayInfo.UserId, 0, true, "dry_run", snapshot.models, publicIPs)
+		recordProbeGuardLog(c, relayInfo.UserId, 0, true, "dry_run", snapshot.models, snapshot.ips)
 		return nil
 	}
 
-	state, err := model.IncrementProbeAbuseOffense(relayInfo.UserId, publicIPs, snapshot.models)
+	state, err := model.IncrementProbeIPAbuseOffense(targetIP, relayInfo.UserId, snapshot.models)
 	if err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeUpdateDataError, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 	}
 
-	action, disabled, err := applyProbeGuardPenalty(relayInfo.UserId, state.OffenseCount, cfg, publicIPs)
+	action, err := applyProbeGuardPenalty(targetIP, relayInfo.UserId, state.OffenseCount, cfg)
 	if err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeUpdateDataError, http.StatusInternalServerError, types.ErrOptionWithSkipRetry())
 	}
-	recordProbeGuardLog(c, relayInfo.UserId, state.OffenseCount, false, action, snapshot.models, publicIPs)
-	if disabled {
-		common.SysLog(fmt.Sprintf("probe guard disabled user %d after offense %d", relayInfo.UserId, state.OffenseCount))
-	}
+	recordProbeGuardLog(c, relayInfo.UserId, state.OffenseCount, false, action, snapshot.models, snapshot.ips)
 
 	statusCode := http.StatusTooManyRequests
 	message := "bulk model probing detected"
 	if state.OffenseCount >= cfg.PermanentOffenseCount {
 		statusCode = http.StatusForbidden
-		message = "bulk model probing detected; account and IP banned"
+		message = "bulk model probing detected; IP banned"
 	}
 	return types.NewErrorWithStatusCode(
 		errors.New(message),
@@ -100,35 +103,40 @@ func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.Ne
 	)
 }
 
-func recordProbeGuardRequest(c *gin.Context, cfg setting.ProbeGuardSetting, userId int, modelName string, clientIP string) (probeGuardSnapshot, bool, error) {
+func isProbeGuardExcludedUser(c *gin.Context, userId int, cfg setting.ProbeGuardSetting) bool {
+	if cfg.IsUserWhitelisted(userId) {
+		return true
+	}
+	if c != nil && c.GetInt("role") >= common.RoleAdminUser {
+		return true
+	}
+	return model.IsAdmin(userId)
+}
+
+func recordProbeGuardRequest(c *gin.Context, cfg setting.ProbeGuardSetting, targetIP string, modelName string) (probeGuardSnapshot, bool, error) {
 	if common.RedisEnabled && common.RDB != nil {
 		ctx := context.Background()
 		if c != nil && c.Request != nil {
 			ctx = c.Request.Context()
 		}
-		return recordRedisProbeGuardRequest(ctx, cfg, userId, modelName, clientIP)
+		return recordRedisProbeGuardRequest(ctx, cfg, targetIP, modelName)
 	}
-	snapshot, triggered := recordMemoryProbeGuardRequest(cfg, userId, modelName, clientIP)
+	snapshot, triggered := recordMemoryProbeGuardRequest(cfg, targetIP, modelName)
 	return snapshot, triggered, nil
 }
 
-func recordRedisProbeGuardRequest(ctx context.Context, cfg setting.ProbeGuardSetting, userId int, modelName string, clientIP string) (probeGuardSnapshot, bool, error) {
+func recordRedisProbeGuardRequest(ctx context.Context, cfg setting.ProbeGuardSetting, targetIP string, modelName string) (probeGuardSnapshot, bool, error) {
 	now := common.GetTimestamp()
 	cutoff := now - int64(cfg.WindowSeconds)
 	ttl := time.Duration(maxProbeGuardInt(cfg.WindowSeconds, cfg.OffenseDedupeSeconds)+60) * time.Second
-	modelsKey := fmt.Sprintf("%s:models:%d", probeGuardKeyPrefix, userId)
-	ipsKey := fmt.Sprintf("%s:ips:%d", probeGuardKeyPrefix, userId)
-	cooldownKey := fmt.Sprintf("%s:cooldown:%d", probeGuardKeyPrefix, userId)
+	targetKey := probeGuardRedisTargetKey(targetIP)
+	modelsKey := fmt.Sprintf("%s:models:ip:%s", probeGuardKeyPrefix, targetKey)
+	cooldownKey := fmt.Sprintf("%s:cooldown:ip:%s", probeGuardKeyPrefix, targetKey)
 
 	pipe := common.RDB.TxPipeline()
 	pipe.ZRemRangeByScore(ctx, modelsKey, "-inf", strconv.FormatInt(cutoff, 10))
 	pipe.ZAdd(ctx, modelsKey, &redis.Z{Score: float64(now), Member: modelName})
 	pipe.Expire(ctx, modelsKey, ttl)
-	pipe.ZRemRangeByScore(ctx, ipsKey, "-inf", strconv.FormatInt(cutoff, 10))
-	if clientIP != "" {
-		pipe.ZAdd(ctx, ipsKey, &redis.Z{Score: float64(now), Member: clientIP})
-	}
-	pipe.Expire(ctx, ipsKey, ttl)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return probeGuardSnapshot{}, false, err
 	}
@@ -137,14 +145,10 @@ func recordRedisProbeGuardRequest(ctx context.Context, cfg setting.ProbeGuardSet
 	if err != nil {
 		return probeGuardSnapshot{}, false, err
 	}
-	ips, err := common.RDB.ZRange(ctx, ipsKey, 0, -1).Result()
-	if err != nil {
-		return probeGuardSnapshot{}, false, err
-	}
 
 	snapshot := probeGuardSnapshot{
 		models: uniqueSortedStrings(models),
-		ips:    uniqueSortedStrings(ips),
+		ips:    []string{targetIP},
 	}
 	if len(snapshot.models) < cfg.DistinctModelCount {
 		return snapshot, false, nil
@@ -156,61 +160,51 @@ func recordRedisProbeGuardRequest(ctx context.Context, cfg setting.ProbeGuardSet
 	return snapshot, true, nil
 }
 
-func recordMemoryProbeGuardRequest(cfg setting.ProbeGuardSetting, userId int, modelName string, clientIP string) (probeGuardSnapshot, bool) {
+func recordMemoryProbeGuardRequest(cfg setting.ProbeGuardSetting, targetIP string, modelName string) (probeGuardSnapshot, bool) {
 	now := common.GetTimestamp()
 	cutoff := now - int64(cfg.WindowSeconds)
 
 	probeGuardWindowLock.Lock()
 	defer probeGuardWindowLock.Unlock()
 
-	events := probeGuardWindows[userId]
+	events := probeGuardWindows[targetIP]
 	kept := events[:0]
 	for _, event := range events {
 		if event.timestamp > cutoff {
 			kept = append(kept, event)
 		}
 	}
-	kept = append(kept, probeGuardEvent{timestamp: now, model: modelName, ip: clientIP})
-	probeGuardWindows[userId] = kept
+	kept = append(kept, probeGuardEvent{timestamp: now, model: modelName})
+	probeGuardWindows[targetIP] = kept
 
 	models := make([]string, 0, len(kept))
-	ips := make([]string, 0, len(kept))
 	for _, event := range kept {
 		if event.model != "" {
 			models = append(models, event.model)
 		}
-		if event.ip != "" {
-			ips = append(ips, event.ip)
-		}
 	}
 	snapshot := probeGuardSnapshot{
 		models: uniqueSortedStrings(models),
-		ips:    uniqueSortedStrings(ips),
+		ips:    []string{targetIP},
 	}
 	if len(snapshot.models) < cfg.DistinctModelCount {
 		return snapshot, false
 	}
-	if probeGuardCooldowns[userId] > now {
+	if probeGuardCooldowns[targetIP] > now {
 		return snapshot, false
 	}
-	probeGuardCooldowns[userId] = now + int64(cfg.OffenseDedupeSeconds)
+	probeGuardCooldowns[targetIP] = now + int64(cfg.OffenseDedupeSeconds)
 	return snapshot, true
 }
 
-func applyProbeGuardPenalty(userId int, offenseCount int, cfg setting.ProbeGuardSetting, publicIPs []string) (string, bool, error) {
+func applyProbeGuardPenalty(targetIP string, userId int, offenseCount int, cfg setting.ProbeGuardSetting) (string, error) {
 	now := common.GetTimestamp()
-	reason := fmt.Sprintf("bulk probe guard: user %d requested %d distinct models in %ds (offense %d)", userId, cfg.DistinctModelCount, cfg.WindowSeconds, offenseCount)
+	reason := fmt.Sprintf("bulk probe guard: ip %s requested %d distinct models in %ds (last_user %d, offense %d)", targetIP, cfg.DistinctModelCount, cfg.WindowSeconds, userId, offenseCount)
 	expiresAt := int64(0)
-	action := "permanent_account_and_ip_ban"
-	disabled := false
+	action := "permanent_ip_ban"
 
 	switch {
 	case offenseCount >= cfg.PermanentOffenseCount:
-		var err error
-		disabled, err = model.DisableUserByIPBan(userId, reason)
-		if err != nil {
-			return action, disabled, err
-		}
 	case offenseCount == 1:
 		expiresAt = now + int64(cfg.FirstIPBanMinutes*60)
 		action = fmt.Sprintf("temporary_ip_ban_%dm", cfg.FirstIPBanMinutes)
@@ -219,17 +213,11 @@ func applyProbeGuardPenalty(userId int, offenseCount int, cfg setting.ProbeGuard
 		action = fmt.Sprintf("temporary_ip_ban_%dm", cfg.SecondIPBanMinutes)
 	}
 
-	updatedIPBan := false
-	for _, ip := range publicIPs {
-		if err := model.UpsertProbeGuardIPBan(ip, reason, expiresAt); err != nil {
-			return action, disabled, err
-		}
-		updatedIPBan = true
+	if err := model.UpsertProbeGuardIPBan(targetIP, reason, expiresAt); err != nil {
+		return action, err
 	}
-	if updatedIPBan {
-		model.InitIPBanCache()
-	}
-	return action, disabled, nil
+	model.InitIPBanCache()
+	return action, nil
 }
 
 func recordProbeGuardLog(c *gin.Context, userId int, offenseCount int, dryRun bool, action string, models []string, ips []string) {
@@ -242,30 +230,6 @@ func recordProbeGuardLog(c *gin.Context, userId int, offenseCount int, dryRun bo
 		strings.Join(limitProbeGuardStrings(ips, 12), ","),
 	)
 	model.RecordLogWithContext(c, userId, model.LogTypeManage, content)
-}
-
-func publicProbeGuardIPs(ips []string, maxCount int) []string {
-	if maxCount <= 0 {
-		return []string{}
-	}
-	out := make([]string, 0, len(ips))
-	seen := map[string]struct{}{}
-	for _, ip := range ips {
-		normalized, ok := normalizePublicProbeGuardIP(ip)
-		if !ok {
-			continue
-		}
-		if _, exists := seen[normalized]; exists {
-			continue
-		}
-		seen[normalized] = struct{}{}
-		out = append(out, normalized)
-		if len(out) >= maxCount {
-			break
-		}
-	}
-	sort.Strings(out)
-	return out
 }
 
 func normalizePublicProbeGuardIP(raw string) (string, bool) {
@@ -350,9 +314,13 @@ func maxProbeGuardInt(a int, b int) int {
 	return b
 }
 
+func probeGuardRedisTargetKey(targetIP string) string {
+	return base64.RawURLEncoding.EncodeToString([]byte(targetIP))
+}
+
 func resetProbeGuardMemoryForTest() {
 	probeGuardWindowLock.Lock()
 	defer probeGuardWindowLock.Unlock()
-	probeGuardWindows = map[int][]probeGuardEvent{}
-	probeGuardCooldowns = map[int]int64{}
+	probeGuardWindows = map[string][]probeGuardEvent{}
+	probeGuardCooldowns = map[string]int64{}
 }
