@@ -44,6 +44,37 @@ import { SiDiscord, SiTelegram, SiWechat, SiLinux } from 'react-icons/si';
 
 const { Text } = Typography;
 
+const resolveGitHubProfileUrl = async (githubId) => {
+  const normalizedId = String(githubId || '').trim();
+  if (!normalizedId) {
+    throw new Error('GitHub ID is empty');
+  }
+
+  const response = await fetch(
+    `https://api.github.com/user/${encodeURIComponent(normalizedId)}`,
+    {
+      headers: {
+        Accept: 'application/vnd.github+json',
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(`GitHub API request failed: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const profileUrl = data?.html_url;
+  if (
+    typeof profileUrl !== 'string' ||
+    !profileUrl.startsWith('https://github.com/')
+  ) {
+    throw new Error('Invalid GitHub profile URL');
+  }
+
+  return profileUrl;
+};
+
 const UserBindingManagementModal = ({
   visible,
   onCancel,
@@ -58,6 +89,7 @@ const UserBindingManagementModal = ({
   const [customOAuthBindings, setCustomOAuthBindings] = React.useState([]);
   const [builtInBindings, setBuiltInBindings] = React.useState({});
   const [bindingActionLoading, setBindingActionLoading] = React.useState({});
+  const githubProfileUrlCacheRef = React.useRef(new Map());
 
   const loadBindingData = React.useCallback(async () => {
     if (!userId) return;
@@ -187,6 +219,46 @@ const UserBindingManagementModal = ({
       },
     });
   };
+
+  const getGitHubProfileUrl = React.useCallback(async (githubId) => {
+    const normalizedId = String(githubId || '').trim();
+    if (!normalizedId) {
+      throw new Error('GitHub ID is empty');
+    }
+
+    const cachedUrl = githubProfileUrlCacheRef.current.get(normalizedId);
+    if (cachedUrl) {
+      return cachedUrl;
+    }
+
+    const profileUrl = await resolveGitHubProfileUrl(normalizedId);
+    githubProfileUrlCacheRef.current.set(normalizedId, profileUrl);
+    return profileUrl;
+  }, []);
+
+  const handleOpenGitHubProfile = React.useCallback(
+    async (githubId) => {
+      const profileWindow = window.open('about:blank', '_blank');
+      if (profileWindow) {
+        profileWindow.opener = null;
+      }
+
+      try {
+        const profileUrl = await getGitHubProfileUrl(githubId);
+        if (profileWindow && !profileWindow.closed) {
+          profileWindow.location.href = profileUrl;
+          return;
+        }
+        window.open(profileUrl, '_blank', 'noopener,noreferrer');
+      } catch {
+        if (profileWindow && !profileWindow.closed) {
+          profileWindow.close();
+        }
+        showError(t('获取 GitHub 用户信息失败'));
+      }
+    },
+    [getGitHubProfileUrl, t],
+  );
 
   const currentValues = formApiRef.current?.getValues?.() || {};
   const getBuiltInBindingValue = (field) =>
@@ -370,6 +442,8 @@ const UserBindingManagementModal = ({
                   : item.enabled
                     ? t('未绑定')
                     : t('未启用');
+                const canOpenGitHubProfile =
+                  item.type === 'builtin' && item.key === 'github' && isBound;
                 const shouldSpanTwoColsOnDesktop =
                   visibleBindingItems.length % 2 === 1 &&
                   index === visibleBindingItems.length - 1;
@@ -394,7 +468,20 @@ const UserBindingManagementModal = ({
                             </Tag>
                           </div>
                           <div className='text-sm text-gray-500 truncate'>
-                            {statusText}
+                            {canOpenGitHubProfile ? (
+                              <button
+                                type='button'
+                                title={t('访问 GitHub 主页')}
+                                className='block max-w-full truncate border-0 bg-transparent p-0 text-left text-blue-600 hover:text-blue-700 cursor-pointer'
+                                onClick={() =>
+                                  handleOpenGitHubProfile(item.value)
+                                }
+                              >
+                                {statusText}
+                              </button>
+                            ) : (
+                              statusText
+                            )}
                           </div>
                         </div>
                       </div>
