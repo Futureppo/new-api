@@ -321,8 +321,16 @@ function App() {
           path='/console/log'
           element={
             <PrivateRoute>
-              <Log />
+              <Log key='usage-log' />
             </PrivateRoute>
+          }
+        />
+        <Route
+          path='/console/email-log'
+          element={
+            <AdminRoute>
+              <Log key='email-log' defaultLogType={7} fixedLogType={7} />
+            </AdminRoute>
           }
         />
         <Route

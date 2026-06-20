@@ -30,10 +30,15 @@ const LogsFilters = ({
   setShowColumnSelector,
   formApi,
   setLogType,
+  defaultLogType,
+  fixedLogType,
   loading,
   isAdminUser,
   t,
 }) => {
+  const isFixedLogType = fixedLogType !== null && fixedLogType !== undefined;
+  const isEmailLogType = Number(fixedLogType) === 7;
+
   return (
     <Form
       initValues={formInitValues}
@@ -66,32 +71,36 @@ const LogsFilters = ({
           </div>
 
           {/* 其他搜索字段 */}
-          <Form.Input
-            field='token_name'
-            prefix={<IconSearch />}
-            placeholder={t('令牌名称')}
-            showClear
-            pure
-            size='small'
-          />
+          {!isEmailLogType && (
+            <>
+              <Form.Input
+                field='token_name'
+                prefix={<IconSearch />}
+                placeholder={t('令牌名称')}
+                showClear
+                pure
+                size='small'
+              />
 
-          <Form.Input
-            field='model_name'
-            prefix={<IconSearch />}
-            placeholder={t('模型名称')}
-            showClear
-            pure
-            size='small'
-          />
+              <Form.Input
+                field='model_name'
+                prefix={<IconSearch />}
+                placeholder={t('模型名称')}
+                showClear
+                pure
+                size='small'
+              />
 
-          <Form.Input
-            field='group'
-            prefix={<IconSearch />}
-            placeholder={t('分组')}
-            showClear
-            pure
-            size='small'
-          />
+              <Form.Input
+                field='group'
+                prefix={<IconSearch />}
+                placeholder={t('分组')}
+                showClear
+                pure
+                size='small'
+              />
+            </>
+          )}
 
           <Form.Input
             field='request_id'
@@ -122,14 +131,16 @@ const LogsFilters = ({
 
           {isAdminUser && (
             <>
-              <Form.Input
-                field='channel'
-                prefix={<IconSearch />}
-                placeholder={t('渠道 ID')}
-                showClear
-                pure
-                size='small'
-              />
+              {!isEmailLogType && (
+                <Form.Input
+                  field='channel'
+                  prefix={<IconSearch />}
+                  placeholder={t('渠道 ID')}
+                  showClear
+                  pure
+                  size='small'
+                />
+              )}
               <Form.Input
                 field='username'
                 prefix={<IconSearch />}
@@ -145,31 +156,34 @@ const LogsFilters = ({
         {/* 操作按钮区域 */}
         <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3'>
           {/* 日志类型选择器 */}
-          <div className='w-full sm:w-auto'>
-            <Form.Select
-              field='logType'
-              placeholder={t('日志类型')}
-              className='w-full sm:w-auto min-w-[120px]'
-              showClear
-              pure
-              onChange={() => {
-                // 延迟执行搜索，让表单值先更新
-                setTimeout(() => {
-                  refresh();
-                }, 0);
-              }}
-              size='small'
-            >
-              <Form.Select.Option value='0'>{t('全部')}</Form.Select.Option>
-              <Form.Select.Option value='1'>{t('充值')}</Form.Select.Option>
-              <Form.Select.Option value='2'>{t('消费')}</Form.Select.Option>
-              <Form.Select.Option value='3'>{t('管理')}</Form.Select.Option>
-              <Form.Select.Option value='4'>{t('系统')}</Form.Select.Option>
-              <Form.Select.Option value='5'>{t('错误')}</Form.Select.Option>
-              <Form.Select.Option value='6'>{t('退款')}</Form.Select.Option>
-              <Form.Select.Option value='7'>{t('邮件')}</Form.Select.Option>
-            </Form.Select>
-          </div>
+          {!isFixedLogType && (
+            <div className='w-full sm:w-auto'>
+              <Form.Select
+                field='logType'
+                placeholder={t('日志类型')}
+                className='w-full sm:w-auto min-w-[120px]'
+                showClear
+                pure
+                onChange={(value) => {
+                  setLogType(value ? Number(value) : defaultLogType);
+                  // 延迟执行搜索，让表单值先更新
+                  setTimeout(() => {
+                    refresh();
+                  }, 0);
+                }}
+                size='small'
+              >
+                <Form.Select.Option value='0'>{t('全部')}</Form.Select.Option>
+                <Form.Select.Option value='1'>{t('充值')}</Form.Select.Option>
+                <Form.Select.Option value='2'>{t('消费')}</Form.Select.Option>
+                <Form.Select.Option value='3'>{t('管理')}</Form.Select.Option>
+                <Form.Select.Option value='4'>{t('系统')}</Form.Select.Option>
+                <Form.Select.Option value='5'>{t('错误')}</Form.Select.Option>
+                <Form.Select.Option value='6'>{t('退款')}</Form.Select.Option>
+                <Form.Select.Option value='7'>{t('邮件')}</Form.Select.Option>
+              </Form.Select>
+            </div>
+          )}
 
           <div className='flex gap-2 w-full sm:w-auto justify-end'>
             <Button
@@ -185,7 +199,11 @@ const LogsFilters = ({
               onClick={() => {
                 if (formApi) {
                   formApi.reset();
-                  setLogType(0);
+                  setLogType(
+                    fixedLogType !== null && fixedLogType !== undefined
+                      ? fixedLogType
+                      : defaultLogType,
+                  );
                   setTimeout(() => {
                     refresh();
                   }, 100);

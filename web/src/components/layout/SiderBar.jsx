@@ -40,6 +40,7 @@ const routerMap = {
   ip_ban: '/console/ip-ban',
   subscription: '/console/subscription',
   log: '/console/log',
+  email_log: '/console/email-log',
   midjourney: '/console/midjourney',
   setting: '/console/setting',
   site: '/console/site',
@@ -93,6 +94,12 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         to: '/log',
       },
       {
+        text: t('邮件日志'),
+        itemKey: 'email_log',
+        to: '/email-log',
+        className: isAdmin() ? '' : 'tableHiddle',
+      },
+      {
         text: t('绘图日志'),
         itemKey: 'midjourney',
         to: '/midjourney',
@@ -121,6 +128,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
     localStorage.getItem('enable_data_export'),
     localStorage.getItem('enable_drawing'),
     localStorage.getItem('enable_task'),
+    isAdmin(),
     t,
     isModuleVisible,
   ]);

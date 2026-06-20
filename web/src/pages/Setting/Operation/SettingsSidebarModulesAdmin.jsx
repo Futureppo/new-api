@@ -149,6 +149,11 @@ export default function SettingsSidebarModulesAdmin(props) {
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
+          key: 'email_log',
+          title: t('邮件日志'),
+          description: t('邮件发送记录'),
+        },
+        {
           key: 'midjourney',
           title: t('绘图日志'),
           description: t('绘图任务记录'),

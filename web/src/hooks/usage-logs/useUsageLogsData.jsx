@@ -43,8 +43,22 @@ import { ITEMS_PER_PAGE } from '../../constants';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import ParamOverrideEntry from '../../components/table/usage-logs/components/ParamOverrideEntry';
 
-export const useLogsData = () => {
+export const useLogsData = ({
+  defaultLogType = 0,
+  fixedLogType = null,
+} = {}) => {
   const { t } = useTranslation();
+
+  const normalizeLogType = (value, fallback = 0) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+  const initialLogType = normalizeLogType(defaultLogType);
+  const enforcedLogType =
+    fixedLogType === null || fixedLogType === undefined
+      ? null
+      : normalizeLogType(fixedLogType, initialLogType);
+  const effectiveDefaultLogType = enforcedLogType ?? initialLogType;
 
   // Define column keys for selection
   const COLUMN_KEYS = {
@@ -74,7 +88,7 @@ export const useLogsData = () => {
   const [activePage, setActivePage] = useState(1);
   const [logCount, setLogCount] = useState(0);
   const [pageSize, setPageSize] = useState(ITEMS_PER_PAGE);
-  const [logType, setLogType] = useState(0);
+  const [logType, setLogType] = useState(effectiveDefaultLogType);
 
   // User and admin
   const isAdminUser = isAdmin();
@@ -90,6 +104,8 @@ export const useLogsData = () => {
   const [stat, setStat] = useState({
     quota: 0,
     token: 0,
+    rpm: 0,
+    tpm: 0,
   });
 
   // Form state
@@ -108,7 +124,7 @@ export const useLogsData = () => {
       timestamp2string(getTodayStartTimestamp()),
       timestamp2string(now.getTime() / 1000 + 3600),
     ],
-    logType: '0',
+    logType: String(effectiveDefaultLogType),
   };
 
   // Get default column visibility based on user role
@@ -263,7 +279,11 @@ export const useLogsData = () => {
       request_id: formValues.request_id || '',
       ip: formValues.ip || '',
       user_agent: formValues.user_agent || '',
-      logType: formValues.logType ? parseInt(formValues.logType) : 0,
+      logType:
+        enforcedLogType ??
+        (formValues.logType
+          ? parseInt(formValues.logType)
+          : effectiveDefaultLogType),
     };
   };
 
@@ -279,7 +299,8 @@ export const useLogsData = () => {
       user_agent,
       logType: formLogType,
     } = getFormValues();
-    const currentLogType = formLogType !== undefined ? formLogType : logType;
+    const currentLogType =
+      enforcedLogType ?? (formLogType !== undefined ? formLogType : logType);
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&ip=${ip}`;
@@ -307,7 +328,8 @@ export const useLogsData = () => {
       user_agent,
       logType: formLogType,
     } = getFormValues();
-    const currentLogType = formLogType !== undefined ? formLogType : logType;
+    const currentLogType =
+      enforcedLogType ?? (formLogType !== undefined ? formLogType : logType);
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&ip=${ip}`;
@@ -327,6 +349,12 @@ export const useLogsData = () => {
       return;
     }
     setLoadingStat(true);
+    if (getFormValues().logType === 7) {
+      setStat({ quota: 0, token: 0, rpm: 0, tpm: 0 });
+      setShowStat(true);
+      setLoadingStat(false);
+      return;
+    }
     if (isAdminUser) {
       await getLogStat();
     } else {
@@ -786,7 +814,9 @@ export const useLogsData = () => {
     } = getFormValues();
 
     const currentLogType =
-      customLogType !== null
+      enforcedLogType !== null
+        ? enforcedLogType
+        : customLogType !== null
         ? customLogType
         : formLogType !== undefined
           ? formLogType
@@ -840,6 +870,14 @@ export const useLogsData = () => {
     await loadLogs(1, pageSize);
   };
 
+  const updateLogType = (nextType) => {
+    if (enforcedLogType !== null) {
+      setLogType(enforcedLogType);
+      return;
+    }
+    setLogType(nextType);
+  };
+
   // Copy text function
   const copyText = async (e, text) => {
     e.stopPropagation();
@@ -887,6 +925,8 @@ export const useLogsData = () => {
     logCount,
     pageSize,
     logType,
+    defaultLogType: effectiveDefaultLogType,
+    fixedLogType: enforcedLogType,
     stat,
     isAdminUser,
 
@@ -935,7 +975,7 @@ export const useLogsData = () => {
     handleEyeClick,
     setLogsFormat,
     hasExpandableRows,
-    setLogType,
+    setLogType: updateLogType,
     openParamOverrideModal,
 
     // Translation

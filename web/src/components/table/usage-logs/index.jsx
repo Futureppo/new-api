@@ -30,8 +30,8 @@ import { useLogsData } from '../../../hooks/usage-logs/useUsageLogsData';
 import { useIsMobile } from '../../../hooks/common/useIsMobile';
 import { createCardProPagination } from '../../../helpers/utils';
 
-const LogsPage = () => {
-  const logsData = useLogsData();
+const LogsPage = ({ defaultLogType = 0, fixedLogType = null } = {}) => {
+  const logsData = useLogsData({ defaultLogType, fixedLogType });
   const isMobile = useIsMobile();
 
   return (

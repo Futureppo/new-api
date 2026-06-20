@@ -3236,6 +3236,8 @@
     "由管理员分配，决定用户身份等级（如 default、vip）。": "Assigned by admin, determines user tier (e.g., default, vip).",
     "由全站货币展示设置统一控制": "Contrôlé par les paramètres globaux d'affichage des devises",
     "邮件": "E-mail",
+    "邮件日志": "Journaux e-mail",
+    "邮件发送记录": "Enregistrements d'envoi d'e-mails",
     "邮件通知": "Notification par e-mail",
     "收件人": "Destinataire",
     "主题": "Sujet",

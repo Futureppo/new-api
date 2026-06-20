@@ -3663,6 +3663,8 @@
     "由管理员分配，决定用户身份等级（如 default、vip）。": "Assigned by admin, determines user tier (e.g., default, vip).",
     "由全站货币展示设置统一控制": "Được điều khiển bởi cài đặt hiển thị tiền tệ toàn site",
     "邮件": "Email",
+    "邮件日志": "Nhật ký email",
+    "邮件发送记录": "Bản ghi gửi email",
     "邮件通知": "Thông báo email",
     "收件人": "Người nhận",
     "主题": "Chủ đề",

@@ -20,9 +20,12 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import UsageLogsTable from '../../components/table/usage-logs';
 
-const Token = () => (
+const Token = ({ defaultLogType = 0, fixedLogType = null }) => (
   <div className='mt-[60px] px-2'>
-    <UsageLogsTable />
+    <UsageLogsTable
+      defaultLogType={defaultLogType}
+      fixedLogType={fixedLogType}
+    />
   </div>
 );
 

@@ -3315,6 +3315,8 @@
     "由管理员分配，决定用户身份等级（如 default、vip）。": "Assigned by admin, determines user tier (e.g., default, vip).",
     "由全站货币展示设置统一控制": "Controlled by the site-wide currency display settings",
     "邮件": "Email",
+    "邮件日志": "Email logs",
+    "邮件发送记录": "Email sending records",
     "邮件通知": "Email notification",
     "收件人": "Recipient",
     "主题": "Subject",
