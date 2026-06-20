@@ -29,6 +29,18 @@ import {
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
 
+const probeGuardDefaults = {
+  'probe_guard_setting.enabled': false,
+  'probe_guard_setting.dry_run': true,
+  'probe_guard_setting.window_seconds': 60,
+  'probe_guard_setting.distinct_model_count': 5,
+  'probe_guard_setting.first_ip_ban_minutes': 10,
+  'probe_guard_setting.second_ip_ban_minutes': 60,
+  'probe_guard_setting.permanent_offense_count': 3,
+  'probe_guard_setting.offense_dedupe_seconds': 60,
+  'probe_guard_setting.max_ips_per_offense': 32,
+};
+
 export default function RequestRateLimit(props) {
   const { t } = useTranslation();
 
@@ -264,5 +276,218 @@ export default function RequestRateLimit(props) {
         </Form>
       </Spin>
     </>
+  );
+}
+
+export function ProbeGuardRateLimit(props) {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [inputs, setInputs] = useState(probeGuardDefaults);
+  const [inputsRow, setInputsRow] = useState(probeGuardDefaults);
+  const refForm = useRef();
+
+  function handleFieldChange(key) {
+    return (value) => {
+      setInputs({
+        ...inputs,
+        [key]: typeof value === 'boolean' ? value : String(value),
+      });
+    };
+  }
+
+  function onSubmit() {
+    const updateArray = compareObjects(inputs, inputsRow);
+    if (!updateArray.length) return showWarning(t('你似乎并没有修改什么'));
+    const requestQueue = updateArray.map((item) => {
+      const value =
+        typeof inputs[item.key] === 'boolean'
+          ? String(inputs[item.key])
+          : inputs[item.key];
+      return API.put('/api/option/', {
+        key: item.key,
+        value,
+      });
+    });
+    setLoading(true);
+    Promise.all(requestQueue)
+      .then((res) => {
+        if (res.includes(undefined)) {
+          return showError(t('部分保存失败，请重试'));
+        }
+        for (let i = 0; i < res.length; i++) {
+          if (!res[i].data.success) {
+            return showError(res[i].data.message);
+          }
+        }
+        showSuccess(t('保存成功'));
+        props.refresh();
+      })
+      .catch(() => {
+        showError(t('保存失败，请重试'));
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }
+
+  useEffect(() => {
+    const currentInputs = { ...probeGuardDefaults };
+    for (let key in props.options) {
+      if (Object.keys(probeGuardDefaults).includes(key)) {
+        currentInputs[key] = props.options[key];
+      }
+    }
+    setInputs(currentInputs);
+    setInputsRow(structuredClone(currentInputs));
+    refForm.current?.setValues(currentInputs);
+  }, [props.options]);
+
+  const enabled = !!inputs['probe_guard_setting.enabled'];
+
+  return (
+    <Spin spinning={loading}>
+      <Form
+        values={inputs}
+        getFormApi={(formAPI) => (refForm.current = formAPI)}
+        style={{ marginBottom: 15 }}
+      >
+        <Form.Section
+          text={t('批量测活防护')}
+          extraText={t(
+            '同一账号在检测窗口内请求过多不同模型时，自动按违规次数封禁 IP 或账号',
+          )}
+        >
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='probe_guard_setting.enabled'
+                label={t('启用批量测活防护')}
+                checkedText={t('开')}
+                uncheckedText={t('关')}
+                onChange={handleFieldChange('probe_guard_setting.enabled')}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.Switch
+                field='probe_guard_setting.dry_run'
+                label={t('试运行')}
+                extraText={t('只记录触发情况，不写入 IP 封禁，也不禁用账号')}
+                checkedText={t('开')}
+                uncheckedText={t('关')}
+                disabled={!enabled}
+                onChange={handleFieldChange('probe_guard_setting.dry_run')}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.window_seconds'
+                label={t('检测窗口')}
+                min={10}
+                max={3600}
+                step={1}
+                suffix={t('秒')}
+                disabled={!enabled}
+                onChange={handleFieldChange('probe_guard_setting.window_seconds')}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.distinct_model_count'
+                label={t('不同模型阈值')}
+                min={2}
+                max={1000}
+                step={1}
+                suffix={t('个')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.distinct_model_count',
+                )}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.offense_dedupe_seconds'
+                label={t('同批去重时间')}
+                min={10}
+                max={3600}
+                step={1}
+                suffix={t('秒')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.offense_dedupe_seconds',
+                )}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.first_ip_ban_minutes'
+                label={t('第一次封禁 IP')}
+                min={1}
+                max={43200}
+                step={1}
+                suffix={t('分钟')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.first_ip_ban_minutes',
+                )}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.second_ip_ban_minutes'
+                label={t('第二次封禁 IP')}
+                min={1}
+                max={43200}
+                step={1}
+                suffix={t('分钟')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.second_ip_ban_minutes',
+                )}
+              />
+            </Col>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.permanent_offense_count'
+                label={t('永久封禁触发次数')}
+                min={1}
+                max={100}
+                step={1}
+                suffix={t('次')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.permanent_offense_count',
+                )}
+              />
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+              <Form.InputNumber
+                field='probe_guard_setting.max_ips_per_offense'
+                label={t('单次最多封禁 IP')}
+                min={1}
+                max={1024}
+                step={1}
+                suffix={t('个')}
+                disabled={!enabled}
+                onChange={handleFieldChange(
+                  'probe_guard_setting.max_ips_per_offense',
+                )}
+              />
+            </Col>
+          </Row>
+          <Row>
+            <Button size='default' onClick={onSubmit}>
+              {t('保存批量测活防护')}
+            </Button>
+          </Row>
+        </Form.Section>
+      </Form>
+    </Spin>
   );
 }

@@ -270,6 +270,23 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "probe_guard_setting.enabled",
+		"probe_guard_setting.dry_run",
+		"probe_guard_setting.window_seconds",
+		"probe_guard_setting.distinct_model_count",
+		"probe_guard_setting.first_ip_ban_minutes",
+		"probe_guard_setting.second_ip_ban_minutes",
+		"probe_guard_setting.permanent_offense_count",
+		"probe_guard_setting.offense_dedupe_seconds",
+		"probe_guard_setting.max_ips_per_offense":
+		err = setting.CheckProbeGuardOption(option.Key, option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	case "AutomaticDisableStatusCodes":
 		_, err = operation_setting.ParseHTTPStatusCodeRanges(option.Value.(string))
 		if err != nil {

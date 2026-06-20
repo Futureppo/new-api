@@ -22,7 +22,9 @@ import { Card, Spin } from '@douyinfe/semi-ui';
 
 import { API, showError, toBoolean } from '../../helpers';
 import { useTranslation } from 'react-i18next';
-import RequestRateLimit from '../../pages/Setting/RateLimit/SettingsRequestRateLimit';
+import RequestRateLimit, {
+  ProbeGuardRateLimit,
+} from '../../pages/Setting/RateLimit/SettingsRequestRateLimit';
 
 const RateLimitSetting = () => {
   const { t } = useTranslation();
@@ -33,6 +35,15 @@ const RateLimitSetting = () => {
     ModelRequestRateLimitDurationMinutes: 1,
     ModelRequestConcurrencyLimit: 2,
     ModelRequestRateLimitGroup: '',
+    'probe_guard_setting.enabled': false,
+    'probe_guard_setting.dry_run': true,
+    'probe_guard_setting.window_seconds': 60,
+    'probe_guard_setting.distinct_model_count': 5,
+    'probe_guard_setting.first_ip_ban_minutes': 10,
+    'probe_guard_setting.second_ip_ban_minutes': 60,
+    'probe_guard_setting.permanent_offense_count': 3,
+    'probe_guard_setting.offense_dedupe_seconds': 60,
+    'probe_guard_setting.max_ips_per_offense': 32,
   });
 
   let [loading, setLoading] = useState(false);
@@ -47,7 +58,11 @@ const RateLimitSetting = () => {
           item.value = JSON.stringify(JSON.parse(item.value), null, 2);
         }
 
-        if (item.key.endsWith('Enabled')) {
+        if (
+          item.key.endsWith('Enabled') ||
+          item.key === 'probe_guard_setting.enabled' ||
+          item.key === 'probe_guard_setting.dry_run'
+        ) {
           newInputs[item.key] = toBoolean(item.value);
         } else {
           newInputs[item.key] = item.value;
@@ -81,6 +96,9 @@ const RateLimitSetting = () => {
         {/* AI请求速率限制 */}
         <Card style={{ marginTop: '10px' }}>
           <RequestRateLimit options={inputs} refresh={onRefresh} />
+        </Card>
+        <Card style={{ marginTop: '10px' }}>
+          <ProbeGuardRateLimit options={inputs} refresh={onRefresh} />
         </Card>
       </Spin>
     </>

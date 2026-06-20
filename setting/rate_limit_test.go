@@ -56,3 +56,29 @@ func TestCheckModelRequestConcurrencyLimit(t *testing.T) {
 	require.Error(t, CheckModelRequestConcurrencyLimit("-1"))
 	require.Error(t, CheckModelRequestConcurrencyLimit(fmt.Sprintf("%d", int64(math.MaxInt32)+1)))
 }
+
+func TestCheckProbeGuardOption(t *testing.T) {
+	valid := map[string]string{
+		"probe_guard_setting.enabled":                 "true",
+		"probe_guard_setting.dry_run":                 "false",
+		"probe_guard_setting.window_seconds":          "60",
+		"probe_guard_setting.distinct_model_count":    "5",
+		"probe_guard_setting.first_ip_ban_minutes":    "10",
+		"probe_guard_setting.second_ip_ban_minutes":   "60",
+		"probe_guard_setting.permanent_offense_count": "3",
+		"probe_guard_setting.offense_dedupe_seconds":  "60",
+		"probe_guard_setting.max_ips_per_offense":     "32",
+	}
+	for key, value := range valid {
+		require.NoError(t, CheckProbeGuardOption(key, value))
+	}
+
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.enabled", "maybe"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.window_seconds", "9"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.distinct_model_count", "1"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.first_ip_ban_minutes", "0"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.second_ip_ban_minutes", "0"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.permanent_offense_count", "0"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.offense_dedupe_seconds", "9"))
+	require.Error(t, CheckProbeGuardOption("probe_guard_setting.max_ips_per_offense", "0"))
+}
