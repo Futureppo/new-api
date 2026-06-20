@@ -1,6 +1,7 @@
 package model
 
 import (
+	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -80,6 +81,31 @@ func TestSearchUsersFiltersDisabledAndDeletedUsers(t *testing.T) {
 	require.Len(t, users, 1)
 	require.Equal(t, deleted.Id, users[0].Id)
 	require.True(t, users[0].DeletedAt.Valid)
+}
+
+func TestSearchUsersMatchesKeywordFieldsIncludingAffCode(t *testing.T) {
+	db := setupUserListTestDB(t)
+
+	user := createUserListTestUser(t, db, "keyword-user", common.UserStatusEnabled, 100, "")
+	require.NoError(t, db.Model(&User{}).Where("id = ?", user.Id).Updates(map[string]interface{}{
+		"display_name": "Visible Captain",
+		"email":        "captain@example.com",
+		"aff_code":     "INVITE-ALPHA-42",
+	}).Error)
+
+	assertSearchFindsUser := func(keyword string) {
+		users, total, err := SearchUsers(UserListQuery{Keyword: keyword}, 0, 10)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), total)
+		require.Len(t, users, 1)
+		require.Equal(t, user.Id, users[0].Id)
+	}
+
+	assertSearchFindsUser(strconv.Itoa(user.Id))
+	assertSearchFindsUser("keyword-user")
+	assertSearchFindsUser("Visible")
+	assertSearchFindsUser("captain@example")
+	assertSearchFindsUser("ALPHA-42")
 }
 
 func TestSearchUsersOrdersByQuota(t *testing.T) {

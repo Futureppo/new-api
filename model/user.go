@@ -257,14 +257,14 @@ func applyUserListQuery(query *gorm.DB, filter UserListQuery) *gorm.DB {
 	group := strings.TrimSpace(filter.Group)
 
 	if keyword != "" {
-		likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ?"
+		likeCondition := "username LIKE ? OR email LIKE ? OR display_name LIKE ? OR aff_code LIKE ?"
 		keywordLike := "%" + keyword + "%"
 
 		if keywordInt, err := strconv.Atoi(keyword); err == nil {
 			likeCondition = "id = ? OR " + likeCondition
-			query = query.Where("("+likeCondition+")", keywordInt, keywordLike, keywordLike, keywordLike)
+			query = query.Where("("+likeCondition+")", keywordInt, keywordLike, keywordLike, keywordLike, keywordLike)
 		} else {
-			query = query.Where(likeCondition, keywordLike, keywordLike, keywordLike)
+			query = query.Where(likeCondition, keywordLike, keywordLike, keywordLike, keywordLike)
 		}
 	}
 
@@ -572,7 +572,7 @@ func (user *User) Update(updatePassword bool) error {
 	return updateUserCache(*user)
 }
 
-func (user *User) Edit(updatePassword bool) error {
+func (user *User) Edit(updatePassword bool, updateDisableReason bool) error {
 	var err error
 	if updatePassword {
 		user.Password, err = common.Password2Hash(user.Password)
@@ -590,6 +590,9 @@ func (user *User) Edit(updatePassword bool) error {
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
+	}
+	if updateDisableReason {
+		updates["disable_reason"] = newUser.DisableReason
 	}
 
 	DB.First(&user, user.Id)

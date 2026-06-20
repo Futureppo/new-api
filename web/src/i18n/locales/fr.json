@@ -3459,6 +3459,7 @@
     "支持拉取 Ollama 官方模型库中的所有模型，拉取过程可能需要几分钟时间": "Supports pulling all models from the Ollama official model library, the pulling process may take a few minutes",
     "支持逻辑 and/or 与嵌套 groups；操作符支持 eq/ne/gt/gte/lt/lte/in/not_in/contains/exists": "Prend en charge la logique and/or avec des groupes imbriqués ; opérateurs : eq/ne/gt/gte/lt/lte/in/not_in/contains/exists",
     "支持搜索用户的 ID、用户名、显示名称和邮箱地址": "Prise en charge de la recherche par ID utilisateur, nom d'utilisateur, nom d'affichage et adresse e-mail",
+    "支持搜索用户的 ID、用户名、显示名称、邮箱地址和邀请码": "Prise en charge de la recherche par ID utilisateur, nom d'utilisateur, nom d'affichage, adresse e-mail et code d'invitation",
     "支持填写单个状态码或范围（含首尾），使用逗号分隔": "Prend en charge un code d'état unique ou une plage (inclusif), séparés par des virgules",
     "支持填写单个状态码或范围（含首尾），使用逗号分隔；504 和 524 始终不重试，不受此处配置影响": "Prend en charge un code d'état unique ou une plage (inclusif), séparés par des virgules ; 504 et 524 ne sont jamais retentés, non affectés par cette configuration",
     "支持通配符格式，如：example.com, *.api.example.com": "Prend en charge le format générique, par exemple : example.com, *.api.example.com",

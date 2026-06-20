@@ -3420,6 +3420,7 @@
     "支持拉取 Ollama 官方模型库中的所有模型，拉取过程可能需要几分钟时间": "Supports pulling all models from the Ollama official model library, the pulling process may take a few minutes",
     "支持逻辑 and/or 与嵌套 groups；操作符支持 eq/ne/gt/gte/lt/lte/in/not_in/contains/exists": "論理and/orとネストされたグループをサポート。演算子：eq/ne/gt/gte/lt/lte/in/not_in/contains/exists",
     "支持搜索用户的 ID、用户名、显示名称和邮箱地址": "ユーザーID、ユーザー名、表示名、メールアドレスで検索",
+    "支持搜索用户的 ID、用户名、显示名称、邮箱地址和邀请码": "ユーザーID、ユーザー名、表示名、メールアドレス、招待コードで検索",
     "支持填写单个状态码或范围（含首尾），使用逗号分隔": "単一のステータスコードまたは範囲（両端を含む）をサポート、カンマで区切ります",
     "支持填写单个状态码或范围（含首尾），使用逗号分隔；504 和 524 始终不重试，不受此处配置影响": "単一のステータスコードまたは範囲（両端を含む）をサポート、カンマで区切ります。504と524は常にリトライされず、この設定の影響を受けません",
     "支持通配符格式，如：example.com, *.api.example.com": "ワイルドカード形式に対応しています（例：example.com, *.api.example.com）",

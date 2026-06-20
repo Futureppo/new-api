@@ -60,6 +60,9 @@ import UserBindingManagementModal from './UserBindingManagementModal';
 
 const { Text, Title } = Typography;
 
+const MAX_DISABLE_REASON_LENGTH = 255;
+const USER_STATUS_DISABLED = 2;
+
 const EditUserModal = (props) => {
   const { t } = useTranslation();
   const userId = props.editingUser.id;
@@ -78,6 +81,7 @@ const EditUserModal = (props) => {
   const [inputs, setInputs] = useState(null);
 
   const isEdit = Boolean(userId);
+  const isUserDisabled = Number(inputs?.status) === USER_STATUS_DISABLED;
 
   const getInitValues = () => ({
     username: '',
@@ -94,6 +98,7 @@ const EditUserModal = (props) => {
     quota_amount: 0,
     group: 'default',
     remark: '',
+    disable_reason: '',
   });
 
   const fetchGroups = async () => {
@@ -150,6 +155,11 @@ const EditUserModal = (props) => {
     let payload = { ...values };
     delete payload.quota;
     delete payload.quota_amount;
+    if (isUserDisabled) {
+      payload.disable_reason = (payload.disable_reason || '').trim();
+    } else {
+      delete payload.disable_reason;
+    }
     if (userId) {
       payload.id = parseInt(userId);
     }
@@ -331,6 +341,20 @@ const EditUserModal = (props) => {
                         showClear
                       />
                     </Col>
+
+                    {userId && isUserDisabled && (
+                      <Col span={24}>
+                        <Form.TextArea
+                          field='disable_reason'
+                          label={t('禁用原因')}
+                          placeholder={t('请输入禁用原因')}
+                          maxLength={MAX_DISABLE_REASON_LENGTH}
+                          rows={3}
+                          showClear
+                          extraText={t('请填写禁用原因，用户下次登录时将看到该原因。')}
+                        />
+                      </Col>
+                    )}
                   </Row>
                 </Card>
 
