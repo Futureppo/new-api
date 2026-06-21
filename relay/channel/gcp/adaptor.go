@@ -66,9 +66,6 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 		return err
 	}
 	req.Set("Authorization", "Bearer "+accessToken)
-	if creds.ProjectID != "" {
-		req.Set("x-goog-user-project", creds.ProjectID)
-	}
 	return nil
 }
 

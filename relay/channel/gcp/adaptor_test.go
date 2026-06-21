@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	rootcommon "github.com/QuantumNous/new-api/common"
 	rootconstant "github.com/QuantumNous/new-api/constant"
@@ -48,6 +49,32 @@ func TestAccessTokenCacheKey(t *testing.T) {
 	info.ChannelMultiKeyIndex = 3
 	if got, want := buildAccessTokenCacheKey(info), "gcp-access-token-42-3"; got != want {
 		t.Fatalf("unexpected multi-key cache key: got %q want %q", got, want)
+	}
+}
+
+func TestSetupRequestHeaderDoesNotForceUserProject(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelId: 91,
+			ApiKey:    `{"project_id":"chat-gpt-android","client_email":"svc@example.iam.gserviceaccount.com"}`,
+		},
+	}
+	accessTokenCache.Store(buildAccessTokenCacheKey(info), cachedAccessToken{
+		Token:     "cached-token",
+		ExpiresAt: time.Now().Add(time.Hour),
+	})
+	defer accessTokenCache.Delete(buildAccessTokenCacheKey(info))
+
+	c, _ := newGCPTestContext(http.MethodPost, "/v1/audio/transcriptions", nil, gin.MIMEJSON)
+	headers := http.Header{}
+	if err := (&Adaptor{}).SetupRequestHeader(c, &headers, info); err != nil {
+		t.Fatalf("SetupRequestHeader returned error: %v", err)
+	}
+	if got := headers.Get("Authorization"); got != "Bearer cached-token" {
+		t.Fatalf("unexpected Authorization header: %q", got)
+	}
+	if got := headers.Get("x-goog-user-project"); got != "" {
+		t.Fatalf("x-goog-user-project should be opt-in, got %q", got)
 	}
 }
 
