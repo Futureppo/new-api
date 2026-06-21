@@ -2,7 +2,7 @@ package common
 
 import "github.com/QuantumNous/new-api/constant"
 
-// GetEndpointTypesByChannelType 获取渠道最优先端点类型（所有的渠道都支持 OpenAI 端点）
+// GetEndpointTypesByChannelType returns the preferred endpoint types for a channel/model pair.
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
 	var endpointTypes []constant.EndpointType
 	switch channelType {
@@ -16,14 +16,6 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		} else {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeCohereChat}
 		}
-	//case constant.ChannelTypeMidjourney, constant.ChannelTypeMidjourneyPlus:
-	//	endpointTypes = []constant.EndpointType{constant.EndpointTypeMidjourney}
-	//case constant.ChannelTypeSunoAPI:
-	//	endpointTypes = []constant.EndpointType{constant.EndpointTypeSuno}
-	//case constant.ChannelTypeKling:
-	//	endpointTypes = []constant.EndpointType{constant.EndpointTypeKling}
-	//case constant.ChannelTypeJimeng:
-	//	endpointTypes = []constant.EndpointType{constant.EndpointTypeJimeng}
 	case constant.ChannelTypeAws:
 		fallthrough
 	case constant.ChannelTypeAnthropic:
@@ -32,7 +24,7 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		fallthrough
 	case constant.ChannelTypeGemini:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}
-	case constant.ChannelTypeOpenRouter: // OpenRouter 只支持 OpenAI 端点
+	case constant.ChannelTypeOpenRouter:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeXai:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
@@ -48,6 +40,14 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		} else {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 		}
+	case constant.ChannelTypeGCP:
+		if IsGCPSpeechModel(modelName) {
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeAudioSpeech}
+		} else if IsGCPTranscriptionModel(modelName) {
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeAudioTranscription}
+		} else {
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeAudioSpeech, constant.EndpointTypeAudioTranscription}
+		}
 	default:
 		if IsOpenAIResponseOnlyModel(modelName) {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIResponse}
@@ -56,7 +56,6 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		}
 	}
 	if channelType != constant.ChannelTypePoe && (IsImageGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineImageGenerationModel(modelName))) {
-		// add to first
 		endpointTypes = append([]constant.EndpointType{constant.EndpointTypeImageGeneration}, endpointTypes...)
 	}
 	if channelType != constant.ChannelTypePoe && (IsVideoGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineContentGenerationTaskModel(modelName))) {

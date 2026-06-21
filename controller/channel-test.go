@@ -68,6 +68,14 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 			return string(constant.EndpointTypeEmbeddings)
 		}
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeGCP {
+		if common.IsGCPSpeechModel(modelName) {
+			return string(constant.EndpointTypeAudioSpeech)
+		}
+		if common.IsGCPTranscriptionModel(modelName) {
+			return string(constant.EndpointTypeAudioTranscription)
+		}
+	}
 	if (channel == nil || channel.Type != constant.ChannelTypePoe) && common.IsVideoGenerationModel(modelName) {
 		return string(constant.EndpointTypeOpenAIVideo)
 	}
@@ -199,8 +207,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 
 	// Determine relay format based on endpoint type or request path
 	var relayFormat types.RelayFormat
-	if endpointType != "" {
 		// 根据指定的端点类型设置 relayFormat
+	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
 		case constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
 			relayFormat = types.RelayFormatOpenAI
@@ -220,6 +228,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatEmbedding
 		case constant.EndpointTypeOpenAIVideo:
 			relayFormat = types.RelayFormatTask
+		case constant.EndpointTypeAudioSpeech, constant.EndpointTypeAudioTranscription:
+			relayFormat = types.RelayFormatOpenAIAudio
 		default:
 			relayFormat = types.RelayFormatOpenAI
 		}
@@ -329,8 +339,19 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	adaptor.Init(info)
 
 	var convertedRequest any
+	var convertedAudioReader io.Reader
 	// 根据 RelayMode 选择正确的转换函数
 	switch info.RelayMode {
+	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
+		if audioReq, ok := request.(*dto.AudioRequest); ok {
+			convertedAudioReader, err = adaptor.ConvertAudioRequest(c, info, *audioReq)
+		} else {
+			return testResult{
+				context:     c,
+				localErr:    errors.New("invalid audio request type"),
+				newAPIError: types.NewError(errors.New("invalid audio request type"), types.ErrorCodeConvertRequestFailed),
+			}
+		}
 	case relayconstant.RelayModeEmbeddings:
 		// Embedding 请求 - request 已经是正确的类型
 		if embeddingReq, ok := request.(*dto.EmbeddingRequest); ok {
@@ -414,12 +435,24 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed),
 		}
 	}
-	jsonData, err := common.Marshal(convertedRequest)
-	if err != nil {
-		return testResult{
-			context:     c,
-			localErr:    err,
-			newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+	var jsonData []byte
+	if convertedAudioReader != nil {
+		jsonData, err = io.ReadAll(convertedAudioReader)
+		if err != nil {
+			return testResult{
+				context:     c,
+				localErr:    err,
+				newAPIError: types.NewError(err, types.ErrorCodeReadRequestBodyFailed),
+			}
+		}
+	} else {
+		jsonData, err = common.Marshal(convertedRequest)
+		if err != nil {
+			return testResult{
+				context:     c,
+				localErr:    err,
+				newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed),
+			}
 		}
 	}
 
@@ -1020,6 +1053,19 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 			return &dto.OpenAIResponsesCompactionRequest{
 				Model: model,
 				Input: testResponsesInput,
+			}
+		case constant.EndpointTypeAudioSpeech:
+			return &dto.AudioRequest{
+				Model:          model,
+				Input:          "你好，这是一次渠道测试。",
+				Voice:          "cmn-CN-Wavenet-A",
+				ResponseFormat: "mp3",
+			}
+		case constant.EndpointTypeAudioTranscription:
+			return &dto.AudioRequest{
+				Model:          model,
+				ResponseFormat: "json",
+				Metadata:       json.RawMessage(`{"gcp":{"audio":{"content":"UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQAAAAA="},"config":{"encoding":"LINEAR16","languageCode":"cmn-Hans-CN"},"native_response":false}}`),
 			}
 		case constant.EndpointTypeAnthropic, constant.EndpointTypeGemini, constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
 			// 返回 GeneralOpenAIRequest

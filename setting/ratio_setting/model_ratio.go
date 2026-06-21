@@ -118,10 +118,12 @@ var defaultModelRatio = map[string]float64{
 	"text-davinci-edit-001":                     10,
 	"code-davinci-edit-001":                     10,
 	"whisper-1":                                 15,  // $0.006 / minute -> $0.006 / 150 words -> $0.006 / 200 tokens -> $0.03 / 1k tokens
+	"gcp-speech-to-text":                        15,  // Align with existing minute-based STT token accounting.
 	"tts-1":                                     7.5, // 1k characters -> $0.015
 	"tts-1-1106":                                7.5, // 1k characters -> $0.015
 	"tts-1-hd":                                  15,  // 1k characters -> $0.03
 	"tts-1-hd-1106":                             15,  // 1k characters -> $0.03
+	"gcp-text-to-speech":                        7.5, // Align with existing TTS text-input accounting.
 	"davinci":                                   10,
 	"curie":                                     10,
 	"babbage":                                   10,
@@ -332,6 +334,7 @@ var defaultAudioCompletionRatio = map[string]float64{
 	"tts-1-hd":             0,
 	"tts-1-1106":           0,
 	"tts-1-hd-1106":        0,
+	"gcp-text-to-speech":   0,
 }
 
 var modelPriceMap = types.NewRWMap[string, float64]()

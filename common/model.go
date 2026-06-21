@@ -88,3 +88,17 @@ func IsCohereEmbeddingModel(modelName string) bool {
 	modelName = strings.ToLower(strings.TrimSpace(modelName))
 	return strings.Contains(modelName, "embed") || strings.Contains(modelName, "embedding")
 }
+
+func IsGCPSpeechModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return modelName == "gcp-text-to-speech" ||
+		strings.HasPrefix(modelName, "gcp-tts") ||
+		strings.HasPrefix(modelName, "tts-")
+}
+
+func IsGCPTranscriptionModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	return modelName == "gcp-speech-to-text" ||
+		strings.HasPrefix(modelName, "gcp-stt") ||
+		strings.HasPrefix(modelName, "whisper-")
+}
