@@ -360,6 +360,7 @@ export function getChannelIcon(channelType) {
     case 33: // AWS Claude
       return <Claude.Color size={iconSize} />;
     case 41: // Vertex AI
+    case 60: // Google Cloud
       return <Gemini.Color size={iconSize} />;
     case 34: // Cohere
       return <Cohere.Color size={iconSize} />;

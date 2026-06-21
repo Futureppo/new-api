@@ -129,6 +129,14 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 };
 
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
+const VERTEX_CHANNEL_TYPE = 41;
+const GCP_CHANNEL_TYPE = 60;
+
+const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
+const isServiceAccountChannel = (type) =>
+  isVertexChannel(type) || Number(type) === GCP_CHANNEL_TYPE;
+const getServiceAccountKeyType = (type, keyType) =>
+  isVertexChannel(type) ? keyType || 'json' : 'json';
 
 // 支持并且已适配通过接口获取模型列表的渠道类型
 const MODEL_FETCHABLE_TYPES = new Set([
@@ -1592,8 +1600,11 @@ const EditChannelModal = (props) => {
       }
     }
 
-    if (localInputs.type === 41) {
-      const keyType = localInputs.vertex_key_type || 'json';
+    if (isServiceAccountChannel(localInputs.type)) {
+      const keyType = getServiceAccountKeyType(
+        localInputs.type,
+        localInputs.vertex_key_type,
+      );
       if (keyType === 'api_key') {
         // 直接作为普通字符串密钥处理
         if (!isEdit && (!localInputs.key || localInputs.key.trim() === '')) {
@@ -1783,9 +1794,12 @@ const EditChannelModal = (props) => {
       settings.aws_key_type = localInputs.aws_key_type || 'ak_sk';
     }
 
-    // type === 41 (Vertex): 始终保存 vertex_key_type 到 settings，避免编辑时被重置
-    if (localInputs.type === 41) {
-      settings.vertex_key_type = localInputs.vertex_key_type || 'json';
+    // Vertex/GCP: 始终保存服务账号密钥格式到 settings，避免编辑时被重置
+    if (isServiceAccountChannel(localInputs.type)) {
+      settings.vertex_key_type = getServiceAccountKeyType(
+        localInputs.type,
+        localInputs.vertex_key_type,
+      );
     } else if ('vertex_key_type' in settings) {
       delete settings.vertex_key_type;
     }
@@ -2074,7 +2088,7 @@ const EditChannelModal = (props) => {
             } else {
               // 批量模式下禁用手动输入，并清空手动输入的内容
               setUseManualInput(false);
-              if (inputs.type === 41) {
+              if (isServiceAccountChannel(inputs.type)) {
                 // 清空手动输入的密钥内容
                 if (formApiRef.current) {
                   formApiRef.current.setValue('key', '');
@@ -2111,7 +2125,7 @@ const EditChannelModal = (props) => {
             {t('密钥聚合模式')}
           </Checkbox>
 
-          {inputs.type !== 41 && (
+          {!isServiceAccountChannel(inputs.type) && (
             <Button
               size='small'
               type='tertiary'
@@ -2791,7 +2805,7 @@ const EditChannelModal = (props) => {
                       </>
                     )}
 
-                    {inputs.type === 41 && (
+                    {isVertexChannel(inputs.type) && (
                       <Form.Select
                         field='vertex_key_type'
                         label={t('密钥格式')}
@@ -2827,8 +2841,11 @@ const EditChannelModal = (props) => {
                       />
                     )}
                     {batch ? (
-                      inputs.type === 41 &&
-                      (inputs.vertex_key_type || 'json') === 'json' ? (
+                      isServiceAccountChannel(inputs.type) &&
+                      getServiceAccountKeyType(
+                        inputs.type,
+                        inputs.vertex_key_type,
+                      ) === 'json' ? (
                         <Form.Upload
                           field='vertex_files'
                           label={t('密钥文件 (.json)')}
@@ -3001,8 +3018,11 @@ const EditChannelModal = (props) => {
                               onSuccess={handleCodexOAuthGenerated}
                             />
                           </>
-                        ) : inputs.type === 41 &&
-                          (inputs.vertex_key_type || 'json') === 'json' ? (
+                        ) : isServiceAccountChannel(inputs.type) &&
+                          getServiceAccountKeyType(
+                            inputs.type,
+                            inputs.vertex_key_type,
+                          ) === 'json' ? (
                           <>
                             {!batch && (
                               <div className='flex items-center justify-between mb-3'>

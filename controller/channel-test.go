@@ -207,7 +207,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 
 	// Determine relay format based on endpoint type or request path
 	var relayFormat types.RelayFormat
-		// 根据指定的端点类型设置 relayFormat
+	// 根据指定的端点类型设置 relayFormat
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
 		case constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
