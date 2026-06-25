@@ -61,11 +61,9 @@ import {
   Save,
   Search,
   ShieldCheck,
-  Sparkles,
   UserCog,
   X,
 } from 'lucide-react';
-import { VChart } from '@visactor/react-vchart';
 import dayjs from 'dayjs';
 import {
   API,
@@ -86,7 +84,6 @@ import {
 const { Title, Text } = Typography;
 
 const SECTIONS = [
-  { id: 'dashboard', label: '增强仪表盘', icon: Sparkles },
   { id: 'redemptions', label: '兑换码增强', icon: Gift },
   { id: 'users', label: '用户增强', icon: UserCog },
   { id: 'tokens', label: '令牌审计', icon: ShieldCheck },
@@ -98,7 +95,7 @@ const SECTIONS = [
 ];
 
 const ENHANCEMENTS_BASE_PATH = '/console/enhancements';
-const DEFAULT_SECTION = 'dashboard';
+const DEFAULT_SECTION = 'redemptions';
 const sectionIds = new Set(SECTIONS.map((section) => section.id));
 const getSectionFromSearch = (search) => {
   const tab = new URLSearchParams(search).get('tab');
@@ -553,59 +550,6 @@ function DataPreview({
       loading={loading}
       scroll={{ x: 'max-content' }}
     />
-  );
-}
-
-function DashboardPanel({ data }) {
-  const overview = data?.overview || {};
-  const trend = data?.trend || [];
-  const topUsers = data?.topUsers || [];
-  const modelUsage = data?.models || [];
-
-  const spec = useMemo(
-    () => ({
-      type: 'line',
-      data: {
-        values: trend.map((item) => ({
-          time: item.time,
-          requests: item.requests,
-          quota: item.quota,
-        })),
-      },
-      xField: 'time',
-      yField: 'requests',
-      point: { visible: true },
-      line: { style: { curveType: 'monotone' } },
-      axes: [
-        { orient: 'bottom', label: { autoHide: true } },
-        { orient: 'left' },
-      ],
-      tooltip: { visible: true },
-    }),
-    [trend],
-  );
-
-  return (
-    <div className='space-y-4'>
-      <SummaryGrid data={overview.last_24h || overview} />
-      <Card title='调用趋势' className='!rounded-lg'>
-        <div className='h-72'>
-          {trend.length > 0 ? (
-            <VChart spec={spec} />
-          ) : (
-            <Empty title='暂无趋势数据' />
-          )}
-        </div>
-      </Card>
-      <div className='grid grid-cols-1 xl:grid-cols-2 gap-4'>
-        <Card title='高用量用户' className='!rounded-lg'>
-          <DataPreview data={topUsers} />
-        </Card>
-        <Card title='模型用量' className='!rounded-lg'>
-          <DataPreview data={modelUsage} />
-        </Card>
-      </div>
-    </div>
   );
 }
 
@@ -3256,9 +3200,6 @@ export function ModelStatusPublicPage() {
 }
 
 function GenericSection({ section, data, onRefresh }) {
-  if (section === 'dashboard') {
-    return <DashboardPanel data={data} />;
-  }
   if (section === 'redemptions') {
     return <RedemptionsPanel data={data} onRefresh={onRefresh} />;
   }
@@ -3297,15 +3238,6 @@ function GenericSection({ section, data, onRefresh }) {
 
 async function fetchSection(section) {
   switch (section) {
-    case 'dashboard': {
-      const [overview, trend, topUsers, models] = await Promise.all([
-        API.get('/api/enhancements/dashboard/overview').then(unwrap),
-        API.get('/api/enhancements/dashboard/trends/hourly').then(unwrap),
-        API.get('/api/enhancements/dashboard/top-users').then(unwrap),
-        API.get('/api/enhancements/dashboard/models').then(unwrap),
-      ]);
-      return { overview, trend, topUsers, models };
-    }
     case 'redemptions': {
       const [statistics, list] = await Promise.all([
         API.get('/api/enhancements/redemptions/statistics').then(unwrap),

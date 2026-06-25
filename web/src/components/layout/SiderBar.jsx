@@ -52,7 +52,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
-  enhancements: '/console/enhancements?tab=dashboard',
+  enhancements: '/console/enhancements?tab=redemptions',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -215,7 +215,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       {
         text: t('增强管理'),
         itemKey: 'enhancements',
-        to: '/console/enhancements?tab=dashboard',
+        to: '/console/enhancements?tab=redemptions',
         className: isAdmin() ? '' : 'tableHiddle',
       },
     ];
