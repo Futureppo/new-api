@@ -101,7 +101,7 @@ func DisableRedemption(id int, operatorId int) (RedemptionSummary, error) {
 			"redemption_id": id,
 		})
 	}
-	return redemptionToSummary(redemption, false), nil
+	return redemptionToSummary(redemption, true), nil
 }
 
 func EnableRedemption(id int, operatorId int) (RedemptionSummary, error) {
@@ -124,7 +124,7 @@ func EnableRedemption(id int, operatorId int) (RedemptionSummary, error) {
 			"redemption_id": id,
 		})
 	}
-	return redemptionToSummary(redemption, false), nil
+	return redemptionToSummary(redemption, true), nil
 }
 
 func BatchDeleteRedemptions(ids []int, operatorId int, force bool) (map[string]interface{}, error) {

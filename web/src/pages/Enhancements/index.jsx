@@ -572,6 +572,16 @@ function renderRedemptionStatus(record, t) {
   return <Tag color={meta.color}>{t(meta.text)}</Tag>;
 }
 
+function redemptionStatusText(record, t) {
+  if (isRedemptionExpired(record)) {
+    return t('已过期');
+  }
+  const meta = REDEMPTION_STATUS_META[record?.status] || {
+    text: '未知',
+  };
+  return t(meta.text);
+}
+
 function redemptionUserText(record) {
   if (!record?.used_user_id) return '-';
   const username = record.used_username || '-';
@@ -703,6 +713,32 @@ function RedemptionsPanel({ data }) {
     }
   };
 
+  const copyCellValue = async (value) => {
+    const text =
+      value === null || typeof value === 'undefined' ? '' : String(value);
+    if (!text) return;
+    if (await copy(text)) {
+      showSuccess(t('复制成功'));
+    } else {
+      showError(t('无法复制到剪贴板，请手动复制'));
+    }
+  };
+
+  const renderCopyableCell = (content, value, className = '') => (
+    <button
+      type='button'
+      className={`max-w-full cursor-pointer rounded px-1 py-0.5 text-left break-words transition-colors hover:bg-semi-color-fill-0 active:bg-semi-color-fill-1 ${className}`}
+      style={{ background: 'transparent', border: 0, color: 'inherit' }}
+      title={String(value ?? '')}
+      onClick={(event) => {
+        event.stopPropagation();
+        copyCellValue(value);
+      }}
+    >
+      {content}
+    </button>
+  );
+
   const generate = () => {
     Modal.confirm({
       title: t('生成兑换码'),
@@ -734,58 +770,85 @@ function RedemptionsPanel({ data }) {
       title: t('ID'),
       dataIndex: 'id',
       width: 80,
+      render: (value) => renderCopyableCell(value, value),
     },
     {
       title: t('名称'),
       dataIndex: 'name',
       width: 160,
+      render: (value) => renderCopyableCell(value || '-', value || '-'),
     },
     {
       title: t('兑换码'),
       dataIndex: 'key',
-      width: 180,
-      render: (value) => <span className='font-mono text-xs'>{value}</span>,
+      width: 260,
+      render: (value) =>
+        renderCopyableCell(
+          value || '-',
+          value || '-',
+          'font-mono text-xs break-all',
+        ),
     },
     {
       title: t('状态'),
       dataIndex: 'status',
       width: 110,
-      render: (_, record) => renderRedemptionStatus(record, t),
+      render: (_, record) =>
+        renderCopyableCell(
+          renderRedemptionStatus(record, t),
+          redemptionStatusText(record, t),
+        ),
     },
     {
       title: t('金额'),
       dataIndex: 'quota',
       width: 130,
-      render: (value) => (
-        <Tag color='blue' shape='circle'>
-          {formatDisplayAmount(value, currency)}
-        </Tag>
-      ),
+      render: (value) => {
+        const amountText = formatDisplayAmount(value, currency);
+        return renderCopyableCell(
+          <Tag color='blue' shape='circle'>
+            {amountText}
+          </Tag>,
+          amountText,
+        );
+      },
     },
     {
       title: t('兑换用户'),
       dataIndex: 'used_username',
       width: 180,
-      render: (_, record) => redemptionUserText(record),
+      render: (_, record) => {
+        const text = redemptionUserText(record);
+        return renderCopyableCell(text, text);
+      },
     },
     {
       title: t('兑换时间'),
       dataIndex: 'redeemed_time',
       width: 180,
-      render: (value) => formatValue(value, 'redeemed_time', t),
+      render: (value) => {
+        const text = formatValue(value, 'redeemed_time', t);
+        return renderCopyableCell(text, text);
+      },
     },
     {
       title: t('创建时间'),
       dataIndex: 'created_time',
       width: 180,
-      render: (value) => formatValue(value, 'created_time', t),
+      render: (value) => {
+        const text = formatValue(value, 'created_time', t);
+        return renderCopyableCell(text, text);
+      },
     },
     {
       title: t('过期时间'),
       dataIndex: 'expired_time',
       width: 180,
-      render: (value) =>
-        value === 0 ? t('永不过期') : formatValue(value, 'expired_time', t),
+      render: (value) => {
+        const text =
+          value === 0 ? t('永不过期') : formatValue(value, 'expired_time', t);
+        return renderCopyableCell(text, text);
+      },
     },
     {
       title: t('操作'),

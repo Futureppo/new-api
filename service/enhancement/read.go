@@ -303,7 +303,7 @@ func ListRedemptions(page int, pageSize int, status int, keyword string) (PageRe
 	}
 	items := make([]RedemptionSummary, 0, len(redemptions))
 	for _, redemption := range redemptions {
-		items = append(items, redemptionToSummaryWithUsername(redemption, false, usernames[redemption.UsedUserId]))
+		items = append(items, redemptionToSummaryWithUsername(redemption, true, usernames[redemption.UsedUserId]))
 	}
 	return PageResult[RedemptionSummary]{Items: items, Total: total, Page: page, PageSize: pageSize}, nil
 }
