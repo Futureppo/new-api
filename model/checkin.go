@@ -2,7 +2,6 @@ package model
 
 import (
 	"errors"
-	"math/rand"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -67,18 +66,14 @@ func UserCheckin(userId int) (*Checkin, error) {
 		return nil, errors.New("今日已签到")
 	}
 
-	// 计算随机额度奖励
-	quotaAwarded := setting.MinQuota
-	if setting.MaxQuota > setting.MinQuota {
-		quotaAwarded = setting.MinQuota + rand.Intn(setting.MaxQuota-setting.MinQuota+1)
-	}
-
-	today := time.Now().Format("2006-01-02")
+	now := time.Now()
+	quotaAwarded := setting.RewardQuota(now)
+	today := now.Format("2006-01-02")
 	checkin := &Checkin{
 		UserId:       userId,
 		CheckinDate:  today,
 		QuotaAwarded: quotaAwarded,
-		CreatedAt:    time.Now().Unix(),
+		CreatedAt:    now.Unix(),
 	}
 
 	// 根据数据库类型选择不同的策略

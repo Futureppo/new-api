@@ -36,6 +36,26 @@ import {
 const checkinAmountFields = [
   'checkin_setting.min_quota',
   'checkin_setting.max_quota',
+  'checkin_setting.special_quota',
+];
+
+const defaultInputs = {
+  'checkin_setting.enabled': false,
+  'checkin_setting.min_quota': 1000,
+  'checkin_setting.max_quota': 10000,
+  'checkin_setting.special_enabled': false,
+  'checkin_setting.special_weekday': '1',
+  'checkin_setting.special_quota': 0,
+};
+
+const weekdayOptions = [
+  { value: '1', label: '周一' },
+  { value: '2', label: '周二' },
+  { value: '3', label: '周三' },
+  { value: '4', label: '周四' },
+  { value: '5', label: '周五' },
+  { value: '6', label: '周六' },
+  { value: '7', label: '周日' },
 ];
 
 function quotaToAmountValue(quota) {
@@ -58,11 +78,7 @@ export default function SettingsCheckin(props) {
   const { t } = useTranslation();
   const currencySymbol = getCurrencyConfig().symbol;
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    'checkin_setting.enabled': false,
-    'checkin_setting.min_quota': 1000,
-    'checkin_setting.max_quota': 10000,
-  });
+  const [inputs, setInputs] = useState(defaultInputs);
   const refForm = useRef();
   const [inputsRow, setInputsRow] = useState(inputs);
 
@@ -120,7 +136,7 @@ export default function SettingsCheckin(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
+    const currentInputs = { ...defaultInputs };
     for (let key in props.options) {
       if (Object.keys(inputs).includes(key)) {
         currentInputs[key] = props.options[key];
@@ -144,7 +160,7 @@ export default function SettingsCheckin(props) {
               type='tertiary'
               style={{ marginBottom: 16, display: 'block' }}
             >
-              {t('签到功能允许用户每日签到获取随机金额奖励')}
+              {t('签到功能允许用户每日签到获取金额奖励，特殊星期可覆盖为固定奖励')}
             </Typography.Text>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
@@ -185,6 +201,68 @@ export default function SettingsCheckin(props) {
                   step={0.000001}
                   min={0}
                   disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+            </Row>
+            <Typography.Text
+              strong
+              style={{ marginTop: 8, marginBottom: 8, display: 'block' }}
+            >
+              {t('特殊签到设置')}
+            </Typography.Text>
+            <Typography.Text
+              type='tertiary'
+              style={{ marginBottom: 16, display: 'block' }}
+            >
+              {t('启用后，命中指定星期时将发放固定金额并覆盖随机奖励')}
+            </Typography.Text>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'checkin_setting.special_enabled'}
+                  label={t('启用特殊签到奖励')}
+                  size='default'
+                  onChange={handleFieldChange(
+                    'checkin_setting.special_enabled',
+                  )}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  field={'checkin_setting.special_weekday'}
+                  label={t('特殊签到星期')}
+                  onChange={handleFieldChange(
+                    'checkin_setting.special_weekday',
+                  )}
+                  disabled={
+                    !inputs['checkin_setting.enabled'] ||
+                    !inputs['checkin_setting.special_enabled']
+                  }
+                >
+                  {weekdayOptions.map((item) => (
+                    <Form.Select.Option key={item.value} value={item.value}>
+                      {t(item.label)}
+                    </Form.Select.Option>
+                  ))}
+                </Form.Select>
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.InputNumber
+                  field={'checkin_setting.special_quota'}
+                  label={t('特殊签到金额')}
+                  placeholder={t('特殊签到固定奖励金额')}
+                  onChange={handleAmountFieldChange(
+                    'checkin_setting.special_quota',
+                  )}
+                  prefix={currencySymbol}
+                  precision={6}
+                  step={0.000001}
+                  min={0}
+                  disabled={
+                    !inputs['checkin_setting.enabled'] ||
+                    !inputs['checkin_setting.special_enabled']
+                  }
                 />
               </Col>
             </Row>
