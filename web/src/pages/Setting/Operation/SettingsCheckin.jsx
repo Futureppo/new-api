@@ -22,14 +22,41 @@ import { Button, Col, Form, Row, Spin, Typography } from '@douyinfe/semi-ui';
 import {
   compareObjects,
   API,
+  getCurrencyConfig,
   showError,
   showSuccess,
   showWarning,
 } from '../../../helpers';
 import { useTranslation } from 'react-i18next';
+import {
+  displayAmountToQuota,
+  quotaToDisplayAmount,
+} from '../../../helpers/quota';
+
+const checkinAmountFields = [
+  'checkin_setting.min_quota',
+  'checkin_setting.max_quota',
+];
+
+function quotaToAmountValue(quota) {
+  return Number(
+    quotaToDisplayAmount(quota, { forceCurrency: true }).toFixed(6),
+  );
+}
+
+function getAmountInputs(inputs) {
+  const amountInputs = { ...inputs };
+  for (const field of checkinAmountFields) {
+    if (amountInputs[field] !== undefined) {
+      amountInputs[field] = quotaToAmountValue(amountInputs[field]);
+    }
+  }
+  return amountInputs;
+}
 
 export default function SettingsCheckin(props) {
   const { t } = useTranslation();
+  const currencySymbol = getCurrencyConfig().symbol;
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     'checkin_setting.enabled': false,
@@ -42,6 +69,18 @@ export default function SettingsCheckin(props) {
   function handleFieldChange(fieldName) {
     return (value) => {
       setInputs((inputs) => ({ ...inputs, [fieldName]: value }));
+    };
+  }
+
+  function handleAmountFieldChange(fieldName) {
+    return (value) => {
+      const amount = value === '' || value == null ? 0 : value;
+      setInputs((inputs) => ({
+        ...inputs,
+        [fieldName]: String(
+          displayAmountToQuota(amount, { forceCurrency: true }),
+        ),
+      }));
     };
   }
 
@@ -89,14 +128,14 @@ export default function SettingsCheckin(props) {
     }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
-    refForm.current.setValues(currentInputs);
+    refForm.current.setValues(getAmountInputs(currentInputs));
   }, [props.options]);
 
   return (
     <>
       <Spin spinning={loading}>
         <Form
-          values={inputs}
+          values={getAmountInputs(inputs)}
           getFormApi={(formAPI) => (refForm.current = formAPI)}
           style={{ marginBottom: 15 }}
         >
@@ -105,7 +144,7 @@ export default function SettingsCheckin(props) {
               type='tertiary'
               style={{ marginBottom: 16, display: 'block' }}
             >
-              {t('签到功能允许用户每日签到获取随机额度奖励')}
+              {t('签到功能允许用户每日签到获取随机金额奖励')}
             </Typography.Text>
             <Row gutter={16}>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
@@ -121,9 +160,14 @@ export default function SettingsCheckin(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   field={'checkin_setting.min_quota'}
-                  label={t('签到最小额度')}
-                  placeholder={t('签到奖励的最小额度')}
-                  onChange={handleFieldChange('checkin_setting.min_quota')}
+                  label={t('签到最小金额')}
+                  placeholder={t('签到奖励的最小金额')}
+                  onChange={handleAmountFieldChange(
+                    'checkin_setting.min_quota',
+                  )}
+                  prefix={currencySymbol}
+                  precision={6}
+                  step={0.000001}
                   min={0}
                   disabled={!inputs['checkin_setting.enabled']}
                 />
@@ -131,9 +175,14 @@ export default function SettingsCheckin(props) {
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.InputNumber
                   field={'checkin_setting.max_quota'}
-                  label={t('签到最大额度')}
-                  placeholder={t('签到奖励的最大额度')}
-                  onChange={handleFieldChange('checkin_setting.max_quota')}
+                  label={t('签到最大金额')}
+                  placeholder={t('签到奖励的最大金额')}
+                  onChange={handleAmountFieldChange(
+                    'checkin_setting.max_quota',
+                  )}
+                  prefix={currencySymbol}
+                  precision={6}
+                  step={0.000001}
                   min={0}
                   disabled={!inputs['checkin_setting.enabled']}
                 />

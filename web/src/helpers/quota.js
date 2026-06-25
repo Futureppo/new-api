@@ -23,25 +23,28 @@ export const getQuotaPerUnit = () => {
   return Number.isFinite(raw) && raw > 0 ? raw : 1;
 };
 
-export const quotaToDisplayAmount = (quota) => {
+export const quotaToDisplayAmount = (quota, { forceCurrency = false } = {}) => {
   const q = Number(quota || 0);
   if (!Number.isFinite(q) || q === 0) return 0;
   const sign = Math.sign(q);
   const abs = Math.abs(q);
   const { type, rate } = getCurrencyConfig();
-  if (type === 'TOKENS') return q;
+  if (type === 'TOKENS' && !forceCurrency) return q;
   const usd = abs / getQuotaPerUnit();
-  if (type === 'USD') return sign * usd;
+  if (type === 'USD' || type === 'TOKENS') return sign * usd;
   return sign * usd * (rate || 1);
 };
 
-export const displayAmountToQuota = (amount) => {
+export const displayAmountToQuota = (
+  amount,
+  { forceCurrency = false } = {},
+) => {
   const val = Number(amount || 0);
   if (!Number.isFinite(val) || val === 0) return 0;
   const sign = Math.sign(val);
   const abs = Math.abs(val);
   const { type, rate } = getCurrencyConfig();
-  if (type === 'TOKENS') return Math.round(val);
-  const usd = type === 'USD' ? abs : abs / (rate || 1);
+  if (type === 'TOKENS' && !forceCurrency) return Math.round(val);
+  const usd = type === 'USD' || type === 'TOKENS' ? abs : abs / (rate || 1);
   return sign * Math.round(usd * getQuotaPerUnit());
 };
