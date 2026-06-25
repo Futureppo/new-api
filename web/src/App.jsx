@@ -18,13 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { lazy, Suspense, useContext, useMemo } from 'react';
-import {
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from 'react-router-dom';
+import { Route, Routes, useLocation, useParams } from 'react-router-dom';
 import Loading from './components/common/ui/Loading';
 import User from './pages/User';
 import { AuthRedirect, PrivateRoute, AdminRoute, RootRoute } from './helpers';
@@ -287,10 +281,6 @@ function App() {
         />
         <Route
           path='/console/enhancements'
-          element={<Navigate to='/console/enhancements/dashboard' replace />}
-        />
-        <Route
-          path='/console/enhancements/:section'
           element={
             <AdminRoute>
               <Enhancements />

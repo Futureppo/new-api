@@ -52,7 +52,7 @@ const routerMap = {
   deployment: '/console/deployment',
   playground: '/console/playground',
   personal: '/console/personal',
-  enhancements: '/console/enhancements/dashboard',
+  enhancements: '/console/enhancements?tab=dashboard',
 };
 
 const SiderBar = ({ onNavigate = () => {} }) => {
@@ -215,7 +215,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       {
         text: t('增强管理'),
         itemKey: 'enhancements',
-        to: '/console/enhancements/dashboard',
+        to: '/console/enhancements?tab=dashboard',
         className: isAdmin() ? '' : 'tableHiddle',
       },
     ];
@@ -317,7 +317,7 @@ const SiderBar = ({ onNavigate = () => {} }) => {
       }
     }
 
-    if (!matchingKey && currentPath.startsWith('/console/enhancements/')) {
+    if (!matchingKey && currentPath.startsWith('/console/enhancements')) {
       matchingKey = 'enhancements';
     }
 

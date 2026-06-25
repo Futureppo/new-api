@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
@@ -98,7 +98,12 @@ const SECTIONS = [
 ];
 
 const ENHANCEMENTS_BASE_PATH = '/console/enhancements';
+const DEFAULT_SECTION = 'dashboard';
 const sectionIds = new Set(SECTIONS.map((section) => section.id));
+const getSectionFromSearch = (search) => {
+  const tab = new URLSearchParams(search).get('tab');
+  return sectionIds.has(tab) ? tab : DEFAULT_SECTION;
+};
 const MODEL_STATUS_PUBLIC_PATH = '/model-status';
 const MODEL_STATUS_WINDOWS = [
   { label: '今日', value: 'today' },
@@ -2605,7 +2610,9 @@ function ModelStatusTimeline({ status }) {
               : formatStatusPercent(slot.success_rate);
             const title = `${dayjs.unix(slot.start_time).format('MM-DD HH:mm')} - ${dayjs
               .unix(slot.end_time)
-              .format('MM-DD HH:mm')} · ${statusText} · ${formatNumber(totalRequests)}`;
+              .format(
+                'MM-DD HH:mm',
+              )} · ${statusText} · ${formatNumber(totalRequests)}`;
             return (
               <div
                 key={`${groupName}-${modelName}-${slot.slot}`}
@@ -3373,20 +3380,34 @@ async function fetchSection(section) {
 export default function Enhancements() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const params = useParams();
-  const activeSection = params.section || 'dashboard';
+  const location = useLocation();
+  const [tabActiveKey, setTabActiveKey] = useState(() =>
+    getSectionFromSearch(location.search),
+  );
+  const activeSection = tabActiveKey;
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!sectionIds.has(activeSection)) {
-      navigate(`${ENHANCEMENTS_BASE_PATH}/dashboard`, { replace: true });
+    const tab = new URLSearchParams(location.search).get('tab');
+    if (!sectionIds.has(tab)) {
+      setTabActiveKey(DEFAULT_SECTION);
+      navigate(`${ENHANCEMENTS_BASE_PATH}?tab=${DEFAULT_SECTION}`, {
+        replace: true,
+      });
+      return;
     }
-  }, [activeSection, navigate]);
+    setTabActiveKey(tab);
+  }, [location.search, navigate]);
 
   const activeMeta =
     SECTIONS.find((section) => section.id === activeSection) || SECTIONS[0];
+
+  const onChangeTab = (key) => {
+    setTabActiveKey(key);
+    navigate(`${ENHANCEMENTS_BASE_PATH}?tab=${key}`);
+  };
 
   const loadData = async () => {
     if (!sectionIds.has(activeSection)) return;
@@ -3408,6 +3429,33 @@ export default function Enhancements() {
   }, [activeSection]);
 
   const Icon = activeMeta.icon;
+  const renderSectionContent = (sectionId) => {
+    if (tabActiveKey !== sectionId) return null;
+
+    if (loading) {
+      return (
+        <div className='py-20 flex justify-center'>
+          <Spin size='large' />
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <Card className='!rounded-lg'>
+          <Empty title={error} />
+        </Card>
+      );
+    }
+
+    return (
+      <GenericSection
+        section={activeSection}
+        data={data}
+        onRefresh={loadData}
+      />
+    );
+  };
 
   return (
     <div className='mt-[60px] px-2 pb-6'>
@@ -3435,37 +3483,32 @@ export default function Enhancements() {
         </Space>
       </div>
 
-      <Card className='!rounded-lg mb-4' bodyStyle={{ paddingBottom: 0 }}>
-        <Tabs
-          type='line'
-          activeKey={activeSection}
-          onChange={(key) => navigate(`${ENHANCEMENTS_BASE_PATH}/${key}`)}
-        >
-          {SECTIONS.map((section) => (
+      <Tabs
+        type='card'
+        collapsible
+        activeKey={activeSection}
+        onChange={onChangeTab}
+      >
+        {SECTIONS.map((section) => {
+          const SectionIcon = section.icon;
+          return (
             <TabPane
-              tab={t(section.label)}
+              tab={
+                <span
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <SectionIcon size={18} />
+                  {t(section.label)}
+                </span>
+              }
               itemKey={section.id}
               key={section.id}
-            />
-          ))}
-        </Tabs>
-      </Card>
-
-      {loading ? (
-        <div className='py-20 flex justify-center'>
-          <Spin size='large' />
-        </div>
-      ) : error ? (
-        <Card className='!rounded-lg'>
-          <Empty title={error} />
-        </Card>
-      ) : (
-        <GenericSection
-          section={activeSection}
-          data={data}
-          onRefresh={loadData}
-        />
-      )}
+            >
+              {renderSectionContent(section.id)}
+            </TabPane>
+          );
+        })}
+      </Tabs>
     </div>
   );
 }
