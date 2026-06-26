@@ -83,6 +83,33 @@ func TestBatchBanYoungGitHubUsersRejectsNonPositiveThreshold(t *testing.T) {
 	require.Contains(t, err.Error(), "minimum_age_seconds")
 }
 
+func TestBatchBanYoungGitHubUsersRejectsInvalidUserIDRange(t *testing.T) {
+	_, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 60,
+		UserIdStart:       -1,
+		DryRun:            true,
+	}, 900)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user_id_start")
+
+	_, err = BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 60,
+		UserIdEnd:         -1,
+		DryRun:            true,
+	}, 900)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user_id_end")
+
+	_, err = BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 60,
+		UserIdStart:       200,
+		UserIdEnd:         100,
+		DryRun:            true,
+	}, 900)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "user_id_end")
+}
+
 func TestBatchBanYoungGitHubUsersDryRunDoesNotModifyUsers(t *testing.T) {
 	setupUserPurgeTestDB(t)
 	now := time.Unix(2_000_000_000, 0)
@@ -103,6 +130,41 @@ func TestBatchBanYoungGitHubUsersDryRunDoesNotModifyUsers(t *testing.T) {
 	require.Equal(t, 0, result.Banned)
 	require.Len(t, result.MatchedUsers, 1)
 	requireGitHubAgeBanUserStatus(t, 101, common.UserStatusEnabled, "")
+}
+
+func TestBatchBanYoungGitHubUsersFiltersByUserIDRange(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	now := time.Unix(2_000_000_000, 0)
+	seedGitHubAgeBanUser(t, 991, common.RoleCommonUser, common.UserStatusEnabled, "991")
+	seedGitHubAgeBanUser(t, 1000, common.RoleCommonUser, common.UserStatusEnabled, "1000")
+	seedGitHubAgeBanUser(t, 1500, common.RoleCommonUser, common.UserStatusEnabled, "1500")
+	seedGitHubAgeBanUser(t, 2000, common.RoleCommonUser, common.UserStatusEnabled, "2000")
+	seedGitHubAgeBanUser(t, 2001, common.RoleCommonUser, common.UserStatusEnabled, "2001")
+	stubGitHubAgeBanLookup(t, now, map[string]gitHubAgeBanMockResult{
+		"1000": {login: "range-start", createdAt: now.Add(-10 * time.Second)},
+		"1500": {login: "range-mid", createdAt: now.Add(-10 * time.Second)},
+		"2000": {login: "range-end", createdAt: now.Add(-10 * time.Second)},
+	})
+
+	result, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 60,
+		UserIdStart:       1000,
+		UserIdEnd:         2000,
+		DryRun:            true,
+	}, 900)
+
+	require.NoError(t, err)
+	require.Equal(t, 1000, result.UserIdStart)
+	require.Equal(t, 2000, result.UserIdEnd)
+	require.Equal(t, 3, result.TotalCandidates)
+	require.Equal(t, 3, result.Checked)
+	require.Equal(t, 3, result.Matched)
+	require.Len(t, result.MatchedUsers, 3)
+	require.Equal(t, []int{1000, 1500, 2000}, []int{
+		result.MatchedUsers[0].Id,
+		result.MatchedUsers[1].Id,
+		result.MatchedUsers[2].Id,
+	})
 }
 
 func TestBatchBanYoungGitHubUsersExecutesOnlyMatchingEnabledCommonUsers(t *testing.T) {

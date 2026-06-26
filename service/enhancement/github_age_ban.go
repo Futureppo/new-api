@@ -46,10 +46,15 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 	result := GitHubAgeBanResult{
 		MinimumAgeSeconds: req.MinimumAgeSeconds,
 		DryRun:            req.DryRun,
+		UserIdStart:       req.UserIdStart,
+		UserIdEnd:         req.UserIdEnd,
 		MatchedUsers:      []GitHubAgeBanUser{},
 	}
 	if req.MinimumAgeSeconds <= 0 {
 		return result, errors.New("minimum_age_seconds must be greater than 0")
+	}
+	if err := validateGitHubAgeBanUserIDRange(req.UserIdStart, req.UserIdEnd); err != nil {
+		return result, err
 	}
 
 	reason := strings.TrimSpace(req.Reason)
@@ -69,6 +74,7 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 	query := model.DB.Omit("password").
 		Where("role = ? AND status = ? AND github_id <> ?", common.RoleCommonUser, common.UserStatusEnabled, "").
 		Order("id ASC")
+	query = applyGitHubAgeBanUserIDRange(query, req.UserIdStart, req.UserIdEnd)
 	if len(selectedIDSet) > 0 {
 		query = query.Where("id IN ?", selectedIDs)
 	}
@@ -145,8 +151,33 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		"reason":              reason,
 		"rate_limited":        result.RateLimited,
 		"selected":            len(selectedIDSet) > 0,
+		"user_id_start":       req.UserIdStart,
+		"user_id_end":         req.UserIdEnd,
 	})
 	return result, nil
+}
+
+func validateGitHubAgeBanUserIDRange(start int, end int) error {
+	if start < 0 {
+		return errors.New("user_id_start must be non-negative")
+	}
+	if end < 0 {
+		return errors.New("user_id_end must be non-negative")
+	}
+	if start > 0 && end > 0 && end < start {
+		return errors.New("user_id_end must be greater than or equal to user_id_start")
+	}
+	return nil
+}
+
+func applyGitHubAgeBanUserIDRange(query *gorm.DB, start int, end int) *gorm.DB {
+	if start > 0 {
+		query = query.Where("id >= ?", start)
+	}
+	if end > 0 {
+		query = query.Where("id <= ?", end)
+	}
+	return query
 }
 
 func normalizeGitHubAgeBanUserIDs(ids []int) (map[int]bool, []int) {

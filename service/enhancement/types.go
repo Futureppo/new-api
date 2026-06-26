@@ -115,6 +115,8 @@ type GitHubAgeBanRequest struct {
 	Reason            string `json:"reason"`
 	DryRun            bool   `json:"dry_run"`
 	UserIds           []int  `json:"user_ids,omitempty"`
+	UserIdStart       int    `json:"user_id_start,omitempty"`
+	UserIdEnd         int    `json:"user_id_end,omitempty"`
 }
 
 type GitHubAgeBanUser struct {
@@ -145,6 +147,8 @@ type GitHubAgeBanFailure struct {
 type GitHubAgeBanResult struct {
 	MinimumAgeSeconds int64                     `json:"minimum_age_seconds"`
 	DryRun            bool                      `json:"dry_run"`
+	UserIdStart       int                       `json:"user_id_start,omitempty"`
+	UserIdEnd         int                       `json:"user_id_end,omitempty"`
 	TotalCandidates   int                       `json:"total_candidates"`
 	Checked           int                       `json:"checked"`
 	Matched           int                       `json:"matched"`

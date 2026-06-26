@@ -156,6 +156,8 @@ const FIELD_LABELS = {
   github_account_created_at: 'GitHub 账号注册时间',
   github_account_age_seconds: 'GitHub 账号年龄（秒）',
   minimum_age_seconds: '账号年龄阈值（秒）',
+  user_id_start: '用户 ID 起始',
+  user_id_end: '用户 ID 结束',
   group: '分组',
   key: '密钥',
   name: '名称',
@@ -500,6 +502,19 @@ function formatValue(value, key = '', t = (text) => text) {
       .join('；');
   }
   return String(value);
+}
+
+function formatGitHubAgeBanUserIDRange(start, end, t = (text) => text) {
+  if (start > 0 && end > 0) {
+    return `${formatNumber(start)} - ${formatNumber(end)}`;
+  }
+  if (start > 0) {
+    return `>= ${formatNumber(start)}`;
+  }
+  if (end > 0) {
+    return `<= ${formatNumber(end)}`;
+  }
+  return t('不限制');
 }
 
 function pickItems(data) {
@@ -1308,6 +1323,8 @@ function GitHubAgeBanCard({ onApplied }) {
   const { t } = useTranslation();
   const defaultForm = {
     minimum_age_seconds: 31536000,
+    user_id_start: 0,
+    user_id_end: 0,
     reason: '',
   };
   const [form, setForm] = useState(defaultForm);
@@ -1318,10 +1335,28 @@ function GitHubAgeBanCard({ onApplied }) {
   const patchForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
   const threshold = Number(form.minimum_age_seconds || 0);
   const normalizedThreshold = Math.trunc(threshold);
+  const normalizedUserIdStart = Math.trunc(Number(form.user_id_start || 0));
+  const normalizedUserIdEnd = Math.trunc(Number(form.user_id_end || 0));
 
   const runGitHubAgeBan = async (dryRun, userIds = undefined) => {
     if (!Number.isFinite(threshold) || normalizedThreshold <= 0) {
       showError(t('GitHub 账号年龄阈值必须大于 0'));
+      return;
+    }
+    if (!Number.isFinite(normalizedUserIdStart) || normalizedUserIdStart < 0) {
+      showError(t('用户 ID 起始必须为非负整数'));
+      return;
+    }
+    if (!Number.isFinite(normalizedUserIdEnd) || normalizedUserIdEnd < 0) {
+      showError(t('用户 ID 结束必须为非负整数'));
+      return;
+    }
+    if (
+      normalizedUserIdStart > 0 &&
+      normalizedUserIdEnd > 0 &&
+      normalizedUserIdEnd < normalizedUserIdStart
+    ) {
+      showError(t('用户 ID 结束不能小于起始'));
       return;
     }
     setLoading(true);
@@ -1330,6 +1365,8 @@ function GitHubAgeBanCard({ onApplied }) {
         '/api/enhancements/users/github-age-ban',
         {
           minimum_age_seconds: normalizedThreshold,
+          user_id_start: normalizedUserIdStart,
+          user_id_end: normalizedUserIdEnd,
           reason: form.reason,
           dry_run: dryRun,
           ...(Array.isArray(userIds) ? { user_ids: userIds } : {}),
@@ -1371,6 +1408,13 @@ function GitHubAgeBanCard({ onApplied }) {
           <div className='text-semi-color-text-1 break-words'>
             {t('封禁原因')}：{form.reason?.trim() || t('使用默认封禁原因')}
           </div>
+          <div className='text-semi-color-text-1 break-words'>
+            {t('用户 ID 范围')}：{formatGitHubAgeBanUserIDRange(
+              normalizedUserIdStart,
+              normalizedUserIdEnd,
+              t,
+            )}
+          </div>
           <div className='text-semi-color-text-2'>
             {t('执行前会重新校验账号年龄与用户状态')}
           </div>
@@ -1396,6 +1440,12 @@ function GitHubAgeBanCard({ onApplied }) {
         ['rate_limited', Boolean(result.rate_limited)],
       ]
     : [];
+  if (result?.user_id_start) {
+    statEntries.push(['user_id_start', result.user_id_start]);
+  }
+  if (result?.user_id_end) {
+    statEntries.push(['user_id_end', result.user_id_end]);
+  }
   if (result?.rate_limit_reset) {
     statEntries.push(['rate_limit_reset', result.rate_limit_reset]);
   }
@@ -1416,7 +1466,7 @@ function GitHubAgeBanCard({ onApplied }) {
 
   return (
     <Card title={t('GitHub 账号年龄批量封禁')} className='!rounded-lg'>
-      <div className='grid grid-cols-1 lg:grid-cols-3 gap-3'>
+      <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3'>
         <label className='space-y-2'>
           <Text>{t('账号年龄阈值（秒）')}</Text>
           <InputNumber
@@ -1431,6 +1481,36 @@ function GitHubAgeBanCard({ onApplied }) {
           />
           <div className='text-xs text-semi-color-text-2'>
             {t('账号年龄必须严格大于该秒数才会通过；小于等于该值将命中')}
+          </div>
+        </label>
+        <label className='space-y-2'>
+          <Text>{t('用户 ID 范围')}</Text>
+          <div className='grid grid-cols-2 gap-2'>
+            <InputNumber
+              min={0}
+              step={1}
+              precision={0}
+              value={form.user_id_start || undefined}
+              placeholder={t('起始 ID')}
+              style={{ width: '100%' }}
+              onChange={(value) =>
+                patchForm({ user_id_start: Number(value || 0) })
+              }
+            />
+            <InputNumber
+              min={0}
+              step={1}
+              precision={0}
+              value={form.user_id_end || undefined}
+              placeholder={t('结束 ID')}
+              style={{ width: '100%' }}
+              onChange={(value) =>
+                patchForm({ user_id_end: Number(value || 0) })
+              }
+            />
+          </div>
+          <div className='text-xs text-semi-color-text-2'>
+            {t('留空表示不限用户 ID 范围')}
           </div>
         </label>
         <label className='space-y-2'>
