@@ -114,6 +114,7 @@ type GitHubAgeBanRequest struct {
 	MinimumAgeSeconds int64  `json:"minimum_age_seconds"`
 	Reason            string `json:"reason"`
 	DryRun            bool   `json:"dry_run"`
+	UserIds           []int  `json:"user_ids,omitempty"`
 }
 
 type GitHubAgeBanUser struct {

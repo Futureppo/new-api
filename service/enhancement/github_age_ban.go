@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"gorm.io/gorm"
 )
 
 const githubAgeBanPreviewLimit = 100
@@ -58,17 +60,26 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		reason = fmt.Sprintf("GitHub account age <= %ds", req.MinimumAgeSeconds)
 	}
 
+	selectedIDSet, selectedIDs := normalizeGitHubAgeBanUserIDs(req.UserIds)
+	if !req.DryRun && req.UserIds != nil && len(selectedIDs) == 0 {
+		return result, errors.New("user_ids cannot be empty")
+	}
+
 	var candidates []model.User
-	if err := model.DB.Omit("password").
+	query := model.DB.Omit("password").
 		Where("role = ? AND status = ? AND github_id <> ?", common.RoleCommonUser, common.UserStatusEnabled, "").
-		Order("id ASC").
-		Find(&candidates).Error; err != nil {
+		Order("id ASC")
+	if len(selectedIDSet) > 0 {
+		query = query.Where("id IN ?", selectedIDs)
+	}
+	if err := query.Find(&candidates).Error; err != nil {
 		return result, err
 	}
 	result.TotalCandidates = len(candidates)
 
 	now := githubAgeBanNow()
 	matchedIDs := make([]int, 0)
+	matchedUsersByID := make(map[int]model.User)
 	for _, user := range candidates {
 		if user.Id == operatorId {
 			appendGitHubAgeBanSkipped(&result, user, "current operator is protected")
@@ -76,9 +87,8 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		}
 
 		githubID := strings.TrimSpace(user.GitHubId)
-		accountID, err := strconv.ParseInt(githubID, 10, 64)
-		if err != nil || accountID <= 0 {
-			appendGitHubAgeBanSkipped(&result, user, "legacy non-numeric GitHub ID")
+		if !isValidGitHubAgeBanAccountRef(githubID) {
+			appendGitHubAgeBanSkipped(&result, user, "invalid GitHub account reference")
 			continue
 		}
 
@@ -101,42 +111,30 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 
 		result.Matched++
 		matchedIDs = append(matchedIDs, user.Id)
-		if len(result.MatchedUsers) < githubAgeBanPreviewLimit {
-			result.MatchedUsers = append(result.MatchedUsers, GitHubAgeBanUser{
-				Id:                     user.Id,
-				Username:               user.Username,
-				DisplayName:            user.DisplayName,
-				Email:                  user.Email,
-				GitHubId:               githubID,
-				GitHubLogin:            info.Login,
-				GitHubAccountCreatedAt: info.CreatedAt.Format(time.RFC3339),
-				GitHubAccountAge:       ageSeconds,
-			})
-		}
+		matchedUsersByID[user.Id] = user
+		result.MatchedUsers = append(result.MatchedUsers, GitHubAgeBanUser{
+			Id:                     user.Id,
+			Username:               user.Username,
+			DisplayName:            user.DisplayName,
+			Email:                  user.Email,
+			GitHubId:               githubID,
+			GitHubLogin:            info.Login,
+			GitHubAccountCreatedAt: info.CreatedAt.Format(time.RFC3339),
+			GitHubAccountAge:       ageSeconds,
+		})
 	}
 
 	if req.DryRun || result.RateLimited || len(matchedIDs) == 0 {
 		return result, nil
 	}
 
-	if err := model.DB.Model(&model.User{}).
-		Where("id IN ? AND role = ? AND status = ?", matchedIDs, common.RoleCommonUser, common.UserStatusEnabled).
-		Updates(map[string]interface{}{
-			"status":         common.UserStatusDisabled,
-			"disable_reason": reason,
-		}).Error; err != nil {
+	bannedIDs, err := applyGitHubAgeBan(matchedIDs, matchedUsersByID, reason, &result)
+	if err != nil {
 		return result, err
 	}
+	result.Banned = len(bannedIDs)
 
-	var banned int64
-	if err := model.DB.Model(&model.User{}).
-		Where("id IN ? AND status = ? AND disable_reason = ?", matchedIDs, common.UserStatusDisabled, reason).
-		Count(&banned).Error; err != nil {
-		return result, err
-	}
-	result.Banned = int(banned)
-
-	for _, userID := range matchedIDs {
+	for _, userID := range bannedIDs {
 		_ = model.InvalidateUserCache(userID)
 		_ = model.InvalidateUserTokensCache(userID)
 	}
@@ -146,8 +144,50 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		"banned":              result.Banned,
 		"reason":              reason,
 		"rate_limited":        result.RateLimited,
+		"selected":            len(selectedIDSet) > 0,
 	})
 	return result, nil
+}
+
+func normalizeGitHubAgeBanUserIDs(ids []int) (map[int]bool, []int) {
+	idSet := make(map[int]bool)
+	normalized := make([]int, 0, len(ids))
+	for _, id := range ids {
+		if id <= 0 || idSet[id] {
+			continue
+		}
+		idSet[id] = true
+		normalized = append(normalized, id)
+	}
+	return idSet, normalized
+}
+
+func applyGitHubAgeBan(matchedIDs []int, matchedUsers map[int]model.User, reason string, result *GitHubAgeBanResult) ([]int, error) {
+	bannedIDs := make([]int, 0, len(matchedIDs))
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		for _, userID := range matchedIDs {
+			statusUpdate := tx.Model(&model.User{}).
+				Where("id = ? AND role = ? AND status = ?", userID, common.RoleCommonUser, common.UserStatusEnabled).
+				UpdateColumn("status", common.UserStatusDisabled)
+			if statusUpdate.Error != nil {
+				return statusUpdate.Error
+			}
+			if statusUpdate.RowsAffected == 0 {
+				if user, ok := matchedUsers[userID]; ok {
+					appendGitHubAgeBanFailure(result, user, "user was not enabled when applying ban")
+				}
+				continue
+			}
+			if err := tx.Model(&model.User{}).
+				Where("id = ? AND status = ?", userID, common.UserStatusDisabled).
+				UpdateColumn("disable_reason", reason).Error; err != nil {
+				return err
+			}
+			bannedIDs = append(bannedIDs, userID)
+		}
+		return nil
+	})
+	return bannedIDs, err
 }
 
 func appendGitHubAgeBanSkipped(result *GitHubAgeBanResult, user model.User, reason string) {
@@ -176,8 +216,55 @@ func appendGitHubAgeBanFailure(result *GitHubAgeBanResult, user model.User, mess
 	})
 }
 
+func isValidGitHubAgeBanAccountRef(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if accountID, err := strconv.ParseInt(value, 10, 64); err == nil {
+		return accountID > 0
+	}
+	return isValidGitHubUsername(value)
+}
+
+func isValidGitHubUsername(username string) bool {
+	if len(username) == 0 || len(username) > 39 {
+		return false
+	}
+	if username[0] == '-' || username[len(username)-1] == '-' {
+		return false
+	}
+	previousHyphen := false
+	for i := 0; i < len(username); i++ {
+		ch := username[i]
+		isAlphaNumeric := (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+		if isAlphaNumeric {
+			previousHyphen = false
+			continue
+		}
+		if ch == '-' {
+			if previousHyphen {
+				return false
+			}
+			previousHyphen = true
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func lookupGitHubAgeBanUser(ctx context.Context, accountID string) (githubAgeBanLookupInfo, githubAgeBanRateLimit, error) {
-	endpoint := strings.TrimRight(githubAgeBanAPIBaseURL, "/") + "/user/" + accountID
+	accountID = strings.TrimSpace(accountID)
+	endpoint := strings.TrimRight(githubAgeBanAPIBaseURL, "/")
+	if numericID, err := strconv.ParseInt(accountID, 10, 64); err == nil && numericID > 0 {
+		endpoint += "/user/" + strconv.FormatInt(numericID, 10)
+	} else {
+		if !isValidGitHubUsername(accountID) {
+			return githubAgeBanLookupInfo{}, githubAgeBanRateLimit{}, errors.New("invalid GitHub account reference")
+		}
+		endpoint += "/users/" + url.PathEscape(accountID)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return githubAgeBanLookupInfo{}, githubAgeBanRateLimit{}, err

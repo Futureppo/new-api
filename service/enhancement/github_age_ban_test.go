@@ -119,9 +119,10 @@ func TestBatchBanYoungGitHubUsersExecutesOnlyMatchingEnabledCommonUsers(t *testi
 	seedGitHubAgeBanUser(t, 208, common.RoleCommonUser, common.UserStatusEnabled, "")
 	seedGitHubAgeBanUser(t, 209, common.RoleCommonUser, common.UserStatusEnabled, "2009")
 	stubGitHubAgeBanLookup(t, now, map[string]gitHubAgeBanMockResult{
-		"2001": {login: "young", createdAt: now.Add(-99 * time.Second)},
-		"2002": {login: "equal", createdAt: now.Add(-100 * time.Second)},
-		"2003": {login: "old", createdAt: now.Add(-101 * time.Second)},
+		"2001":    {login: "young", createdAt: now.Add(-99 * time.Second)},
+		"2002":    {login: "equal", createdAt: now.Add(-100 * time.Second)},
+		"2003":    {login: "old", createdAt: now.Add(-101 * time.Second)},
+		"octocat": {login: "octocat", createdAt: now.Add(-101 * time.Second)},
 	})
 
 	result, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
@@ -131,12 +132,12 @@ func TestBatchBanYoungGitHubUsersExecutesOnlyMatchingEnabledCommonUsers(t *testi
 
 	require.NoError(t, err)
 	require.Equal(t, 5, result.TotalCandidates)
-	require.Equal(t, 3, result.Checked)
+	require.Equal(t, 4, result.Checked)
 	require.Equal(t, 2, result.Matched)
 	require.Equal(t, 2, result.Banned)
-	require.Equal(t, 2, result.Skipped)
+	require.Equal(t, 1, result.Skipped)
 	require.Len(t, result.MatchedUsers, 2)
-	require.Len(t, result.SkippedUsers, 2)
+	require.Len(t, result.SkippedUsers, 1)
 	requireGitHubAgeBanUserStatus(t, 201, common.UserStatusDisabled, reason)
 	requireGitHubAgeBanUserStatus(t, 202, common.UserStatusDisabled, reason)
 	requireGitHubAgeBanUserStatus(t, 203, common.UserStatusEnabled, "")
@@ -146,6 +147,56 @@ func TestBatchBanYoungGitHubUsersExecutesOnlyMatchingEnabledCommonUsers(t *testi
 	requireGitHubAgeBanUserStatus(t, 207, common.UserStatusEnabled, "")
 	requireGitHubAgeBanUserStatus(t, 208, common.UserStatusEnabled, "")
 	requireGitHubAgeBanUserStatus(t, 209, common.UserStatusEnabled, "")
+}
+
+func TestBatchBanYoungGitHubUsersSupportsLegacyUsernameGitHubID(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	now := time.Unix(2_000_000_000, 0)
+	reason := "legacy username github account"
+	seedGitHubAgeBanUser(t, 251, common.RoleCommonUser, common.UserStatusEnabled, "clip-fog-causal")
+	stubGitHubAgeBanLookup(t, now, map[string]gitHubAgeBanMockResult{
+		"clip-fog-causal": {login: "clip-fog-causal", createdAt: now.Add(-2 * time.Hour)},
+	})
+
+	result, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 31536000,
+		Reason:            reason,
+	}, 900)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.TotalCandidates)
+	require.Equal(t, 1, result.Checked)
+	require.Equal(t, 1, result.Matched)
+	require.Equal(t, 1, result.Banned)
+	require.Len(t, result.MatchedUsers, 1)
+	require.Equal(t, "clip-fog-causal", result.MatchedUsers[0].GitHubLogin)
+	requireGitHubAgeBanUserStatus(t, 251, common.UserStatusDisabled, reason)
+}
+
+func TestBatchBanYoungGitHubUsersExecutesOnlySelectedUsers(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	now := time.Unix(2_000_000_000, 0)
+	reason := "selected github account"
+	seedGitHubAgeBanUser(t, 261, common.RoleCommonUser, common.UserStatusEnabled, "2601")
+	seedGitHubAgeBanUser(t, 262, common.RoleCommonUser, common.UserStatusEnabled, "2602")
+	stubGitHubAgeBanLookup(t, now, map[string]gitHubAgeBanMockResult{
+		"2601": {login: "selected", createdAt: now.Add(-10 * time.Second)},
+		"2602": {login: "cancelled", createdAt: now.Add(-10 * time.Second)},
+	})
+
+	result, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{
+		MinimumAgeSeconds: 60,
+		Reason:            reason,
+		UserIds:           []int{261},
+	}, 900)
+
+	require.NoError(t, err)
+	require.Equal(t, 1, result.TotalCandidates)
+	require.Equal(t, 1, result.Checked)
+	require.Equal(t, 1, result.Matched)
+	require.Equal(t, 1, result.Banned)
+	requireGitHubAgeBanUserStatus(t, 261, common.UserStatusDisabled, reason)
+	requireGitHubAgeBanUserStatus(t, 262, common.UserStatusEnabled, "")
 }
 
 func TestBatchBanYoungGitHubUsersReportsFailures(t *testing.T) {

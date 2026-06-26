@@ -1309,17 +1309,17 @@ function GitHubAgeBanCard({ onApplied }) {
   const defaultForm = {
     minimum_age_seconds: 31536000,
     reason: '',
-    dry_run: true,
   };
   const [form, setForm] = useState(defaultForm);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [selectedBanIds, setSelectedBanIds] = useState([]);
 
   const patchForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
   const threshold = Number(form.minimum_age_seconds || 0);
   const normalizedThreshold = Math.trunc(threshold);
 
-  const runGitHubAgeBan = async (dryRun) => {
+  const runGitHubAgeBan = async (dryRun, userIds = undefined) => {
     if (!Number.isFinite(threshold) || normalizedThreshold <= 0) {
       showError(t('GitHub 账号年龄阈值必须大于 0'));
       return;
@@ -1332,13 +1332,17 @@ function GitHubAgeBanCard({ onApplied }) {
           minimum_age_seconds: normalizedThreshold,
           reason: form.reason,
           dry_run: dryRun,
+          ...(Array.isArray(userIds) ? { user_ids: userIds } : {}),
         },
       ).then(unwrap);
       setResult(nextResult || {});
       if (dryRun) {
-        showSuccess(t('试运行完成'));
+        const nextMatchedUsers = nextResult?.matched_users || [];
+        setSelectedBanIds(nextMatchedUsers.map((user) => user.id));
+        showSuccess(t('扫描完成，请确认命中列表'));
       } else {
         showSuccess(t('批量封禁完成'));
+        setSelectedBanIds([]);
         onApplied?.();
       }
     } catch (error) {
@@ -1348,27 +1352,33 @@ function GitHubAgeBanCard({ onApplied }) {
     }
   };
 
-  const submit = () => {
-    if (form.dry_run) {
-      runGitHubAgeBan(true);
+  const scan = () => {
+    runGitHubAgeBan(true);
+  };
+
+  const executeSelected = () => {
+    if (selectedBanIds.length === 0) {
+      showError(t('请选择至少一个用户'));
       return;
     }
     Modal.confirm({
-      title: t('确认批量封禁 GitHub 低龄账号？'),
+      title: t('确认封禁选中的 GitHub 低龄账号？'),
       content: (
         <div className='space-y-2'>
           <div>
-            {t('将封禁 GitHub 账号年龄小于等于阈值的启用普通用户')}：
-            {formatNumber(normalizedThreshold)}
+            {t('将封禁选中的用户数')}：{formatNumber(selectedBanIds.length)}
           </div>
           <div className='text-semi-color-text-1 break-words'>
             {t('封禁原因')}：{form.reason?.trim() || t('使用默认封禁原因')}
+          </div>
+          <div className='text-semi-color-text-2'>
+            {t('执行前会重新校验账号年龄与用户状态')}
           </div>
         </div>
       ),
       okText: t('确认封禁'),
       cancelText: t('取消'),
-      onOk: () => runGitHubAgeBan(false),
+      onOk: () => runGitHubAgeBan(false, selectedBanIds),
     });
   };
 
@@ -1396,6 +1406,13 @@ function GitHubAgeBanCard({ onApplied }) {
     }
     return formatValue(value, key, t);
   };
+  const matchedColumns = GITHUB_AGE_BAN_PREVIEW_KEYS.map((key) => ({
+    title: formatFieldLabel(key, t),
+    dataIndex: key,
+    key,
+    render: (value, record) => formatValue(record?.[key] ?? value, key, t),
+  }));
+  const selectedCount = selectedBanIds.length;
 
   return (
     <Card title={t('GitHub 账号年龄批量封禁')} className='!rounded-lg'>
@@ -1426,33 +1443,37 @@ function GitHubAgeBanCard({ onApplied }) {
             onChange={(value) => patchForm({ reason: value })}
           />
         </label>
-        <div className='flex items-center justify-between gap-3 rounded-lg border border-semi-color-border px-3 py-2'>
-          <div>
-            <Text>{t('试运行')}</Text>
-            <div className='text-xs text-semi-color-text-2'>
-              {t('默认仅预览命中账号，不修改用户状态')}
-            </div>
+        <div className='rounded-lg border border-semi-color-border px-3 py-2'>
+          <Text>{t('封禁确认')}</Text>
+          <div className='mt-1 text-xs text-semi-color-text-2'>
+            {t('先扫描命中账号，取消勾选不需要封禁的用户后再执行')}
           </div>
-          <Switch
-            checked={form.dry_run}
-            onChange={(checked) => patchForm({ dry_run: checked })}
-          />
         </div>
       </div>
       <Space className='mt-4'>
         <Button
           type='primary'
-          icon={form.dry_run ? <Search size={16} /> : <Ban size={16} />}
+          icon={<Search size={16} />}
           loading={loading}
-          onClick={submit}
+          onClick={scan}
         >
-          {form.dry_run ? t('开始试运行') : t('执行批量封禁')}
+          {t('扫描低龄账号')}
+        </Button>
+        <Button
+          type='danger'
+          icon={<Ban size={16} />}
+          loading={loading}
+          disabled={matchedUsers.length === 0 || selectedCount === 0}
+          onClick={executeSelected}
+        >
+          {t('封禁选中用户')}
         </Button>
         <Button
           icon={<RefreshCw size={16} />}
           onClick={() => {
             setResult(null);
             setForm(defaultForm);
+            setSelectedBanIds([]);
           }}
         >
           {t('重置')}
@@ -1483,11 +1504,26 @@ function GitHubAgeBanCard({ onApplied }) {
           )}
           {matchedUsers.length > 0 && (
             <div className='space-y-2'>
-              <Text strong>{t('命中用户预览')}</Text>
-              <DataPreview
-                data={matchedUsers}
-                limit={100}
-                keys={GITHUB_AGE_BAN_PREVIEW_KEYS}
+              <div className='flex flex-col gap-1 md:flex-row md:items-center md:justify-between'>
+                <Text strong>{t('命中用户列表')}</Text>
+                <Text type='secondary'>
+                  {t('已选择')}：{formatNumber(selectedCount)} /{' '}
+                  {formatNumber(matchedUsers.length)}
+                </Text>
+              </div>
+              <Table
+                size='small'
+                rowKey='id'
+                columns={matchedColumns}
+                dataSource={matchedUsers}
+                pagination={false}
+                scroll={{ x: 'max-content', y: 420 }}
+                rowSelection={{
+                  selectedRowKeys: selectedBanIds,
+                  onChange: (keys) =>
+                    setSelectedBanIds(keys.map((key) => Number(key))),
+                }}
+                empty={<Empty description={t('没有命中用户')} />}
               />
             </div>
           )}
