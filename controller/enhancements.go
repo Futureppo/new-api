@@ -214,6 +214,7 @@ func enhancementFilters(c *gin.Context) map[string]string {
 	for key, values := range c.Request.URL.Query() {
 		if !strings.HasPrefix(key, "filter_") || len(values) == 0 {
 			continue
+		}
 		field := strings.TrimSpace(strings.TrimPrefix(key, "filter_"))
 		value := strings.TrimSpace(values[0])
 		if field == "" || value == "" {
