@@ -427,6 +427,7 @@ func userMatchesQuery(item UserSummary, query ListQuery) bool {
 		strconv.Itoa(item.Status),
 		item.DisableReason,
 		item.Email,
+		item.GitHubId,
 		strconv.Itoa(item.Quota),
 		strconv.Itoa(item.UsedQuota),
 		strconv.Itoa(item.RequestCount),
@@ -447,6 +448,7 @@ func userMatchesQuery(item UserSummary, query ListQuery) bool {
 		"status":              matchInt(int64(item.Status)),
 		"disable_reason":      matchText(item.DisableReason),
 		"email":               matchText(item.Email),
+		"github_id":           matchText(item.GitHubId),
 		"quota":               matchInt(int64(item.Quota)),
 		"used_quota":          matchInt(int64(item.UsedQuota)),
 		"request_count":       matchInt(int64(item.RequestCount)),
@@ -478,6 +480,8 @@ func sortUserSummaries(items []UserSummary, sortKey string, order string) {
 			result = compareString(left.DisableReason, right.DisableReason, desc)
 		case "email":
 			result = compareString(left.Email, right.Email, desc)
+		case "github_id":
+			result = compareString(left.GitHubId, right.GitHubId, desc)
 		case "quota":
 			result = compareInt(int64(left.Quota), int64(right.Quota), desc)
 		case "used_quota":

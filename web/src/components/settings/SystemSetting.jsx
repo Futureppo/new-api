@@ -68,6 +68,7 @@ const SystemSetting = () => {
     GitHubOAuthEnabled: '',
     GitHubClientId: '',
     GitHubClientSecret: '',
+    GitHubMinimumAccountAgeSeconds: '',
     'discord.enabled': '',
     'discord.client_id': '',
     'discord.client_secret': '',
@@ -509,6 +510,15 @@ const SystemSetting = () => {
       options.push({
         key: 'GitHubClientSecret',
         value: inputs.GitHubClientSecret,
+      });
+    }
+    if (
+      originInputs['GitHubMinimumAccountAgeSeconds'] !==
+      inputs.GitHubMinimumAccountAgeSeconds
+    ) {
+      options.push({
+        key: 'GitHubMinimumAccountAgeSeconds',
+        value: inputs.GitHubMinimumAccountAgeSeconds || '0',
       });
     }
 
@@ -1479,18 +1489,26 @@ const SystemSetting = () => {
                   <Row
                     gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
                   >
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
                       <Form.Input
                         field='GitHubClientId'
                         label={t('GitHub Client ID')}
                       />
                     </Col>
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
                       <Form.Input
                         field='GitHubClientSecret'
                         label={t('GitHub Client Secret')}
                         type='password'
                         placeholder={t('敏感信息不会发送到前端显示')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Input
+                        field='GitHubMinimumAccountAgeSeconds'
+                        label={t('GitHub 账号年龄限制（秒）')}
+                        type='number'
+                        placeholder={t('0 表示不限制，31536000 表示约 1 年')}
                       />
                     </Col>
                   </Row>

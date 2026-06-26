@@ -98,6 +98,7 @@ type UserSummary struct {
 	Status            int    `json:"status"`
 	DisableReason     string `json:"disable_reason,omitempty"`
 	Email             string `json:"email"`
+	GitHubId          string `json:"github_id,omitempty"`
 	Quota             int    `json:"quota"`
 	UsedQuota         int    `json:"used_quota"`
 	RequestCount      int    `json:"request_count"`
@@ -107,6 +108,53 @@ type UserSummary struct {
 	InviterId         int    `json:"inviter_id"`
 	AffCount          int    `json:"aff_count"`
 	LinuxDOId         string `json:"linux_do_id,omitempty"`
+}
+
+type GitHubAgeBanRequest struct {
+	MinimumAgeSeconds int64  `json:"minimum_age_seconds"`
+	Reason            string `json:"reason"`
+	DryRun            bool   `json:"dry_run"`
+}
+
+type GitHubAgeBanUser struct {
+	Id                     int    `json:"id"`
+	Username               string `json:"username"`
+	DisplayName            string `json:"display_name,omitempty"`
+	Email                  string `json:"email,omitempty"`
+	GitHubId               string `json:"github_id"`
+	GitHubLogin            string `json:"github_login,omitempty"`
+	GitHubAccountCreatedAt string `json:"github_account_created_at"`
+	GitHubAccountAge       int64  `json:"github_account_age_seconds"`
+}
+
+type GitHubAgeBanSkippedUser struct {
+	Id       int    `json:"id"`
+	Username string `json:"username"`
+	GitHubId string `json:"github_id,omitempty"`
+	Reason   string `json:"reason"`
+}
+
+type GitHubAgeBanFailure struct {
+	Id       int    `json:"id"`
+	Username string `json:"username"`
+	GitHubId string `json:"github_id,omitempty"`
+	Message  string `json:"message"`
+}
+
+type GitHubAgeBanResult struct {
+	MinimumAgeSeconds int64                     `json:"minimum_age_seconds"`
+	DryRun            bool                      `json:"dry_run"`
+	TotalCandidates   int                       `json:"total_candidates"`
+	Checked           int                       `json:"checked"`
+	Matched           int                       `json:"matched"`
+	Banned            int                       `json:"banned"`
+	Skipped           int                       `json:"skipped"`
+	Failures          int                       `json:"failures"`
+	RateLimited       bool                      `json:"rate_limited"`
+	RateLimitReset    int64                     `json:"rate_limit_reset,omitempty"`
+	MatchedUsers      []GitHubAgeBanUser        `json:"matched_users"`
+	SkippedUsers      []GitHubAgeBanSkippedUser `json:"skipped_users,omitempty"`
+	FailureUsers      []GitHubAgeBanFailure     `json:"failure_users,omitempty"`
 }
 
 type IPLogCoverage struct {

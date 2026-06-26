@@ -93,6 +93,7 @@ func userToSummary(user model.User) UserSummary {
 		Status:        user.Status,
 		DisableReason: user.DisableReason,
 		Email:         email,
+		GitHubId:      user.GitHubId,
 		Quota:         user.Quota,
 		UsedQuota:     user.UsedQuota,
 		RequestCount:  user.RequestCount,

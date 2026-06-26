@@ -3,7 +3,6 @@ package oauth
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +34,8 @@ type gitHubUser struct {
 	Login string `json:"login"` // GitHub username (can be changed by user)
 	Name  string `json:"name"`
 	Email string `json:"email"`
+	// GitHub returns created_at in RFC3339 format.
+	CreatedAt string `json:"created_at"`
 }
 
 func (p *GitHubProvider) GetName() string {
@@ -57,7 +58,7 @@ func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.
 		"client_secret": common.GitHubClientSecret,
 		"code":          code,
 	}
-	jsonData, err := json.Marshal(values)
+	jsonData, err := common.Marshal(values)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +83,7 @@ func (p *GitHubProvider) ExchangeToken(ctx context.Context, code string, c *gin.
 	logger.LogDebug(ctx, "[OAuth-GitHub] ExchangeToken response status: %d", res.StatusCode)
 
 	var oAuthResponse gitHubOAuthResponse
-	err = json.NewDecoder(res.Body).Decode(&oAuthResponse)
+	err = common.DecodeJson(res.Body, &oAuthResponse)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-GitHub] ExchangeToken decode error: %s", err.Error()))
 		return nil, err
@@ -135,7 +136,7 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	}
 
 	var githubUser gitHubUser
-	err = json.NewDecoder(res.Body).Decode(&githubUser)
+	err = common.DecodeJson(res.Body, &githubUser)
 	if err != nil {
 		logger.LogError(ctx, fmt.Sprintf("[OAuth-GitHub] GetUserInfo decode error: %s", err.Error()))
 		return nil, err
@@ -149,11 +150,22 @@ func (p *GitHubProvider) GetUserInfo(ctx context.Context, token *OAuthToken) (*O
 	logger.LogDebug(ctx, "[OAuth-GitHub] GetUserInfo success: id=%d, login=%s, name=%s, email=%s",
 		githubUser.Id, githubUser.Login, githubUser.Name, githubUser.Email)
 
+	var accountCreatedAt *time.Time
+	if githubUser.CreatedAt != "" {
+		createdAt, err := time.Parse(time.RFC3339, githubUser.CreatedAt)
+		if err != nil {
+			logger.LogWarn(ctx, fmt.Sprintf("[OAuth-GitHub] GetUserInfo invalid created_at: %s", err.Error()))
+		} else {
+			accountCreatedAt = &createdAt
+		}
+	}
+
 	return &OAuthUser{
-		ProviderUserID: strconv.FormatInt(githubUser.Id, 10), // Use numeric ID as primary identifier
-		Username:       githubUser.Login,
-		DisplayName:    githubUser.Name,
-		Email:          githubUser.Email,
+		ProviderUserID:   strconv.FormatInt(githubUser.Id, 10), // Use numeric ID as primary identifier
+		Username:         githubUser.Login,
+		DisplayName:      githubUser.Name,
+		Email:            githubUser.Email,
+		AccountCreatedAt: accountCreatedAt,
 		Extra: map[string]any{
 			"legacy_id": githubUser.Login, // Store login for migration from old accounts
 		},

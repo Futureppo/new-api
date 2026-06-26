@@ -71,6 +71,7 @@ import {
   getCurrencyConfig,
   getModelCategories,
   getServerAddress,
+  isRoot,
   renderGroupOption,
   selectFilter,
   showError,
@@ -150,9 +151,16 @@ const FIELD_LABELS = {
   status: '状态',
   disable_reason: '禁用原因',
   email: '邮箱',
+  github_id: 'GitHub ID',
+  github_login: 'GitHub 用户名',
+  github_account_created_at: 'GitHub 账号注册时间',
+  github_account_age_seconds: 'GitHub 账号年龄（秒）',
+  minimum_age_seconds: '账号年龄阈值（秒）',
   group: '分组',
   key: '密钥',
   name: '名称',
+  message: '消息',
+  reason: '原因',
   total: '总数',
   total_count: '总数',
   enabled: '启用',
@@ -206,8 +214,16 @@ const FIELD_LABELS = {
   start: '开始时间',
   end: '结束时间',
   total_users: '用户总数',
+  total_candidates: '候选账号数',
   active_users: '活跃用户',
   disabled_users: '禁用用户',
+  checked: '已检查',
+  matched: '命中',
+  banned: '已封禁',
+  skipped: '跳过',
+  failures: '失败',
+  rate_limited: '限流',
+  rate_limit_reset: '限流重置时间',
   token_id: '令牌 ID',
   token_name: '令牌名称',
   model_limits_enabled: '模型限制',
@@ -287,6 +303,7 @@ const USER_PREVIEW_KEYS = [
   'display_name',
   'status',
   'email',
+  'github_id',
   'quota',
   'used_quota',
   'today_request_count',
@@ -296,6 +313,24 @@ const USER_PREVIEW_KEYS = [
   'inviter_id',
   'aff_count',
   'linux_do_id',
+];
+
+const GITHUB_AGE_BAN_PREVIEW_KEYS = [
+  'id',
+  'username',
+  'github_id',
+  'github_login',
+  'github_account_created_at',
+  'github_account_age_seconds',
+  'email',
+];
+
+const GITHUB_AGE_BAN_ISSUE_KEYS = ['id', 'username', 'github_id', 'reason'];
+const GITHUB_AGE_BAN_FAILURE_KEYS = [
+  'id',
+  'username',
+  'github_id',
+  'message',
 ];
 
 function unwrap(res) {
@@ -1269,9 +1304,223 @@ function RedemptionsPanel({ data }) {
   );
 }
 
+function GitHubAgeBanCard({ onApplied }) {
+  const { t } = useTranslation();
+  const defaultForm = {
+    minimum_age_seconds: 31536000,
+    reason: '',
+    dry_run: true,
+  };
+  const [form, setForm] = useState(defaultForm);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const patchForm = (patch) => setForm((prev) => ({ ...prev, ...patch }));
+  const threshold = Number(form.minimum_age_seconds || 0);
+  const normalizedThreshold = Math.trunc(threshold);
+
+  const runGitHubAgeBan = async (dryRun) => {
+    if (!Number.isFinite(threshold) || normalizedThreshold <= 0) {
+      showError(t('GitHub 账号年龄阈值必须大于 0'));
+      return;
+    }
+    setLoading(true);
+    try {
+      const nextResult = await API.post(
+        '/api/enhancements/users/github-age-ban',
+        {
+          minimum_age_seconds: normalizedThreshold,
+          reason: form.reason,
+          dry_run: dryRun,
+        },
+      ).then(unwrap);
+      setResult(nextResult || {});
+      if (dryRun) {
+        showSuccess(t('试运行完成'));
+      } else {
+        showSuccess(t('批量封禁完成'));
+        onApplied?.();
+      }
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submit = () => {
+    if (form.dry_run) {
+      runGitHubAgeBan(true);
+      return;
+    }
+    Modal.confirm({
+      title: t('确认批量封禁 GitHub 低龄账号？'),
+      content: (
+        <div className='space-y-2'>
+          <div>
+            {t('将封禁 GitHub 账号年龄小于等于阈值的启用普通用户')}：
+            {formatNumber(normalizedThreshold)}
+          </div>
+          <div className='text-semi-color-text-1 break-words'>
+            {t('封禁原因')}：{form.reason?.trim() || t('使用默认封禁原因')}
+          </div>
+        </div>
+      ),
+      okText: t('确认封禁'),
+      cancelText: t('取消'),
+      onOk: () => runGitHubAgeBan(false),
+    });
+  };
+
+  const matchedUsers = result?.matched_users || [];
+  const skippedUsers = result?.skipped_users || [];
+  const failureUsers = result?.failure_users || [];
+  const statEntries = result
+    ? [
+        ['total_candidates', result.total_candidates || 0],
+        ['checked', result.checked || 0],
+        ['matched', result.matched || 0],
+        ['banned', result.banned || 0],
+        ['skipped', result.skipped || 0],
+        ['failures', result.failures || 0],
+        ['rate_limited', Boolean(result.rate_limited)],
+      ]
+    : [];
+  if (result?.rate_limit_reset) {
+    statEntries.push(['rate_limit_reset', result.rate_limit_reset]);
+  }
+
+  const formatStatValue = (key, value) => {
+    if (key === 'rate_limit_reset' && value) {
+      return dayjs.unix(value).format('YYYY-MM-DD HH:mm:ss');
+    }
+    return formatValue(value, key, t);
+  };
+
+  return (
+    <Card title={t('GitHub 账号年龄批量封禁')} className='!rounded-lg'>
+      <div className='grid grid-cols-1 lg:grid-cols-3 gap-3'>
+        <label className='space-y-2'>
+          <Text>{t('账号年龄阈值（秒）')}</Text>
+          <InputNumber
+            min={1}
+            step={60}
+            value={form.minimum_age_seconds}
+            placeholder={t('31536000 表示约 1 年')}
+            style={{ width: '100%' }}
+            onChange={(value) =>
+              patchForm({ minimum_age_seconds: Number(value || 0) })
+            }
+          />
+          <div className='text-xs text-semi-color-text-2'>
+            {t('账号年龄必须严格大于该秒数才会通过；小于等于该值将命中')}
+          </div>
+        </label>
+        <label className='space-y-2'>
+          <Text>{t('封禁原因')}</Text>
+          <TextArea
+            rows={3}
+            autosize
+            value={form.reason}
+            placeholder={t('留空使用默认封禁原因')}
+            onChange={(value) => patchForm({ reason: value })}
+          />
+        </label>
+        <div className='flex items-center justify-between gap-3 rounded-lg border border-semi-color-border px-3 py-2'>
+          <div>
+            <Text>{t('试运行')}</Text>
+            <div className='text-xs text-semi-color-text-2'>
+              {t('默认仅预览命中账号，不修改用户状态')}
+            </div>
+          </div>
+          <Switch
+            checked={form.dry_run}
+            onChange={(checked) => patchForm({ dry_run: checked })}
+          />
+        </div>
+      </div>
+      <Space className='mt-4'>
+        <Button
+          type='primary'
+          icon={form.dry_run ? <Search size={16} /> : <Ban size={16} />}
+          loading={loading}
+          onClick={submit}
+        >
+          {form.dry_run ? t('开始试运行') : t('执行批量封禁')}
+        </Button>
+        <Button
+          icon={<RefreshCw size={16} />}
+          onClick={() => {
+            setResult(null);
+            setForm(defaultForm);
+          }}
+        >
+          {t('重置')}
+        </Button>
+      </Space>
+
+      {result && (
+        <div className='mt-4 space-y-4'>
+          <div className='grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3'>
+            {statEntries.map(([key, value]) => (
+              <div
+                key={key}
+                className='rounded-lg border border-semi-color-border px-3 py-2'
+              >
+                <div className='text-xs text-semi-color-text-2'>
+                  {formatFieldLabel(key, t)}
+                </div>
+                <div className='mt-1 text-lg font-semibold text-semi-color-text-0 break-words'>
+                  {formatStatValue(key, value)}
+                </div>
+              </div>
+            ))}
+          </div>
+          {result.rate_limited && (
+            <div className='rounded-lg border border-semi-color-warning bg-semi-color-warning-light-default px-3 py-2 text-semi-color-warning'>
+              {t('GitHub API 已限流，扫描已安全停止')}
+            </div>
+          )}
+          {matchedUsers.length > 0 && (
+            <div className='space-y-2'>
+              <Text strong>{t('命中用户预览')}</Text>
+              <DataPreview
+                data={matchedUsers}
+                limit={100}
+                keys={GITHUB_AGE_BAN_PREVIEW_KEYS}
+              />
+            </div>
+          )}
+          {skippedUsers.length > 0 && (
+            <div className='space-y-2'>
+              <Text strong>{t('跳过用户')}</Text>
+              <DataPreview
+                data={skippedUsers}
+                limit={100}
+                keys={GITHUB_AGE_BAN_ISSUE_KEYS}
+              />
+            </div>
+          )}
+          {failureUsers.length > 0 && (
+            <div className='space-y-2'>
+              <Text strong>{t('失败用户')}</Text>
+              <DataPreview
+                data={failureUsers}
+                limit={100}
+                keys={GITHUB_AGE_BAN_FAILURE_KEYS}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function UsersPanel({ data }) {
   const { t } = useTranslation();
   const currency = getCurrencyConfig();
+  const canUseRootTools = isRoot();
   const [list, setList] = useState(
     data?.list || { items: [], total: 0, page: 1, page_size: 20 },
   );
@@ -1372,6 +1621,11 @@ function UsersPanel({ data }) {
           }}
         />
       </Card>
+      {canUseRootTools && (
+        <GitHubAgeBanCard
+          onApplied={() => loadUsers(list?.page || 1, pageSize)}
+        />
+      )}
     </div>
   );
 }

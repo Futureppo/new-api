@@ -151,6 +151,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 
 func RegisterEnhancementRootRoutes(r *gin.RouterGroup) {
 	r.POST("/users/batch-delete", enhancementBatchDeleteUsers)
+	r.POST("/users/github-age-ban", enhancementGitHubAgeBanUsers)
 	r.DELETE("/users/:user_id", enhancementDeleteUser)
 	r.POST("/users/soft-deleted/purge", enhancementPurgeSoftDeletedUsers)
 	r.POST("/system/indexes/ensure", enhancementEnsureIndexes)
@@ -751,6 +752,17 @@ func enhancementBatchDeleteUsers(c *gin.Context) {
 	}
 	operatorId, role := operator(c)
 	data, err := enhancement.BatchDeleteUsers(req.Ids, operatorId, role)
+	respondPublic(c, data, err)
+}
+
+func enhancementGitHubAgeBanUsers(c *gin.Context) {
+	var req enhancement.GitHubAgeBanRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.BatchBanYoungGitHubUsers(c.Request.Context(), req, operatorId)
 	respondPublic(c, data, err)
 }
 

@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -138,6 +139,15 @@ func UpdateOption(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
 				"message": "无法启用 GitHub OAuth，请先填入 GitHub Client Id 以及 GitHub Client Secret！",
+			})
+			return
+		}
+	case "GitHubMinimumAccountAgeSeconds":
+		minimumAgeSeconds, parseErr := strconv.ParseInt(option.Value.(string), 10, 64)
+		if parseErr != nil || minimumAgeSeconds < 0 {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": "GitHub 账号年龄限制必须是非负整数秒",
 			})
 			return
 		}
