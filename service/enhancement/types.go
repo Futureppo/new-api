@@ -125,6 +125,7 @@ type IPRiskQuery struct {
 	Sort     string
 	Order    string
 	Keyword  string
+	Filters  map[string]string
 }
 
 type IPRiskUserRef struct {

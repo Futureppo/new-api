@@ -112,6 +112,7 @@ const MODEL_STATUS_SORT_OPTIONS = [
   { label: '请求次数降序', value: 'requests_desc' },
   { label: '成功率升序', value: 'success_rate_asc' },
 ];
+const DEFAULT_TABLE_QUERY = { sort: '', order: 'desc', filters: {} };
 
 const MODEL_STATUS_META = {
   green: {
@@ -473,6 +474,188 @@ function pickItems(data) {
   return [];
 }
 
+async function copyCellValue(value, t = (text) => text) {
+  const text =
+    value === null || typeof value === 'undefined' ? '' : String(value);
+  if (!text) return;
+  if (await copy(text)) {
+    showSuccess(t('复制成功'));
+  } else {
+    showError(t('无法复制到剪贴板，请手动复制'));
+  }
+}
+
+function copyableCell(content, value, t, className = '') {
+  return (
+    <button
+      type='button'
+      className={`max-w-full cursor-pointer rounded px-1 py-0.5 text-left break-words transition-colors hover:bg-semi-color-fill-0 active:bg-semi-color-fill-1 ${className}`}
+      style={{ background: 'transparent', border: 0, color: 'inherit' }}
+      title={String(value ?? '')}
+      onClick={(event) => {
+        event.stopPropagation();
+        copyCellValue(value, t);
+      }}
+    >
+      {content}
+    </button>
+  );
+}
+
+function tableTextValue(value, key = '', t = (text) => text, formatter) {
+  const formatted = formatter
+    ? formatter(value, key, t)
+    : formatValue(value, key, t);
+  if (React.isValidElement(formatted)) {
+    return value === null || typeof value === 'undefined' ? '' : String(value);
+  }
+  return formatted === null || typeof formatted === 'undefined'
+    ? ''
+    : String(formatted);
+}
+
+function appendTableQueryParams(params, tableQuery = {}) {
+  if (tableQuery.keyword?.trim()) {
+    params.set('keyword', tableQuery.keyword.trim());
+  }
+  if (tableQuery.sort) {
+    params.set('sort', tableQuery.sort);
+    params.set('order', tableQuery.order || 'desc');
+  }
+  Object.entries(tableQuery.filters || {}).forEach(([key, value]) => {
+    const text = String(value || '').trim();
+    if (text) {
+      params.set(`filter_${key}`, text);
+    }
+  });
+}
+
+function appendObjectTableQueryParams(params, tableQuery = {}) {
+  if (tableQuery.keyword?.trim()) {
+    params.keyword = tableQuery.keyword.trim();
+  }
+  if (tableQuery.sort) {
+    params.sort = tableQuery.sort;
+    params.order = tableQuery.order || 'desc';
+  }
+  Object.entries(tableQuery.filters || {}).forEach(([key, value]) => {
+    const text = String(value || '').trim();
+    if (text) {
+      params[`filter_${key}`] = text;
+    }
+  });
+}
+
+function queryFromTableChange(changeInfo, currentQuery = {}) {
+  const nextQuery = {
+    ...currentQuery,
+    filters: { ...(currentQuery.filters || {}) },
+  };
+  const sorter = changeInfo?.sorter;
+  if (sorter?.dataIndex) {
+    if (sorter.sortOrder) {
+      nextQuery.sort = sorter.dataIndex;
+      nextQuery.order = sorter.sortOrder === 'ascend' ? 'asc' : 'desc';
+    } else if (nextQuery.sort === sorter.dataIndex) {
+      nextQuery.sort = '';
+      nextQuery.order = 'desc';
+    }
+  }
+  (changeInfo?.filters || []).forEach((filter) => {
+    const key = filter?.dataIndex;
+    if (!key) return;
+    const value = filter.filteredValue?.[0];
+    if (value === null || typeof value === 'undefined' || value === '') {
+      delete nextQuery.filters[key];
+      return;
+    }
+    nextQuery.filters[key] = String(value);
+  });
+  return nextQuery;
+}
+
+function renderTableFilterDropdown(t) {
+  return ({ tempFilteredValue, setTempFilteredValue, confirm, clear }) => (
+    <div className='p-3 w-56' onClick={(event) => event.stopPropagation()}>
+      <Input
+        size='small'
+        value={tempFilteredValue?.[0] || ''}
+        placeholder={t('输入筛选值')}
+        showClear
+        onChange={(value) => setTempFilteredValue(value ? [value] : [])}
+        onEnterPress={() => confirm({ closeDropdown: true })}
+      />
+      <Space className='mt-2'>
+        <Button
+          size='small'
+          type='primary'
+          onClick={() => confirm({ closeDropdown: true })}
+        >
+          {t('筛选')}
+        </Button>
+        <Button size='small' onClick={() => clear({ closeDropdown: true })}>
+          {t('重置')}
+        </Button>
+      </Space>
+    </div>
+  );
+}
+
+function enhanceTableColumns(columns, options = {}) {
+  const {
+    t = (text) => text,
+    tableQuery = {},
+    valueFormatter,
+    copyable = true,
+  } = options;
+  const activeFilters = tableQuery.filters || {};
+  return columns.map((column) => {
+    if (column.children) {
+      return {
+        ...column,
+        children: enhanceTableColumns(column.children, options),
+      };
+    }
+    const key = column.dataIndex || column.key;
+    if (!key || key === 'operate') {
+      return column;
+    }
+    return {
+      ...column,
+      key,
+      sorter: column.sorter || true,
+      sortOrder:
+        tableQuery.sort === key
+          ? tableQuery.order === 'asc'
+            ? 'ascend'
+            : 'descend'
+          : false,
+      filteredValue: activeFilters[key] ? [activeFilters[key]] : [],
+      renderFilterDropdown: renderTableFilterDropdown(t),
+      onFilter: (filteredValue, record) =>
+        tableTextValue(record?.[key], key, t, valueFormatter)
+          .toLowerCase()
+          .includes(String(filteredValue || '').toLowerCase()),
+      render: (value, record, index, renderOptions) => {
+        const rendered = column.render
+          ? column.render(value, record, index, renderOptions)
+          : tableTextValue(value, key, t, valueFormatter);
+        if (!copyable || column.copyable === false) {
+          return rendered;
+        }
+        if (React.isValidElement(rendered) && rendered.type === 'button') {
+          return rendered;
+        }
+        const copyValue =
+          typeof column.copyValue === 'function'
+            ? column.copyValue(value, record)
+            : tableTextValue(value, key, t, valueFormatter);
+        return copyableCell(rendered, copyValue, t, column.copyClassName || '');
+      },
+    };
+  });
+}
+
 function SummaryGrid({ data }) {
   const { t } = useTranslation();
   const entries = Object.entries(data || {}).flatMap(([key, value]) => {
@@ -497,9 +680,17 @@ function SummaryGrid({ data }) {
           <Text type='secondary' size='small'>
             {formatFieldLabel(key, t)}
           </Text>
-          <div className='text-2xl font-semibold mt-2 text-semi-color-text-0 break-words'>
-            {formatValue(value, key, t)}
-          </div>
+          <button
+            type='button'
+            className='block w-full cursor-pointer rounded text-left transition-colors hover:bg-semi-color-fill-0'
+            style={{ background: 'transparent', border: 0, padding: 0 }}
+            title={tableTextValue(value, key, t)}
+            onClick={() => copyCellValue(tableTextValue(value, key, t), t)}
+          >
+            <div className='text-2xl font-semibold mt-2 text-semi-color-text-0 break-words'>
+              {formatValue(value, key, t)}
+            </div>
+          </button>
         </Card>
       ))}
     </div>
@@ -513,13 +704,18 @@ function DataPreview({
   valueFormatter,
   pagination = false,
   loading = false,
+  tableQuery,
+  onTableQueryChange,
 }) {
   const { t } = useTranslation();
+  const [localQuery, setLocalQuery] = useState({
+    sort: '',
+    order: 'desc',
+    filters: {},
+  });
+  const activeQuery = tableQuery || localQuery;
   const rawRows = pickItems(data);
   const rows = typeof limit === 'number' ? rawRows.slice(0, limit) : rawRows;
-  if (rows.length === 0) {
-    return <Empty image={<></>} title={t('暂无数据')} />;
-  }
 
   const keys =
     preferredKeys ||
@@ -531,6 +727,43 @@ function DataPreview({
     ).slice(0, 8);
   const renderValue = valueFormatter || formatValue;
 
+  const processedRows = useMemo(() => {
+    const filters = activeQuery.filters || {};
+    const filtered = rows.filter((row) =>
+      Object.entries(filters).every(([key, value]) => {
+        const text = String(value || '')
+          .trim()
+          .toLowerCase();
+        if (!text) return true;
+        return tableTextValue(row?.[key], key, t, renderValue)
+          .toLowerCase()
+          .includes(text);
+      }),
+    );
+    if (!activeQuery.sort) return filtered;
+    const sortKey = activeQuery.sort;
+    const desc = activeQuery.order !== 'asc';
+    return [...filtered].sort((a, b) => {
+      const left = a?.[sortKey];
+      const right = b?.[sortKey];
+      const leftNumber = Number(left);
+      const rightNumber = Number(right);
+      let result = 0;
+      if (
+        Number.isFinite(leftNumber) &&
+        Number.isFinite(rightNumber) &&
+        left !== '' &&
+        right !== ''
+      ) {
+        result =
+          leftNumber === rightNumber ? 0 : leftNumber > rightNumber ? 1 : -1;
+      } else {
+        result = String(left ?? '').localeCompare(String(right ?? ''));
+      }
+      return desc ? -result : result;
+    });
+  }, [activeQuery, renderValue, rows, t]);
+
   const columns = keys.map((key) => ({
     title: formatFieldLabel(key, t),
     dataIndex: key,
@@ -539,16 +772,36 @@ function DataPreview({
       <span className='break-words text-sm'>{renderValue(value, key, t)}</span>
     ),
   }));
+  const tableColumns = enhanceTableColumns(columns, {
+    t,
+    tableQuery: activeQuery,
+    valueFormatter: renderValue,
+  });
+  const handleTableChange = (changeInfo) => {
+    const nextQuery = queryFromTableChange(changeInfo, activeQuery);
+    if (onTableQueryChange) {
+      onTableQueryChange(nextQuery);
+    } else {
+      setLocalQuery(nextQuery);
+    }
+  };
+  if (rows.length === 0) {
+    return <Empty image={<></>} title={t('暂无数据')} />;
+  }
 
   return (
     <Table
       size='small'
-      columns={columns}
-      dataSource={rows.map((row, index) => ({ ...row, _rowKey: index }))}
+      columns={tableColumns}
+      dataSource={processedRows.map((row, index) => ({
+        ...row,
+        _rowKey: index,
+      }))}
       rowKey='_rowKey'
       pagination={pagination}
       loading={loading}
       scroll={{ x: 'max-content' }}
+      onChange={handleTableChange}
     />
   );
 }
@@ -621,6 +874,7 @@ function RedemptionsPanel({ data }) {
     data?.list || { items: [], total: 0, page: 1, page_size: 20 },
   );
   const [filters, setFilters] = useState({ status: '0', keyword: '' });
+  const [tableQuery, setTableQuery] = useState(DEFAULT_TABLE_QUERY);
   const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
   const [listLoading, setListLoading] = useState(false);
   const [generated, setGenerated] = useState([]);
@@ -653,6 +907,7 @@ function RedemptionsPanel({ data }) {
     page = 1,
     size = pageSize,
     nextFilters = filters,
+    nextTableQuery = tableQuery,
   ) => {
     setListLoading(true);
     try {
@@ -667,6 +922,7 @@ function RedemptionsPanel({ data }) {
       if (keyword) {
         params.set('keyword', keyword);
       }
+      appendTableQueryParams(params, nextTableQuery);
       const nextList = await API.get(
         `/api/enhancements/redemptions?${params.toString()}`,
       ).then(unwrap);
@@ -970,8 +1226,10 @@ function RedemptionsPanel({ data }) {
             <Button
               onClick={() => {
                 const nextFilters = { status: '0', keyword: '' };
+                const nextTableQuery = DEFAULT_TABLE_QUERY;
                 setFilters(nextFilters);
-                loadRedemptions(1, pageSize, nextFilters);
+                setTableQuery(nextTableQuery);
+                loadRedemptions(1, pageSize, nextFilters, nextTableQuery);
               }}
             >
               {t('重置')}
@@ -980,7 +1238,7 @@ function RedemptionsPanel({ data }) {
         </div>
         <Table
           size='small'
-          columns={columns}
+          columns={enhanceTableColumns(columns, { t, tableQuery })}
           dataSource={(list?.items || []).map((row) => ({
             ...row,
             _rowKey: row.id,
@@ -988,6 +1246,11 @@ function RedemptionsPanel({ data }) {
           rowKey='_rowKey'
           loading={listLoading}
           scroll={{ x: 'max-content' }}
+          onChange={(changeInfo) => {
+            const nextTableQuery = queryFromTableChange(changeInfo, tableQuery);
+            setTableQuery(nextTableQuery);
+            loadRedemptions(1, pageSize, filters, nextTableQuery);
+          }}
           pagination={{
             currentPage: list?.page || 1,
             pageSize,
@@ -1007,10 +1270,12 @@ function RedemptionsPanel({ data }) {
 }
 
 function UsersPanel({ data }) {
+  const { t } = useTranslation();
   const currency = getCurrencyConfig();
   const [list, setList] = useState(
     data?.list || { items: [], total: 0, page: 1, page_size: 20 },
   );
+  const [tableQuery, setTableQuery] = useState(DEFAULT_TABLE_QUERY);
   const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
   const [listLoading, setListLoading] = useState(false);
 
@@ -1021,13 +1286,18 @@ function UsersPanel({ data }) {
     }
   }, [data?.list]);
 
-  const loadUsers = async (page = 1, size = pageSize) => {
+  const loadUsers = async (
+    page = 1,
+    size = pageSize,
+    nextTableQuery = tableQuery,
+  ) => {
     setListLoading(true);
     try {
       const params = new URLSearchParams({
         p: String(page),
         page_size: String(size),
       });
+      appendTableQueryParams(params, nextTableQuery);
       const nextList = await API.get(
         `/api/enhancements/users?${params.toString()}`,
       ).then(unwrap);
@@ -1040,9 +1310,6 @@ function UsersPanel({ data }) {
   };
 
   const formatUserValue = (value, key, t) => {
-    if (key === 'email' && value === '***masked***') {
-      return t('未绑定');
-    }
     if (key === 'quota' || key === 'used_quota') {
       return formatQuotaAsAmount(value, currency);
     }
@@ -1053,12 +1320,44 @@ function UsersPanel({ data }) {
     <div className='space-y-4'>
       <SummaryGrid data={data?.summary || {}} />
       <Card title='数据预览' className='!rounded-lg'>
+        <div className='flex flex-col md:flex-row gap-3 mb-4'>
+          <Input
+            value={tableQuery.keyword || ''}
+            prefix={<Search size={16} />}
+            placeholder={t('搜索用户字段')}
+            showClear
+            onChange={(value) =>
+              setTableQuery((prev) => ({ ...prev, keyword: value }))
+            }
+            onEnterPress={() => loadUsers(1, pageSize)}
+            className='md:max-w-sm'
+          />
+          <Space>
+            <Button type='primary' onClick={() => loadUsers(1, pageSize)}>
+              {t('查询')}
+            </Button>
+            <Button
+              onClick={() => {
+                const nextTableQuery = DEFAULT_TABLE_QUERY;
+                setTableQuery(nextTableQuery);
+                loadUsers(1, pageSize, nextTableQuery);
+              }}
+            >
+              {t('重置')}
+            </Button>
+          </Space>
+        </div>
         <DataPreview
           data={list}
           limit={null}
           keys={USER_PREVIEW_KEYS}
           valueFormatter={formatUserValue}
           loading={listLoading}
+          tableQuery={tableQuery}
+          onTableQueryChange={(nextTableQuery) => {
+            setTableQuery(nextTableQuery);
+            loadUsers(1, pageSize, nextTableQuery);
+          }}
           pagination={{
             currentPage: list?.page || 1,
             pageSize,
@@ -1085,6 +1384,7 @@ function TokensPanel({ data }) {
     data?.list || { items: [], total: 0, page: 1, page_size: 20 },
   );
   const [filters, setFilters] = useState({ status: '0', key: '', group: '' });
+  const [tableQuery, setTableQuery] = useState(DEFAULT_TABLE_QUERY);
   const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
   const [listLoading, setListLoading] = useState(false);
   const [editingToken, setEditingToken] = useState(null);
@@ -1170,6 +1470,7 @@ function TokensPanel({ data }) {
     page = 1,
     size = pageSize,
     nextFilters = filters,
+    nextTableQuery = tableQuery,
   ) => {
     setListLoading(true);
     try {
@@ -1182,6 +1483,7 @@ function TokensPanel({ data }) {
       if (nextFilters.group.trim()) {
         params.set('group', nextFilters.group.trim());
       }
+      appendTableQueryParams(params, nextTableQuery);
       const nextList = await API.get(
         `/api/enhancements/tokens?${params.toString()}`,
       ).then(unwrap);
@@ -1415,8 +1717,10 @@ function TokensPanel({ data }) {
             <Button
               onClick={() => {
                 const nextFilters = { status: '0', key: '', group: '' };
+                const nextTableQuery = DEFAULT_TABLE_QUERY;
                 setFilters(nextFilters);
-                loadTokens(1, pageSize, nextFilters);
+                setTableQuery(nextTableQuery);
+                loadTokens(1, pageSize, nextFilters, nextTableQuery);
               }}
             >
               {t('重置')}
@@ -1425,7 +1729,7 @@ function TokensPanel({ data }) {
         </div>
         <Table
           size='small'
-          columns={columns}
+          columns={enhanceTableColumns(columns, { t, tableQuery })}
           dataSource={(list?.items || []).map((row) => ({
             ...row,
             _rowKey: row.id,
@@ -1433,6 +1737,11 @@ function TokensPanel({ data }) {
           rowKey='_rowKey'
           loading={listLoading}
           scroll={{ x: 'max-content' }}
+          onChange={(changeInfo) => {
+            const nextTableQuery = queryFromTableChange(changeInfo, tableQuery);
+            setTableQuery(nextTableQuery);
+            loadTokens(1, pageSize, filters, nextTableQuery);
+          }}
           pagination={{
             currentPage: list?.page || 1,
             pageSize,
@@ -1725,28 +2034,6 @@ const RISK_WINDOW_OPTIONS = [
   { value: 'custom', label: '自定义' },
 ];
 
-const SHARED_IP_SORT_OPTIONS = [
-  { value: '', label: '默认排序' },
-  { value: 'user_count', label: '用户数' },
-  { value: 'token_count', label: '令牌数' },
-  { value: 'request_count', label: '请求数' },
-  { value: 'error_count', label: '错误数' },
-  { value: 'quota', label: '金额' },
-  { value: 'first_seen_at', label: '首次出现' },
-  { value: 'last_seen_at', label: '最后出现' },
-];
-
-const TOKEN_MULTI_IP_SORT_OPTIONS = [
-  { value: '', label: '默认排序' },
-  { value: 'ip_count', label: 'IP 数' },
-  { value: 'request_count', label: '请求数' },
-  { value: 'error_count', label: '错误数' },
-  { value: 'quota', label: '金额' },
-  { value: 'first_seen_at', label: '首次出现' },
-  { value: 'last_seen_at', label: '最后出现' },
-  { value: 'token_id', label: '令牌 ID' },
-];
-
 const EMPTY_PAGE = { items: [], total: 0, page: 1, page_size: 20 };
 
 function getRiskWindowRange(filters) {
@@ -1804,8 +2091,8 @@ function RiskPanel({ data }) {
     range: [],
     keyword: '',
   });
-  const [sharedSort, setSharedSort] = useState({ sort: '', order: 'desc' });
-  const [tokenSort, setTokenSort] = useState({ sort: '', order: 'desc' });
+  const [sharedSort, setSharedSort] = useState(DEFAULT_TABLE_QUERY);
+  const [tokenSort, setTokenSort] = useState(DEFAULT_TABLE_QUERY);
   const [sharedPageSize, setSharedPageSize] = useState(
     data?.sharedIPs?.page_size || 20,
   );
@@ -1840,6 +2127,7 @@ function RiskPanel({ data }) {
     if (nextFilters.keyword?.trim()) {
       params.keyword = nextFilters.keyword.trim();
     }
+    appendObjectTableQueryParams(params, nextSort);
     return params;
   };
 
@@ -2196,32 +2484,6 @@ function RiskPanel({ data }) {
     },
   ];
 
-  const renderSortControls = (sortState, options, onChange) => (
-    <Space wrap>
-      <Select
-        value={sortState.sort}
-        size='small'
-        style={{ width: 140 }}
-        onChange={(value) => onChange({ ...sortState, sort: value })}
-      >
-        {options.map((option) => (
-          <Select.Option key={option.value} value={option.value}>
-            {t(option.label)}
-          </Select.Option>
-        ))}
-      </Select>
-      <Select
-        value={sortState.order}
-        size='small'
-        style={{ width: 110 }}
-        onChange={(value) => onChange({ ...sortState, order: value })}
-      >
-        <Select.Option value='desc'>{t('降序')}</Select.Option>
-        <Select.Option value='asc'>{t('升序')}</Select.Option>
-      </Select>
-    </Space>
-  );
-
   return (
     <div className='space-y-4'>
       <Card title={t('IP 日志记录覆盖率')} className='!rounded-lg'>
@@ -2345,19 +2607,12 @@ function RiskPanel({ data }) {
       </Card>
 
       <Card title={t('多令牌共用 IP')} className='!rounded-lg'>
-        <div className='flex justify-end mb-3'>
-          {renderSortControls(
-            sharedSort,
-            SHARED_IP_SORT_OPTIONS,
-            (nextSort) => {
-              setSharedSort(nextSort);
-              loadSharedIPs(1, sharedPageSize, filters, nextSort);
-            },
-          )}
-        </div>
         <Table
           size='small'
-          columns={sharedColumns}
+          columns={enhanceTableColumns(sharedColumns, {
+            t,
+            tableQuery: sharedSort,
+          })}
           dataSource={(sharedIPs?.items || []).map((row) => ({
             ...row,
             _rowKey: row.ip,
@@ -2366,6 +2621,11 @@ function RiskPanel({ data }) {
           loading={sharedLoading}
           empty={<Empty description={t('暂无数据')} />}
           scroll={{ x: 'max-content' }}
+          onChange={(changeInfo) => {
+            const nextSort = queryFromTableChange(changeInfo, sharedSort);
+            setSharedSort(nextSort);
+            loadSharedIPs(1, sharedPageSize, filters, nextSort);
+          }}
           pagination={{
             currentPage: sharedIPs?.page || 1,
             pageSize: sharedPageSize,
@@ -2382,19 +2642,12 @@ function RiskPanel({ data }) {
       </Card>
 
       <Card title={t('单令牌多 IP')} className='!rounded-lg'>
-        <div className='flex justify-end mb-3'>
-          {renderSortControls(
-            tokenSort,
-            TOKEN_MULTI_IP_SORT_OPTIONS,
-            (nextSort) => {
-              setTokenSort(nextSort);
-              loadTokenMultiIPs(1, tokenPageSize, filters, nextSort);
-            },
-          )}
-        </div>
         <Table
           size='small'
-          columns={tokenColumns}
+          columns={enhanceTableColumns(tokenColumns, {
+            t,
+            tableQuery: tokenSort,
+          })}
           dataSource={(tokenMultiIPs?.items || []).map((row) => ({
             ...row,
             _rowKey: row.token_id,
@@ -2403,6 +2656,11 @@ function RiskPanel({ data }) {
           loading={tokenLoading}
           empty={<Empty description={t('暂无数据')} />}
           scroll={{ x: 'max-content' }}
+          onChange={(changeInfo) => {
+            const nextSort = queryFromTableChange(changeInfo, tokenSort);
+            setTokenSort(nextSort);
+            loadTokenMultiIPs(1, tokenPageSize, filters, nextSort);
+          }}
           pagination={{
             currentPage: tokenMultiIPs?.page || 1,
             pageSize: tokenPageSize,
@@ -2826,6 +3084,10 @@ function ModelStatusPanel({ data }) {
   const [yellowThreshold, setYellowThreshold] = useState(
     getModelStatusThreshold(data?.config, 'yellow_threshold', 80),
   );
+  const [statusList, setStatusList] = useState(EMPTY_PAGE);
+  const [statusListQuery, setStatusListQuery] = useState(DEFAULT_TABLE_QUERY);
+  const [statusListPageSize, setStatusListPageSize] = useState(20);
+  const [statusListLoading, setStatusListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const publicUrl = getModelStatusPublicUrl(config);
 
@@ -2863,9 +3125,38 @@ function ModelStatusPanel({ data }) {
     }
   };
 
+  const loadStatusList = async (
+    page = 1,
+    size = statusListPageSize,
+    nextQuery = statusListQuery,
+    nextWindow = windowValue,
+  ) => {
+    setStatusListLoading(true);
+    try {
+      const params = new URLSearchParams({
+        p: String(page),
+        page_size: String(size),
+        window: nextWindow,
+      });
+      appendTableQueryParams(params, nextQuery);
+      const nextList = await API.get(
+        `/api/enhancements/model-status/status/all?${params.toString()}`,
+      ).then(unwrap);
+      setStatusList(nextList || { items: [], total: 0, page, page_size: size });
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setStatusListLoading(false);
+    }
+  };
+
   useEffect(() => {
     syncConfig(data?.config || {});
   }, [data, syncConfig]);
+
+  useEffect(() => {
+    loadStatusList(1, statusListPageSize, statusListQuery, windowValue);
+  }, []);
 
   const handleSaveSettings = async () => {
     setSaving(true);
@@ -3026,7 +3317,10 @@ function ModelStatusPanel({ data }) {
               <Text type='secondary'>{t('时间范围')}</Text>
               <ModelStatusWindowSelect
                 value={windowValue}
-                onChange={setWindowValue}
+                onChange={(value) => {
+                  setWindowValue(value);
+                  loadStatusList(1, statusListPageSize, statusListQuery, value);
+                }}
                 className='w-full'
               />
             </label>
@@ -3107,6 +3401,55 @@ function ModelStatusPanel({ data }) {
             </Space>
           </div>
         </div>
+      </Card>
+      <Card title={t('模型状态数据')} className='!rounded-lg'>
+        <DataPreview
+          data={statusList}
+          limit={null}
+          keys={[
+            'group',
+            'model_name',
+            'current_status',
+            'total_requests',
+            'success_count',
+            'error_count',
+            'success_rate',
+            'quota',
+            'avg_use_time',
+            'last_request_at',
+          ]}
+          valueFormatter={(value, key, translate) => {
+            if (key === 'success_rate') return formatStatusPercent(value);
+            if (key === 'quota') return formatDisplayAmount(value);
+            if (key === 'last_request_at')
+              return formatValue(value, key, translate);
+            return formatValue(value, key, translate);
+          }}
+          loading={statusListLoading}
+          tableQuery={statusListQuery}
+          onTableQueryChange={(nextQuery) => {
+            setStatusListQuery(nextQuery);
+            loadStatusList(1, statusListPageSize, nextQuery, windowValue);
+          }}
+          pagination={{
+            currentPage: statusList?.page || 1,
+            pageSize: statusListPageSize,
+            total: statusList?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) =>
+              loadStatusList(
+                page,
+                statusListPageSize,
+                statusListQuery,
+                windowValue,
+              ),
+            onPageSizeChange: (size) => {
+              setStatusListPageSize(size);
+              loadStatusList(1, size, statusListQuery, windowValue);
+            },
+          }}
+        />
       </Card>
     </div>
   );

@@ -665,7 +665,7 @@ func AIBanConfig() map[string]interface{} {
 		"enabled":       cfg.AIBanEnabled,
 		"dry_run":       cfg.AIBanDryRun,
 		"model":         cfg.AIBanModel,
-		"base_url":      common.MaskSensitiveInfo(cfg.AIBanBaseURL),
+		"base_url":      cfg.AIBanBaseURL,
 		"api_key_set":   cfg.AIBanAPIKey != "",
 		"safe_defaults": true,
 	}
@@ -793,26 +793,31 @@ func AutoGroupConfig() map[string]interface{} {
 	}
 }
 
-func AutoGroupPreview(limit int) ([]UserSummary, error) {
-	limit = clampLimit(limit)
+func AutoGroupPreview(query ListQuery) (PageResult[UserSummary], error) {
+	query = normalizeListQuery(query)
 	autoGroups := setting.GetAutoGroups()
 	if len(autoGroups) == 0 {
-		return []UserSummary{}, nil
+		return PageResult[UserSummary]{Items: []UserSummary{}, Total: 0, Page: query.Page, PageSize: query.PageSize}, nil
 	}
 	var users []model.User
 	if err := model.DB.Omit("password").
 		Where("status = ?", common.UserStatusEnabled).
 		Order("used_quota DESC").
-		Limit(limit).
 		Find(&users).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, err
+		return PageResult[UserSummary]{}, err
 	}
 	out := make([]UserSummary, 0, len(users))
 	for _, user := range users {
 		if user.Role >= common.RoleRootUser {
 			continue
 		}
-		out = append(out, userToSummary(user))
+		item := userToSummary(user)
+		if userMatchesQuery(item, query) {
+			out = append(out, item)
+		}
 	}
-	return out, nil
+	if query.Sort != "" {
+		sortUserSummaries(out, query.Sort, query.Order)
+	}
+	return pageResult(out, query.Page, query.PageSize), nil
 }

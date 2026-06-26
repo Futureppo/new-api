@@ -110,7 +110,7 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 		bucket.item.UserCount = int64(len(bucket.userSet))
 		bucket.item.Users = sortedIPRiskUsers(bucket.users)
 		bucket.item.Tokens = sortedIPRiskTokens(bucket.tokens)
-		if !sharedTokenIPMatchesKeyword(bucket.item, keyword) {
+		if !sharedTokenIPMatchesKeyword(bucket.item, keyword) || !sharedTokenIPMatchesFilters(bucket.item, query.Filters) {
 			continue
 		}
 		items = append(items, bucket.item)
@@ -175,7 +175,7 @@ func TokenMultiIPs(query IPRiskQuery) (PageResult[TokenMultiIPRisk], error) {
 		}
 		bucket.item.IPCount = int64(len(bucket.ips))
 		bucket.item.IPs = sortedIPStrings(bucket.ips)
-		if !tokenMultiIPMatchesKeyword(bucket.item, keyword) {
+		if !tokenMultiIPMatchesKeyword(bucket.item, keyword) || !tokenMultiIPMatchesFilters(bucket.item, query.Filters) {
 			continue
 		}
 		items = append(items, bucket.item)
@@ -199,6 +199,17 @@ func normalizeIPRiskQuery(query IPRiskQuery) IPRiskQuery {
 	query.Sort = strings.TrimSpace(query.Sort)
 	query.Order = normalizeSortOrder(query.Order)
 	query.Keyword = strings.TrimSpace(query.Keyword)
+	if query.Filters == nil {
+		query.Filters = map[string]string{}
+	}
+	for key, value := range query.Filters {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			delete(query.Filters, key)
+			continue
+		}
+		query.Filters[key] = value
+	}
 	return query
 }
 
@@ -394,6 +405,45 @@ func tokenMultiIPMatchesKeyword(item TokenMultiIPRisk, keyword string) bool {
 		}
 	}
 	return false
+}
+
+func sharedTokenIPMatchesFilters(item SharedTokenIPRisk, filters map[string]string) bool {
+	usersText := make([]string, 0, len(item.Users))
+	for _, user := range item.Users {
+		usersText = append(usersText, user.Username, strconv.Itoa(user.UserId), strconv.FormatInt(user.RequestCount, 10))
+	}
+	tokensText := make([]string, 0, len(item.Tokens))
+	for _, token := range item.Tokens {
+		tokensText = append(tokensText, token.TokenName, token.Username, strconv.Itoa(token.TokenId), strconv.Itoa(token.UserId), strconv.FormatInt(token.RequestCount, 10))
+	}
+	return matchesFilters(filters, map[string]func(string) bool{
+		"ip":            matchText(item.IP),
+		"token_count":   matchInt(item.TokenCount),
+		"user_count":    matchInt(item.UserCount),
+		"request_count": matchInt(item.RequestCount),
+		"error_count":   matchInt(item.ErrorCount),
+		"quota":         matchInt(item.Quota),
+		"first_seen_at": matchInt(item.FirstSeenAt),
+		"last_seen_at":  matchInt(item.LastSeenAt),
+		"users":         matchText(strings.Join(usersText, " ")),
+		"tokens":        matchText(strings.Join(tokensText, " ")),
+	})
+}
+
+func tokenMultiIPMatchesFilters(item TokenMultiIPRisk, filters map[string]string) bool {
+	return matchesFilters(filters, map[string]func(string) bool{
+		"token_id":      matchInt(int64(item.TokenId)),
+		"token_name":    matchText(item.TokenName),
+		"user_id":       matchInt(int64(item.UserId)),
+		"username":      matchText(item.Username),
+		"ip_count":      matchInt(item.IPCount),
+		"request_count": matchInt(item.RequestCount),
+		"error_count":   matchInt(item.ErrorCount),
+		"quota":         matchInt(item.Quota),
+		"first_seen_at": matchInt(item.FirstSeenAt),
+		"last_seen_at":  matchInt(item.LastSeenAt),
+		"ips":           matchText(strings.Join(item.IPs, " ")),
+	})
 }
 
 func parsePositiveKeywordID(keyword string) (int, bool) {

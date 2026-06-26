@@ -53,6 +53,209 @@ func setupModelStatusTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
+func setupEnhancementListTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	model.LOG_DB = db
+
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Redemption{}, &model.Channel{}, &model.Ability{}, &model.Log{}))
+
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+	})
+
+	return db
+}
+
+func seedEnhancementUser(t *testing.T, username string, quota int, usedQuota int, group string) model.User {
+	t.Helper()
+	user := model.User{
+		Username:     username,
+		Password:     "password",
+		DisplayName:  username + "-display",
+		Status:       common.UserStatusEnabled,
+		Email:        username + "@example.com",
+		Quota:        quota,
+		UsedQuota:    usedQuota,
+		RequestCount: quota / 10,
+		Group:        group,
+		AffCode:      "aff_" + username,
+		LinuxDOId:    "linux_" + username,
+	}
+	require.NoError(t, model.DB.Create(&user).Error)
+	return user
+}
+
+func TestEnhancementSummariesRevealFieldsInsideEnhancementAPI(t *testing.T) {
+	setupEnhancementListTestDB(t)
+	user := seedEnhancementUser(t, "reveal", 100, 10, "default")
+	token := model.Token{
+		UserId:      user.Id,
+		Name:        "reveal-token",
+		Key:         "sk-reveal-full-key",
+		Status:      common.TokenStatusEnabled,
+		Group:       "default",
+		RemainQuota: 100,
+	}
+	require.NoError(t, model.DB.Create(&token).Error)
+
+	cfg := setting.GetEnhancementSetting()
+	originalBaseURL := cfg.AIBanBaseURL
+	originalAPIKey := cfg.AIBanAPIKey
+	t.Cleanup(func() {
+		cfg.AIBanBaseURL = originalBaseURL
+		cfg.AIBanAPIKey = originalAPIKey
+	})
+	cfg.AIBanBaseURL = "https://ai-ban.example.com/v1"
+	cfg.AIBanAPIKey = "secret-key"
+
+	users, err := ListUsers(ListQuery{Page: 1, PageSize: 20, Keyword: "reveal"})
+	require.NoError(t, err)
+	require.Len(t, users.Items, 1)
+	require.Equal(t, "reveal@example.com", users.Items[0].Email)
+	require.Equal(t, "linux_reveal", users.Items[0].LinuxDOId)
+	require.NotContains(t, users.Items[0].Email, "***masked***")
+	require.NotContains(t, users.Items[0].LinuxDOId, "***masked***")
+
+	tokens, err := ListTokens(ListQuery{Page: 1, PageSize: 20, Keyword: "reveal-token"})
+	require.NoError(t, err)
+	require.Len(t, tokens.Items, 1)
+	require.Equal(t, "sk-reveal-full-key", tokens.Items[0].Key)
+
+	config := AIBanConfig()
+	require.Equal(t, "https://ai-ban.example.com/v1", config["base_url"])
+	require.Equal(t, true, config["api_key_set"])
+	_, hasAPIKey := config["api_key"]
+	require.False(t, hasAPIKey)
+}
+
+func TestEnhancementListsFilterAndSortBeforePagination(t *testing.T) {
+	setupEnhancementListTestDB(t)
+	alpha := seedEnhancementUser(t, "alpha", 100, 10, "default")
+	beta := seedEnhancementUser(t, "beta", 300, 30, "vip")
+
+	require.NoError(t, model.DB.Create(&[]model.Token{
+		{UserId: alpha.Id, Name: "alpha-token", Key: "sk-alpha-key", Status: common.TokenStatusEnabled, Group: "default", UsedQuota: 10},
+		{UserId: beta.Id, Name: "beta-token", Key: "sk-beta-key", Status: common.TokenStatusEnabled, Group: "vip", UsedQuota: 90},
+	}).Error)
+	require.NoError(t, model.DB.Create(&[]model.Redemption{
+		{UserId: alpha.Id, Key: "alpha-redemption", Status: common.RedemptionCodeStatusEnabled, Name: "promo-alpha", Quota: 100},
+		{UserId: beta.Id, Key: "beta-redemption", Status: common.RedemptionCodeStatusEnabled, Name: "promo-beta", Quota: 300},
+	}).Error)
+
+	users, err := ListUsers(ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Sort:     "quota",
+		Order:    "desc",
+		Filters:  map[string]string{"group": "vip"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), users.Total)
+	require.Equal(t, "beta", users.Items[0].Username)
+
+	tokens, err := ListTokens(ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Sort:     "used_quota",
+		Order:    "desc",
+		Filters:  map[string]string{"key": "sk-"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"beta-token", "alpha-token"}, []string{tokens.Items[0].Name, tokens.Items[1].Name})
+
+	redemptions, err := ListRedemptions(ListQuery{
+		Page:     1,
+		PageSize: 1,
+		Keyword:  "promo",
+		Sort:     "quota",
+		Order:    "asc",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(2), redemptions.Total)
+	require.Len(t, redemptions.Items, 1)
+	require.Equal(t, "promo-alpha", redemptions.Items[0].Name)
+}
+
+func TestEnhancementAggregateListsFilterBeforePagination(t *testing.T) {
+	db := setupEnhancementListTestDB(t)
+	alpha := seedEnhancementUser(t, "risk-alpha", 100, 10, "default")
+	beta := seedEnhancementUser(t, "risk-beta", 500, 80, "vip")
+	now := common.GetTimestamp()
+	require.NoError(t, model.LOG_DB.Create(&[]model.Log{
+		{UserId: alpha.Id, Username: alpha.Username, Type: model.LogTypeConsume, CreatedAt: now - 60, Ip: "203.0.113.1", Quota: 10},
+		{UserId: beta.Id, Username: beta.Username, Type: model.LogTypeConsume, CreatedAt: now - 50, Ip: "203.0.113.2", Quota: 50},
+		{UserId: beta.Id, Username: beta.Username, Type: model.LogTypeConsume, CreatedAt: now - 40, Ip: "203.0.113.3", Quota: 60},
+	}).Error)
+
+	riskPage, err := RiskLeaderboardsPage(0, 0, ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Filters:  map[string]string{"username": "risk-beta"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), riskPage.Total)
+	require.Equal(t, beta.Id, riskPage.Items[0].UserId)
+
+	channel := model.Channel{Name: "status-channel", Key: "status-key", Status: common.ChannelStatusEnabled}
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "status-alpha", ChannelId: channel.Id, Enabled: true},
+		{Group: "vip", Model: "status-beta", ChannelId: channel.Id, Enabled: true},
+	}).Error)
+	require.NoError(t, model.LOG_DB.Create(&model.Log{Type: model.LogTypeConsume, CreatedAt: now - 30, Group: "vip", ModelName: "status-beta"}).Error)
+
+	statusPage, err := ModelStatusesPageForWindow(ModelStatusWindow24h, ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Filters:  map[string]string{"model_name": "status-beta"},
+	}, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), statusPage.Total)
+	require.Equal(t, "status-beta", statusPage.Items[0].ModelName)
+
+	originalAutoGroups := setting.AutoGroups2JsonString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
+	})
+	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["default","vip"]`))
+	autoPage, err := AutoGroupPreview(ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Sort:     "used_quota",
+		Order:    "desc",
+		Filters:  map[string]string{"username": "risk-beta"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), autoPage.Total)
+	require.Equal(t, "risk-beta", autoPage.Items[0].Username)
+}
+
 func configurePublicModelStatusGroups(t *testing.T, groupDisplay string, usableGroups string) {
 	t.Helper()
 

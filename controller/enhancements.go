@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/service/enhancement"
@@ -208,6 +209,46 @@ func queryInt64(c *gin.Context, key string, fallback int64) int64 {
 	return value
 }
 
+func enhancementFilters(c *gin.Context) map[string]string {
+	filters := map[string]string{}
+	for key, values := range c.Request.URL.Query() {
+		if !strings.HasPrefix(key, "filter_") || len(values) == 0 {
+			continue
+		field := strings.TrimSpace(strings.TrimPrefix(key, "filter_"))
+		value := strings.TrimSpace(values[0])
+		if field == "" || value == "" {
+			continue
+		}
+		filters[field] = value
+	}
+	return filters
+}
+
+func enhancementListQuery(c *gin.Context) enhancement.ListQuery {
+	keyword := c.Query("keyword")
+	if keyword == "" {
+		keyword = c.Query("search")
+	}
+	query := enhancement.ListQuery{
+		Page:     queryInt(c, "p", 1),
+		PageSize: queryInt(c, "page_size", queryInt(c, "limit", 20)),
+		Keyword:  keyword,
+		Sort:     c.Query("sort"),
+		Order:    c.Query("order"),
+		Filters:  enhancementFilters(c),
+	}
+	if status := strings.TrimSpace(c.Query("status")); status != "" && status != "0" {
+		query.Filters["status"] = status
+	}
+	if group := strings.TrimSpace(c.Query("group")); group != "" {
+		query.Filters["group"] = group
+	}
+	if key := strings.TrimSpace(c.Query("key")); key != "" {
+		query.Filters["key"] = strings.TrimPrefix(key, "sk-")
+	}
+	return query
+}
+
 func pathInt(c *gin.Context, key string) (int, error) {
 	return strconv.Atoi(c.Param(key))
 }
@@ -289,11 +330,7 @@ func enhancementSystemInfo(c *gin.Context) {
 }
 
 func enhancementListRedemptions(c *gin.Context) {
-	keyword := c.Query("keyword")
-	if keyword == "" {
-		keyword = c.Query("search")
-	}
-	data, err := enhancement.ListRedemptions(queryInt(c, "p", 1), queryInt(c, "page_size", 20), queryInt(c, "status", 0), keyword)
+	data, err := enhancement.ListRedemptions(enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
@@ -363,12 +400,14 @@ func enhancementUserActivityStats(c *gin.Context) {
 }
 
 func enhancementBannedUsers(c *gin.Context) {
-	data, err := enhancement.ListUsers(queryInt(c, "p", 1), queryInt(c, "page_size", 20), common.UserStatusDisabled, c.Query("group"))
+	query := enhancementListQuery(c)
+	query.Filters["status"] = strconv.Itoa(common.UserStatusDisabled)
+	data, err := enhancement.ListUsers(query)
 	respondPublic(c, data, err)
 }
 
 func enhancementListUsers(c *gin.Context) {
-	data, err := enhancement.ListUsers(queryInt(c, "p", 1), queryInt(c, "page_size", 20), queryInt(c, "status", 0), c.Query("group"))
+	data, err := enhancement.ListUsers(enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
@@ -423,7 +462,7 @@ func enhancementDisableToken(c *gin.Context) {
 }
 
 func enhancementListTokens(c *gin.Context) {
-	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), queryInt(c, "status", 0), c.Query("group"), c.Query("key"))
+	data, err := enhancement.ListTokens(enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
@@ -478,6 +517,7 @@ func ipRiskQuery(c *gin.Context) enhancement.IPRiskQuery {
 		Sort:     c.Query("sort"),
 		Order:    c.Query("order"),
 		Keyword:  c.Query("keyword"),
+		Filters:  enhancementFilters(c),
 	}
 }
 
@@ -515,17 +555,19 @@ func enhancementUserRiskAnalysis(c *gin.Context) {
 }
 
 func enhancementBanRecords(c *gin.Context) {
-	data, err := enhancement.ListUsers(queryInt(c, "p", 1), queryInt(c, "page_size", 20), common.UserStatusDisabled, "")
+	query := enhancementListQuery(c)
+	query.Filters["status"] = strconv.Itoa(common.UserStatusDisabled)
+	data, err := enhancement.ListUsers(query)
 	respondPublic(c, data, err)
 }
 
 func enhancementTokenRotation(c *gin.Context) {
-	data, err := enhancement.ListTokens(queryInt(c, "p", 1), queryInt(c, "page_size", 20), 0, "", "")
+	data, err := enhancement.ListTokens(enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
 func enhancementAffiliatedAccounts(c *gin.Context) {
-	data, err := enhancement.RiskLeaderboards(queryInt64(c, "start", 0), queryInt64(c, "end", 0), queryInt(c, "limit", 20))
+	data, err := enhancement.RiskLeaderboardsPage(queryInt64(c, "start", 0), queryInt64(c, "end", 0), enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
@@ -581,7 +623,7 @@ func enhancementModelStatusMultiple(c *gin.Context) {
 }
 
 func enhancementModelStatusAll(c *gin.Context) {
-	data, err := enhancement.ModelStatusesForWindow(nil, modelStatusWindowFromQuery(c), false)
+	data, err := enhancement.ModelStatusesPageForWindow(modelStatusWindowFromQuery(c), enhancementListQuery(c), false)
 	respondPublic(c, data, err)
 }
 
@@ -630,12 +672,12 @@ func enhancementAutoGroupStats(c *gin.Context) {
 }
 
 func enhancementAutoGroupPreview(c *gin.Context) {
-	data, err := enhancement.AutoGroupPreview(queryInt(c, "limit", 20))
+	data, err := enhancement.AutoGroupPreview(enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
 func enhancementAutoGroupScan(c *gin.Context) {
-	data, err := enhancement.AutoGroupPreview(queryInt(c, "limit", 20))
+	data, err := enhancement.AutoGroupPreview(enhancementListQuery(c))
 	respondPublic(c, gin.H{"dry_run": true, "candidates": data}, err)
 }
 
@@ -652,12 +694,12 @@ func enhancementAIBanAuditLogs(c *gin.Context) {
 }
 
 func enhancementAIBanSuspicious(c *gin.Context) {
-	data, err := enhancement.RiskLeaderboards(queryInt64(c, "start", 0), queryInt64(c, "end", 0), queryInt(c, "limit", 20))
+	data, err := enhancement.RiskLeaderboardsPage(queryInt64(c, "start", 0), queryInt64(c, "end", 0), enhancementListQuery(c))
 	respondPublic(c, data, err)
 }
 
 func enhancementAIBanDryRun(c *gin.Context) {
-	data, err := enhancement.RiskLeaderboards(queryInt64(c, "start", 0), queryInt64(c, "end", 0), queryInt(c, "limit", 20))
+	data, err := enhancement.RiskLeaderboardsPage(queryInt64(c, "start", 0), queryInt64(c, "end", 0), enhancementListQuery(c))
 	respondPublic(c, gin.H{"dry_run": true, "candidates": data}, err)
 }
 
