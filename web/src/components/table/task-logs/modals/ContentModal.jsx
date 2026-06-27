@@ -19,8 +19,13 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Typography, Spin } from '@douyinfe/semi-ui';
-import { IconExternalOpen, IconCopy } from '@douyinfe/semi-icons';
+import {
+  IconCopy,
+  IconDownload,
+  IconExternalOpen,
+} from '@douyinfe/semi-icons';
 import { useTranslation } from 'react-i18next';
+import { copy, showError, showSuccess } from '../../../../helpers';
 
 const { Text } = Typography;
 
@@ -50,13 +55,80 @@ const ContentModal = ({
     setIsLoading(false);
   };
 
-  const handleCopyUrl = () => {
-    navigator.clipboard.writeText(modalContent);
+  const handleCopyUrl = async () => {
+    if (!modalContent) {
+      return;
+    }
+    if (await copy(modalContent)) {
+      showSuccess(t('已复制：') + modalContent);
+    } else {
+      showError(t('复制失败'));
+    }
+  };
+
+  const getDownloadFilename = () => {
+    try {
+      const url = new URL(modalContent);
+      const filename = decodeURIComponent(
+        url.pathname.split('/').filter(Boolean).pop() || '',
+      );
+      return filename || 'video.mp4';
+    } catch (error) {
+      return 'video.mp4';
+    }
+  };
+
+  const handleDownload = () => {
+    if (!modalContent) {
+      return;
+    }
+    const link = document.createElement('a');
+    link.href = modalContent;
+    link.download = getDownloadFilename();
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleOpenInNewTab = () => {
     window.open(modalContent, '_blank');
   };
+
+  const renderVideoFooter = () => (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        width: '100%',
+      }}
+    >
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button
+          icon={<IconDownload />}
+          onClick={handleDownload}
+          disabled={!modalContent}
+        >
+          {t('下载')}
+        </Button>
+        <Button
+          icon={<IconCopy />}
+          onClick={handleCopyUrl}
+          disabled={!modalContent}
+        >
+          {t('复制链接')}
+        </Button>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Button onClick={() => setIsModalOpen(false)}>{t('取消')}</Button>
+        <Button theme='solid' type='primary' onClick={() => setIsModalOpen(false)}>
+          {t('确定')}
+        </Button>
+      </div>
+    </div>
+  );
 
   const renderVideoContent = () => {
     if (videoError) {
@@ -158,6 +230,7 @@ const ContentModal = ({
       onOk={() => setIsModalOpen(false)}
       onCancel={() => setIsModalOpen(false)}
       closable={null}
+      footer={isVideo ? renderVideoFooter() : undefined}
       bodyStyle={{
         height: isVideo ? '70vh' : '400px',
         maxHeight: '80vh',

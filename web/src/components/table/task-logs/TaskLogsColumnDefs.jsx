@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Progress, Tag, Tooltip, Typography } from '@douyinfe/semi-ui';
+import { Progress, Tag, Typography } from '@douyinfe/semi-ui';
 import {
   Music,
   FileText,
@@ -30,8 +30,6 @@ import {
   XCircle,
   Loader,
   List,
-  Hash,
-  Video,
   Sparkles,
 } from 'lucide-react';
 import {
@@ -42,7 +40,7 @@ import {
   TASK_ACTION_REMIX_GENERATE,
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
-import { stringToColor } from '../../../helpers/render';
+import { renderModelTag, stringToColor } from '../../../helpers/render';
 import { Avatar, Space } from '@douyinfe/semi-ui';
 
 const colors = [
@@ -168,6 +166,15 @@ const renderPlatform = (platform, t) => {
         </Tag>
       );
   }
+};
+
+const getTaskModelName = (record) => {
+  return (
+    record?.model_name ||
+    record?.properties?.origin_model_name ||
+    record?.properties?.upstream_model_name ||
+    ''
+  );
 };
 
 const renderStatus = (type, t) => {
@@ -323,6 +330,26 @@ export const getTaskLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.MODEL,
+      title: t('模型'),
+      dataIndex: 'model_name',
+      render: (text, record, index) => {
+        const modelName = getTaskModelName(record);
+        if (!modelName) {
+          return '-';
+        }
+        return (
+          <div>
+            {renderModelTag(modelName, {
+              onClick: () => {
+                copyText(modelName);
+              },
+            })}
+          </div>
+        );
+      },
+    },
+    {
       key: COLUMN_KEYS.TYPE,
       title: t('类型'),
       dataIndex: 'action',
@@ -343,6 +370,27 @@ export const getTaskLogsColumns = ({
             }}
           >
             <div>{text}</div>
+          </Typography.Text>
+        );
+      },
+    },
+    {
+      key: COLUMN_KEYS.REQUEST_ID,
+      title: t('Request ID'),
+      dataIndex: 'request_id',
+      render: (text, record, index) => {
+        if (!text) {
+          return '-';
+        }
+        return (
+          <Typography.Text
+            ellipsis={{ showTooltip: true }}
+            style={{ maxWidth: 180 }}
+            onClick={() => {
+              copyText(text);
+            }}
+          >
+            {text}
           </Typography.Text>
         );
       },

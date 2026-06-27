@@ -315,6 +315,7 @@ func ChargeTaskViolationFeeIfNeeded(ctx context.Context, task *model.Task, chann
 		Content:   "Violation fee charged",
 		ChannelId: task.ChannelId,
 		ModelName: taskModelName(task),
+		RequestId: task.RequestId,
 		Quota:     feeQuota,
 		TokenId:   task.PrivateData.TokenId,
 		Group:     task.Group,

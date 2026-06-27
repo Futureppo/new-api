@@ -46,6 +46,7 @@ type Task struct {
 	CreatedAt  int64                 `json:"created_at" gorm:"index"`
 	UpdatedAt  int64                 `json:"updated_at"`
 	TaskID     string                `json:"task_id" gorm:"type:varchar(191);index"` // 第三方id，不一定有/ song id\ Task id
+	RequestId  string                `json:"request_id,omitempty" gorm:"type:varchar(64);index;default:''"`
 	Platform   constant.TaskPlatform `json:"platform" gorm:"type:varchar(30);index"` // 平台
 	UserId     int                   `json:"user_id" gorm:"index"`
 	Group      string                `json:"group" gorm:"type:varchar(50)"` // 修正计费用
@@ -161,6 +162,7 @@ type SyncTaskQueryParams struct {
 	Platform       constant.TaskPlatform
 	ChannelID      string
 	TaskID         string
+	RequestId      string
 	UserID         string
 	Action         string
 	Status         string
@@ -172,6 +174,10 @@ type SyncTaskQueryParams struct {
 func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) *Task {
 	properties := Properties{}
 	privateData := TaskPrivateData{}
+	requestId := ""
+	userId := 0
+	group := ""
+	channelId := 0
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
 		if shouldPersistTaskPollingKey(relayInfo.ChannelMeta) {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
@@ -183,10 +189,16 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 			properties.OriginModelName = relayInfo.OriginModelName
 		}
 	}
+	if relayInfo != nil {
+		requestId = relayInfo.RequestId
+		userId = relayInfo.UserId
+		group = relayInfo.UsingGroup
+		channelId = relayInfo.ChannelId
+	}
 
 	// 使用预生成的公开 ID（如果有），否则新生成
 	taskID := ""
-	if relayInfo.TaskRelayInfo != nil && relayInfo.TaskRelayInfo.PublicTaskID != "" {
+	if relayInfo != nil && relayInfo.TaskRelayInfo != nil && relayInfo.TaskRelayInfo.PublicTaskID != "" {
 		taskID = relayInfo.TaskRelayInfo.PublicTaskID
 	} else {
 		taskID = GenerateTaskID()
@@ -194,12 +206,13 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 
 	t := &Task{
 		TaskID:      taskID,
-		UserId:      relayInfo.UserId,
-		Group:       relayInfo.UsingGroup,
+		RequestId:   requestId,
+		UserId:      userId,
+		Group:       group,
 		SubmitTime:  time.Now().Unix(),
 		Status:      TaskStatusNotStart,
 		Progress:    "0%",
-		ChannelId:   relayInfo.ChannelId,
+		ChannelId:   channelId,
 		Platform:    platform,
 		Properties:  properties,
 		PrivateData: privateData,
@@ -225,6 +238,9 @@ func TaskGetAllUserTask(userId int, startIdx int, num int, queryParams SyncTaskQ
 
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
+	}
+	if queryParams.RequestId != "" {
+		query = query.Where("request_id = ?", queryParams.RequestId)
 	}
 	if queryParams.Action != "" {
 		query = query.Where("action = ?", queryParams.Action)
@@ -274,6 +290,9 @@ func TaskGetAllTasks(startIdx int, num int, queryParams SyncTaskQueryParams) []*
 	}
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
+	}
+	if queryParams.RequestId != "" {
+		query = query.Where("request_id = ?", queryParams.RequestId)
 	}
 	if queryParams.Action != "" {
 		query = query.Where("action = ?", queryParams.Action)
@@ -462,6 +481,9 @@ func TaskCountAllTasks(queryParams SyncTaskQueryParams) int64 {
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
 	}
+	if queryParams.RequestId != "" {
+		query = query.Where("request_id = ?", queryParams.RequestId)
+	}
 	if queryParams.Action != "" {
 		query = query.Where("action = ?", queryParams.Action)
 	}
@@ -484,6 +506,9 @@ func TaskCountAllUserTask(userId int, queryParams SyncTaskQueryParams) int64 {
 	query := DB.Model(&Task{}).Where("user_id = ?", userId)
 	if queryParams.TaskID != "" {
 		query = query.Where("task_id = ?", queryParams.TaskID)
+	}
+	if queryParams.RequestId != "" {
+		query = query.Where("request_id = ?", queryParams.RequestId)
 	}
 	if queryParams.Action != "" {
 		query = query.Where("action = ?", queryParams.Action)

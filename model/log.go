@@ -386,6 +386,7 @@ type RecordTaskBillingLogParams struct {
 	Content   string
 	ChannelId int
 	ModelName string
+	RequestId string
 	Quota     int
 	TokenId   int
 	Group     string
@@ -411,6 +412,7 @@ func RecordTaskBillingLog(params RecordTaskBillingLogParams) {
 		Content:   params.Content,
 		TokenName: tokenName,
 		ModelName: params.ModelName,
+		RequestId: params.RequestId,
 		Quota:     params.Quota,
 		ChannelId: params.ChannelId,
 		TokenId:   params.TokenId,

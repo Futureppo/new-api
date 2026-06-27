@@ -542,12 +542,32 @@ func mapTaskStatusToSimple(status model.TaskStatus) string {
 	}
 }
 
+func taskDisplayModelName(task *model.Task) string {
+	if task == nil {
+		return ""
+	}
+	if modelName := strings.TrimSpace(task.Properties.OriginModelName); modelName != "" {
+		return modelName
+	}
+	if task.PrivateData.BillingContext != nil {
+		if modelName := strings.TrimSpace(task.PrivateData.BillingContext.OriginModelName); modelName != "" {
+			return modelName
+		}
+	}
+	if modelName := strings.TrimSpace(task.Properties.UpstreamModelName); modelName != "" {
+		return modelName
+	}
+	return ""
+}
+
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
 		UpdatedAt:  task.UpdatedAt,
 		TaskID:     task.TaskID,
+		RequestId:  task.RequestId,
+		ModelName:  taskDisplayModelName(task),
 		Platform:   string(task.Platform),
 		UserId:     task.UserId,
 		Group:      task.Group,

@@ -50,10 +50,25 @@ func TestInitTaskKeepsGeminiPollingKeyBehavior(t *testing.T) {
 	}
 }
 
+func TestInitTaskPersistsRequestId(t *testing.T) {
+	info := newTaskRelayInfo(&relaycommon.ChannelMeta{
+		ChannelType: constant.ChannelTypeXai,
+		ChannelId:   301,
+		ApiKey:      "xai-key",
+	})
+
+	task := InitTask(constant.TaskPlatform("48"), info)
+
+	if task.RequestId != "req_task_init_test" {
+		t.Fatalf("expected request id to be persisted, got %q", task.RequestId)
+	}
+}
+
 func newTaskRelayInfo(meta *relaycommon.ChannelMeta) *relaycommon.RelayInfo {
 	return &relaycommon.RelayInfo{
 		UserId:          7,
 		UsingGroup:      "default",
+		RequestId:       "req_task_init_test",
 		OriginModelName: "grok-imagine-video-1.5-preview",
 		ChannelMeta:     meta,
 		TaskRelayInfo: &relaycommon.TaskRelayInfo{

@@ -100,6 +100,7 @@ func TestChargeTaskViolationFeeAfterRefund(t *testing.T) {
 	require.Equal(t, model.LogTypeConsume, log.Type)
 	require.Equal(t, feeQuota, log.Quota)
 	require.Equal(t, "grok-imagine-video", log.ModelName)
+	require.Equal(t, "req_task_billing_test", log.RequestId)
 
 	other, err := common.StrToMap(log.Other)
 	require.NoError(t, err)

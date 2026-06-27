@@ -111,6 +111,7 @@ func seedChannel(t *testing.T, id int) {
 func makeTask(userId, channelId, quota, tokenId int, billingSource string, subscriptionId int) *model.Task {
 	return &model.Task{
 		TaskID:    "task_" + time.Now().Format("150405.000"),
+		RequestId: "req_task_billing_test",
 		UserId:    userId,
 		ChannelId: channelId,
 		Quota:     quota,
@@ -217,6 +218,7 @@ func TestRefundTaskQuota_Wallet(t *testing.T) {
 	assert.Equal(t, model.LogTypeRefund, log.Type)
 	assert.Equal(t, preConsumed, log.Quota)
 	assert.Equal(t, "test-model", log.ModelName)
+	assert.Equal(t, "req_task_billing_test", log.RequestId)
 }
 
 func TestRefundTaskQuota_Subscription(t *testing.T) {
@@ -324,6 +326,7 @@ func TestRecalculate_PositiveDelta(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeConsume, log.Type)
 	assert.Equal(t, actualQuota-preConsumed, log.Quota)
+	assert.Equal(t, "req_task_billing_test", log.RequestId)
 }
 
 func TestRecalculate_NegativeDelta(t *testing.T) {
