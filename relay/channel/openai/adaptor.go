@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
 
 	//"github.com/QuantumNous/new-api/relay/channel/minimax"
+	"github.com/QuantumNous/new-api/relay/channel/openailocal"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/relay/channel/poe"
 	"github.com/QuantumNous/new-api/relay/channel/xinference"
@@ -647,6 +648,8 @@ func (a *Adaptor) GetModelList() []string {
 		return xinference.ModelList
 	case constant.ChannelTypeOpenRouter:
 		return openrouter.ModelList
+	case constant.ChannelTypeOpenAILocal:
+		return openailocal.ModelList
 	case constant.ChannelTypePoe:
 		return poe.ModelList
 	default:
@@ -666,6 +669,8 @@ func (a *Adaptor) GetChannelName() string {
 		return xinference.ChannelName
 	case constant.ChannelTypeOpenRouter:
 		return openrouter.ChannelName
+	case constant.ChannelTypeOpenAILocal:
+		return openailocal.ChannelName
 	case constant.ChannelTypePoe:
 		return poe.ChannelName
 	default:

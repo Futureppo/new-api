@@ -384,6 +384,33 @@ func GetByTaskIds(userId int, taskIds []any) ([]*Task, error) {
 	return task, nil
 }
 
+func GetUserTasksByPlatformActions(userId int, platform constant.TaskPlatform, actions []string) ([]*Task, error) {
+	var tasks []*Task
+	query := DB.Where("user_id = ? and platform = ?", userId, platform)
+	if len(actions) > 0 {
+		query = query.Where("action in (?)", actions)
+	}
+	if err := query.Order("id desc").Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
+func GetUserTasksByIDsPlatformActions(userId int, taskIds []string, platform constant.TaskPlatform, actions []string) ([]*Task, error) {
+	if len(taskIds) == 0 {
+		return nil, nil
+	}
+	var tasks []*Task
+	query := DB.Where("user_id = ? and task_id in (?) and platform = ?", userId, taskIds, platform)
+	if len(actions) > 0 {
+		query = query.Where("action in (?)", actions)
+	}
+	if err := query.Find(&tasks).Error; err != nil {
+		return nil, err
+	}
+	return tasks, nil
+}
+
 func (Task *Task) Insert() error {
 	var err error
 	err = DB.Create(Task).Error

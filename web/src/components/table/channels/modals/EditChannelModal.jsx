@@ -141,6 +141,7 @@ const getServiceAccountKeyType = (type, keyType) =>
 // 支持并且已适配通过接口获取模型列表的渠道类型
 const MODEL_FETCHABLE_TYPES = new Set([
   1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
+  61,
 ]);
 
 function type2secretPrompt(type) {

@@ -48,10 +48,23 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 		request, err = GetAndValidAudioRequest(c, relayMode)
 	case types.RelayFormatOpenAIRealtime:
 		request = &dto.BaseRequest{}
+	case types.RelayFormatOpenAILocalSearch:
+		request, err = GetAndValidateOpenAILocalSearchRequest(c)
 	default:
 		return nil, fmt.Errorf("unsupported relay format: %s", format)
 	}
 	return request, err
+}
+
+func GetAndValidateOpenAILocalSearchRequest(c *gin.Context) (*dto.OpenAILocalSearchRequest, error) {
+	request := &dto.OpenAILocalSearchRequest{}
+	if err := common.UnmarshalBodyReusable(c, request); err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(request.Prompt) == "" {
+		return nil, errors.New("prompt is required")
+	}
+	return request, nil
 }
 
 func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, error) {

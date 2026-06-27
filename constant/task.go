@@ -16,6 +16,10 @@ const (
 	TaskActionFirstTailGenerate = "firstTailGenerate"
 	TaskActionReferenceGenerate = "referenceGenerate"
 	TaskActionRemix             = "remixGenerate"
+	TaskActionPPT               = "ppt"
+	TaskActionPSD               = "psd"
+	TaskActionImageGeneration   = "image_generation"
+	TaskActionImageEdit         = "image_edit"
 )
 
 var SunoModel2Action = map[string]string{

@@ -5,13 +5,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
@@ -153,7 +157,90 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
+	recordOpenAILocalImageTask(c, info, request, imageN)
 	return nil
+}
+
+type openAILocalImageTaskResult struct {
+	URL           string `json:"url,omitempty"`
+	HasB64JSON    bool   `json:"has_b64_json,omitempty"`
+	RevisedPrompt string `json:"revised_prompt,omitempty"`
+}
+
+type openAILocalImageTaskData struct {
+	ID             string                       `json:"id,omitempty"`
+	Model          string                       `json:"model,omitempty"`
+	Prompt         string                       `json:"prompt,omitempty"`
+	Size           string                       `json:"size,omitempty"`
+	Quality        string                       `json:"quality,omitempty"`
+	N              uint                         `json:"n,omitempty"`
+	ResponseFormat string                       `json:"response_format,omitempty"`
+	Data           []openAILocalImageTaskResult `json:"data,omitempty"`
+}
+
+func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ImageRequest, imageN uint) {
+	if info == nil || request == nil || info.ChannelType != constant.ChannelTypeOpenAILocal {
+		return
+	}
+	raw, ok := c.Get("openai_response_body")
+	if !ok {
+		return
+	}
+	responseBody, ok := raw.([]byte)
+	if !ok || len(responseBody) == 0 {
+		return
+	}
+
+	var payload struct {
+		ID   string `json:"id"`
+		Data []struct {
+			URL           string `json:"url"`
+			B64JSON       string `json:"b64_json"`
+			RevisedPrompt string `json:"revised_prompt"`
+		} `json:"data"`
+	}
+	_ = common.Unmarshal(responseBody, &payload)
+
+	taskData := openAILocalImageTaskData{
+		ID:             payload.ID,
+		Model:          request.Model,
+		Prompt:         request.Prompt,
+		Size:           request.Size,
+		Quality:        request.Quality,
+		N:              imageN,
+		ResponseFormat: request.ResponseFormat,
+		Data:           make([]openAILocalImageTaskResult, 0, len(payload.Data)),
+	}
+
+	resultURL := ""
+	for _, item := range payload.Data {
+		if resultURL == "" && item.URL != "" {
+			resultURL = item.URL
+		}
+		taskData.Data = append(taskData.Data, openAILocalImageTaskResult{
+			URL:           item.URL,
+			HasB64JSON:    item.B64JSON != "",
+			RevisedPrompt: item.RevisedPrompt,
+		})
+	}
+
+	task := model.InitTask(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAILocal)), info)
+	now := time.Now().Unix()
+	task.Action = constant.TaskActionImageGeneration
+	if info.RelayMode == relayconstant.RelayModeImagesEdits {
+		task.Action = constant.TaskActionImageEdit
+	}
+	task.Status = model.TaskStatusSuccess
+	task.Progress = "100%"
+	task.SubmitTime = now
+	task.StartTime = now
+	task.FinishTime = now
+	task.Quota = info.PriceData.Quota
+	task.PrivateData.ResultURL = resultURL
+	task.SetData(taskData)
+	if err := task.Insert(); err != nil {
+		common.SysError("insert OpenAI-local image task error: " + err.Error())
+	}
 }
 
 func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {

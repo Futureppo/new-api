@@ -18,10 +18,11 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Progress, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Progress, Tag, Typography } from '@douyinfe/semi-ui';
 import {
   Music,
   FileText,
+  FileDown,
   HelpCircle,
   CheckCircle,
   Pause,
@@ -31,10 +32,15 @@ import {
   Loader,
   List,
   Sparkles,
+  Image,
 } from 'lucide-react';
 import {
   TASK_ACTION_FIRST_TAIL_GENERATE,
   TASK_ACTION_GENERATE,
+  TASK_ACTION_IMAGE_EDIT,
+  TASK_ACTION_IMAGE_GENERATION,
+  TASK_ACTION_PPT,
+  TASK_ACTION_PSD,
   TASK_ACTION_REFERENCE_GENERATE,
   TASK_ACTION_TEXT_GENERATE,
   TASK_ACTION_REMIX_GENERATE,
@@ -132,6 +138,30 @@ const renderType = (type, t) => {
           {t('视频Remix')}
         </Tag>
       );
+    case TASK_ACTION_PPT:
+      return (
+        <Tag color='teal' shape='circle' prefixIcon={<FileText size={14} />}>
+          {t('生成PPT')}
+        </Tag>
+      );
+    case TASK_ACTION_PSD:
+      return (
+        <Tag color='purple' shape='circle' prefixIcon={<FileText size={14} />}>
+          {t('生成PSD')}
+        </Tag>
+      );
+    case TASK_ACTION_IMAGE_GENERATION:
+      return (
+        <Tag color='green' shape='circle' prefixIcon={<Image size={14} />}>
+          {t('图片生成')}
+        </Tag>
+      );
+    case TASK_ACTION_IMAGE_EDIT:
+      return (
+        <Tag color='green' shape='circle' prefixIcon={<Image size={14} />}>
+          {t('图片编辑')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>
@@ -174,6 +204,29 @@ const getTaskModelName = (record) => {
     record?.properties?.origin_model_name ||
     record?.properties?.upstream_model_name ||
     ''
+  );
+};
+
+const getEditableFileResult = (record) => {
+  const data = record?.data || {};
+  const itemResult = Array.isArray(data?.items) ? data.items[0]?.result : null;
+  const result = data?.result || itemResult || {};
+  return {
+    primaryUrl: result?.primary_url || record?.result_url || '',
+    zipUrl: result?.zip_url || '',
+  };
+};
+
+const renderDownloadButton = (href, label) => {
+  if (!href) {
+    return null;
+  }
+  return (
+    <a href={href} target='_blank' rel='noreferrer'>
+      <Button size='small' theme='borderless' icon={<FileDown size={14} />}>
+        {label}
+      </Button>
+    </a>
   );
 };
 
@@ -465,6 +518,36 @@ export const getTaskLogsColumns = ({
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
         const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const isEditableFileTask =
+          record.action === TASK_ACTION_PPT || record.action === TASK_ACTION_PSD;
+        if (isSuccess && isEditableFileTask) {
+          const { primaryUrl, zipUrl } = getEditableFileResult(record);
+          if (primaryUrl || zipUrl) {
+            return (
+              <Space wrap>
+                {renderDownloadButton(primaryUrl, t('主文件'))}
+                {renderDownloadButton(zipUrl, t('素材包'))}
+              </Space>
+            );
+          }
+        }
+
+        const isImageTask =
+          record.action === TASK_ACTION_IMAGE_GENERATION ||
+          record.action === TASK_ACTION_IMAGE_EDIT;
+        if (isSuccess && isImageTask) {
+          return (
+            <Typography.Text
+              link
+              onClick={() => {
+                openContentModal(JSON.stringify(record.data || record, null, 2));
+              }}
+            >
+              {t('查看图片结果')}
+            </Typography.Text>
+          );
+        }
+
         if (isSuccess && isVideoTask && hasResultUrl) {
           return (
             <a

@@ -330,6 +330,7 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeMiniMax:     true,
 	constant.ChannelTypeSiliconFlow: true,
 	constant.ChannelTypePoe:         true,
+	constant.ChannelTypeOpenAILocal: true,
 }
 
 func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {
@@ -415,6 +416,13 @@ func GenRelayInfoGemini(c *gin.Context, request dto.Request) *RelayInfo {
 func GenRelayInfoImage(c *gin.Context, request dto.Request) *RelayInfo {
 	info := genBaseRelayInfo(c, request)
 	info.RelayFormat = types.RelayFormatOpenAIImage
+	return info
+}
+
+func GenRelayInfoOpenAILocalSearch(c *gin.Context, request dto.Request) *RelayInfo {
+	info := genBaseRelayInfo(c, request)
+	info.RelayMode = relayconstant.RelayModeOpenAILocalSearch
+	info.RelayFormat = types.RelayFormatOpenAILocalSearch
 	return info
 }
 
@@ -540,6 +548,8 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 		info = GenRelayInfoImage(c, request)
 	case types.RelayFormatOpenAIRealtime:
 		info = GenRelayInfoWs(c, ws)
+	case types.RelayFormatOpenAILocalSearch:
+		info = GenRelayInfoOpenAILocalSearch(c, request)
 	case types.RelayFormatClaude:
 		info = GenRelayInfoClaude(c, request)
 	case types.RelayFormatRerank:

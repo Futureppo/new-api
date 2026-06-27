@@ -221,6 +221,15 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		}
 		c.Set("platform", string(constant.TaskPlatformSuno))
 		c.Set("relay_mode", relayMode)
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/search") {
+		modelRequest.Model = "openai-local-search"
+		c.Set("relay_mode", relayconstant.RelayModeOpenAILocalSearch)
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/ppt/generations") {
+		modelRequest.Model = "openai-local-ppt"
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/psd/generations") {
+		modelRequest.Model = "openai-local-psd"
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/editable-file-tasks") {
+		shouldSelectChannel = false
 	} else if strings.Contains(c.Request.URL.Path, "/v1/videos/") && strings.HasSuffix(c.Request.URL.Path, "/remix") {
 		relayMode := relayconstant.RelayModeVideoSubmit
 		c.Set("relay_mode", relayMode)

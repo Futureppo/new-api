@@ -59,6 +59,8 @@ var defaultModelRatio = map[string]float64{
 	"gpt-4.1-nano":                     0.05, // $0.1 / 1M tokens
 	"gpt-4.1-nano-2025-04-14":          0.05, // $0.1 / 1M tokens
 	"gpt-image-1":                      2.5,  // $5 / 1M tokens
+	"gpt-image-2":                      2.5,
+	"codex-gpt-image-2":                2.5,
 	"o1":                               7.5,  // $15 / 1M tokens
 	"o1-2024-12-17":                    7.5,  // $15 / 1M tokens
 	"o1-preview":                       7.5,  // $15 / 1M tokens
@@ -94,10 +96,16 @@ var defaultModelRatio = map[string]float64{
 	"gpt-5":                            0.625,
 	"gpt-5-2025-08-07":                 0.625,
 	"gpt-5-chat-latest":                0.625,
+	"gpt-5-1":                          0.625,
+	"gpt-5-2":                          0.625,
+	"gpt-5-3":                          0.625,
+	"gpt-5-3-mini":                     0.125,
 	"gpt-5-mini":                       0.125,
 	"gpt-5-mini-2025-08-07":            0.125,
 	"gpt-5-nano":                       0.025,
 	"gpt-5-nano-2025-08-07":            0.025,
+	"auto":                             0.125,
+	"openai-local-search":              0.125,
 	"agnes-1.5-flash":                  0.035, // $0.07 / 1M input tokens
 	"agnes-2.0-flash":                  0.05,  // $0.10 / 1M input tokens
 	//"gpt-3.5-turbo-0301":           0.75, //deprecated
@@ -316,6 +324,8 @@ var defaultModelPrice = map[string]float64{
 	"veo-3.1-generate-preview":       0.4,
 	"veo-3.1-fast-generate-preview":  0.15,
 	"grok-imagine-video":             0.05,
+	"openai-local-ppt":               0,
+	"openai-local-psd":               0,
 }
 
 var defaultAudioRatio = map[string]float64{

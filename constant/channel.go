@@ -58,6 +58,7 @@ const (
 	ChannelTypeAgnesAI        = 58
 	ChannelTypePoe            = 59
 	ChannelTypeGCP            = 60
+	ChannelTypeOpenAILocal    = 61
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -124,6 +125,7 @@ var ChannelBaseURLs = []string{
 	"https://apihub.agnes-ai.com",               //58
 	"https://api.poe.com",                       //59
 	"https://speech.googleapis.com",             //60
+	"https://local.openai.com",                  //61
 }
 
 var ChannelTypeNames = map[int]string{
@@ -184,6 +186,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeAgnesAI:        "AgnesAI",
 	ChannelTypePoe:            "Poe",
 	ChannelTypeGCP:            "GCP",
+	ChannelTypeOpenAILocal:    "OpenAI-local",
 }
 
 func GetChannelTypeName(channelType int) string {

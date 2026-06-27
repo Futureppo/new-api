@@ -80,6 +80,9 @@ func SetRelayRouter(router *gin.Engine) {
 		})
 	}
 	{
+		relayV1Router.GET("/editable-file-tasks", controller.OpenAILocalEditableFileTasks)
+	}
+	{
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
@@ -105,6 +108,11 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatOpenAIResponsesCompaction)
 		})
 
+		// OpenAI-local search
+		httpRouter.POST("/search", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatOpenAILocalSearch)
+		})
+
 		// image related routes
 		httpRouter.POST("/edits", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)
@@ -115,6 +123,10 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/images/edits", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)
 		})
+
+		// OpenAI-local editable file tasks
+		httpRouter.POST("/ppt/generations", controller.RelayTask)
+		httpRouter.POST("/psd/generations", controller.RelayTask)
 
 		// embedding related routes
 		httpRouter.POST("/embeddings", func(c *gin.Context) {
