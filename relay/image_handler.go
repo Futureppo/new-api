@@ -163,6 +163,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 type openAILocalImageTaskResult struct {
 	URL           string `json:"url,omitempty"`
+	B64JSON       string `json:"b64_json,omitempty"`
 	HasB64JSON    bool   `json:"has_b64_json,omitempty"`
 	RevisedPrompt string `json:"revised_prompt,omitempty"`
 }
@@ -217,8 +218,13 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 		if resultURL == "" && item.URL != "" {
 			resultURL = item.URL
 		}
+		b64JSON := ""
+		if item.URL == "" {
+			b64JSON = item.B64JSON
+		}
 		taskData.Data = append(taskData.Data, openAILocalImageTaskResult{
 			URL:           item.URL,
+			B64JSON:       b64JSON,
 			HasB64JSON:    item.B64JSON != "",
 			RevisedPrompt: item.RevisedPrompt,
 		})

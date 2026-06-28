@@ -217,6 +217,17 @@ const getEditableFileResult = (record) => {
   };
 };
 
+const getImageResultCount = (record) => {
+  const data = record?.data;
+  if (Array.isArray(data)) {
+    return data.length;
+  }
+  if (Array.isArray(data?.data)) {
+    return data.data.length;
+  }
+  return record?.result_url ? 1 : 0;
+};
+
 const renderDownloadButton = (href, label) => {
   if (!href) {
     return null;
@@ -301,6 +312,7 @@ export const getTaskLogsColumns = ({
   isAdminUser,
   openVideoModal,
   openAudioModal,
+  openImageModal,
 }) => {
   return [
     {
@@ -536,14 +548,17 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_IMAGE_GENERATION ||
           record.action === TASK_ACTION_IMAGE_EDIT;
         if (isSuccess && isImageTask) {
+          const imageCount = getImageResultCount(record);
           return (
             <Typography.Text
               link
               onClick={() => {
-                openContentModal(JSON.stringify(record.data || record, null, 2));
+                openImageModal(record);
               }}
             >
-              {t('查看图片结果')}
+              {imageCount > 1
+                ? `${t('查看图片结果')} (${imageCount})`
+                : t('查看图片结果')}
             </Typography.Text>
           );
         }
