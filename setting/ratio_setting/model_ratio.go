@@ -324,6 +324,10 @@ var defaultModelPrice = map[string]float64{
 	"veo-3.1-generate-preview":       0.4,
 	"veo-3.1-fast-generate-preview":  0.15,
 	"grok-imagine-video":             0.05,
+	"gpt-search":                     0,
+	"gpt-image-2-ppt":                0,
+	"gpt-image-2-psd":                0,
+	"openai-local-search":            0,
 	"openai-local-ppt":               0,
 	"openai-local-psd":               0,
 }

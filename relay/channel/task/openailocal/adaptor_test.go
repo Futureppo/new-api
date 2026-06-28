@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	baseopenailocal "github.com/QuantumNous/new-api/relay/channel/openailocal"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -76,4 +77,45 @@ func TestNormalizeEditableFileTaskURLs(t *testing.T) {
 	require.NoError(t, common.Unmarshal(normalized, &payload))
 	require.Equal(t, "https://local.openai.com/files/result.psd", payload.Items[0].Result.PrimaryURL)
 	require.Equal(t, "https://local.openai.com/files/assets.zip", payload.Items[0].Result.ZipURL)
+}
+
+func TestValidateRequestDefaultsToPublicOpenAILocalTaskModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name     string
+		path     string
+		body     string
+		action   string
+		expected string
+	}{
+		{
+			name:     "ppt",
+			path:     "/v1/ppt/generations",
+			body:     `{"prompt":"make a ppt","base64_images":[]}`,
+			action:   constant.TaskActionPPT,
+			expected: baseopenailocal.ModelPPT,
+		},
+		{
+			name:     "psd",
+			path:     "/v1/psd/generations",
+			body:     `{"prompt":"make a psd","base64_images":["data:image/png;base64,AA=="]}`,
+			action:   constant.TaskActionPSD,
+			expected: baseopenailocal.ModelPSD,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(tt.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			info := &relaycommon.RelayInfo{TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+
+			taskErr := (&TaskAdaptor{}).ValidateRequestAndSetAction(c, info)
+			require.Nil(t, taskErr)
+			require.Equal(t, tt.action, info.Action)
+			require.Equal(t, tt.expected, info.OriginModelName)
+		})
+	}
 }

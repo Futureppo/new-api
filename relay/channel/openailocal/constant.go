@@ -1,7 +1,19 @@
 package openailocal
 
+const (
+	ModelSearch = "gpt-search"
+	ModelPPT    = "gpt-image-2-ppt"
+	ModelPSD    = "gpt-image-2-psd"
+
+	LegacyModelSearch = "openai-local-search"
+	LegacyModelPPT    = "openai-local-ppt"
+	LegacyModelPSD    = "openai-local-psd"
+)
+
 var ModelList = []string{
 	"gpt-image-2",
+	ModelPPT,
+	ModelPSD,
 	"codex-gpt-image-2",
 	"auto",
 	"gpt-5",
@@ -10,9 +22,10 @@ var ModelList = []string{
 	"gpt-5-3",
 	"gpt-5-3-mini",
 	"gpt-5-mini",
-	"openai-local-search",
-	"openai-local-ppt",
-	"openai-local-psd",
+	ModelSearch,
+	LegacyModelSearch,
+	LegacyModelPPT,
+	LegacyModelPSD,
 }
 
 var ChannelName = "OpenAI-local"

@@ -68,12 +68,12 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 	case strings.HasPrefix(c.Request.URL.Path, "/v1/ppt/generations"):
 		info.Action = constant.TaskActionPPT
 		if info.OriginModelName == "" {
-			info.OriginModelName = "openai-local-ppt"
+			info.OriginModelName = baseopenailocal.ModelPPT
 		}
 	case strings.HasPrefix(c.Request.URL.Path, "/v1/psd/generations"):
 		info.Action = constant.TaskActionPSD
 		if info.OriginModelName == "" {
-			info.OriginModelName = "openai-local-psd"
+			info.OriginModelName = baseopenailocal.ModelPSD
 		}
 		if len(req.Base64Images) == 0 {
 			return service.TaskErrorWrapperLocal(fmt.Errorf("base64_images is required"), "invalid_request", http.StatusBadRequest)

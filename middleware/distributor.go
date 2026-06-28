@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	openailocalmodel "github.com/QuantumNous/new-api/relay/channel/openailocal"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -222,12 +223,12 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 		c.Set("platform", string(constant.TaskPlatformSuno))
 		c.Set("relay_mode", relayMode)
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/search") {
-		modelRequest.Model = "openai-local-search"
+		modelRequest.Model = openailocalmodel.ModelSearch
 		c.Set("relay_mode", relayconstant.RelayModeOpenAILocalSearch)
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/ppt/generations") {
-		modelRequest.Model = "openai-local-ppt"
+		modelRequest.Model = openailocalmodel.ModelPPT
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/psd/generations") {
-		modelRequest.Model = "openai-local-psd"
+		modelRequest.Model = openailocalmodel.ModelPSD
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/editable-file-tasks") {
 		shouldSelectChannel = false
 	} else if strings.Contains(c.Request.URL.Path, "/v1/videos/") && strings.HasSuffix(c.Request.URL.Path, "/remix") {
