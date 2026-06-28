@@ -231,16 +231,23 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 	}
 
 	task := model.InitTask(constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenAILocal)), info)
-	now := time.Now().Unix()
+	finishTime := time.Now()
+	startTime := common.GetContextKeyTime(c, constant.ContextKeyRequestStartTime)
+	if startTime.IsZero() && !info.StartTime.IsZero() {
+		startTime = info.StartTime
+	}
+	if startTime.IsZero() {
+		startTime = finishTime
+	}
 	task.Action = constant.TaskActionImageGeneration
 	if info.RelayMode == relayconstant.RelayModeImagesEdits {
 		task.Action = constant.TaskActionImageEdit
 	}
 	task.Status = model.TaskStatusSuccess
 	task.Progress = "100%"
-	task.SubmitTime = now
-	task.StartTime = now
-	task.FinishTime = now
+	task.SubmitTime = startTime.Unix()
+	task.StartTime = startTime.Unix()
+	task.FinishTime = finishTime.Unix()
 	task.Quota = info.PriceData.Quota
 	task.PrivateData.ResultURL = resultURL
 	task.SetData(taskData)

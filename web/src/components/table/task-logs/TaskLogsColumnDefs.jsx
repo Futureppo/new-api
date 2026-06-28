@@ -82,14 +82,16 @@ const renderTimestamp = (timestampInSeconds) => {
 };
 
 function renderDuration(submit_time, finishTime) {
-  if (!submit_time || !finishTime) return 'N/A';
+  if (!submit_time || !finishTime) return '-';
   const durationSec = finishTime - submit_time;
-  const color = durationSec > 60 ? 'red' : 'green';
+  if (durationSec < 0) return '-';
+  const color = durationSec > 60 ? 'red' : durationSec > 10 ? 'yellow' : 'green';
+  const durationText = durationSec === 0 ? '< 1 s' : `${durationSec} s`;
 
   // 返回带有样式的颜色标签
   return (
     <Tag color={color} shape='circle'>
-      {durationSec} s
+      {durationText}
     </Tag>
   );
 }
@@ -336,7 +338,8 @@ export const getTaskLogsColumns = ({
       title: t('花费时间'),
       dataIndex: 'finish_time',
       render: (finish, record) => {
-        return <>{finish ? renderDuration(record.submit_time, finish) : '-'}</>;
+        const start = record.start_time || record.submit_time;
+        return <>{finish ? renderDuration(start, finish) : '-'}</>;
       },
     },
     {
