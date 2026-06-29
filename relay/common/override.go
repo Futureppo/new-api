@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
 	"github.com/tidwall/gjson"
@@ -893,6 +894,9 @@ func applyOperations(jsonStr string, operations []ParamOperation, conditionConte
 				return "", parseErr
 			}
 			for _, headerName := range headerNames {
+				if model_setting.ShouldRemoveClaudeCodeBillingHeader(headerName) {
+					continue
+				}
 				if err = copyHeaderInContext(context, headerName, headerName, op.KeepOrigin); err != nil {
 					if errors.Is(err, errSourceHeaderNotFound) {
 						err = nil

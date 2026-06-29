@@ -3714,6 +3714,8 @@
     "Claude请求头追加": "Ajout des en-tetes de requete Claude",
     "Claude设置": "Paramètres Claude",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Adaptation de la pensée Claude BudgetTokens = MaxTokens * BudgetTokens pourcentage",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "Une fois activé, le x-anthropic-billing-header transmis par le client est filtré afin d'éviter d'affecter le cache Claude ; un Header Override explicite du canal peut toujours le rajouter.",
+    "移除 Claude Code 计费请求头": "Supprimer l'en-tête de facturation Claude Code",
     "Client ID": "ID client",
     "Client Secret": "Secret client",
     "Codex 渠道不支持批量创建": "Le canal Codex ne prend pas en charge la création par lot",

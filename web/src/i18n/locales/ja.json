@@ -3675,6 +3675,8 @@
     "Claude请求头追加": "Claudeリクエストヘッダーの追加",
     "Claude设置": "Claude設定",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Claude思考モード：BudgetTokens = MaxTokens * BudgetTokensの割合",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "有効にすると、クライアントから透過された x-anthropic-billing-header をフィルタリングして Claude キャッシュへの影響を防ぎます。チャネルの明示的な Header Override では再追加できます。",
+    "移除 Claude Code 计费请求头": "Claude Code 課金リクエストヘッダーを削除",
     "Client ID": "Client ID",
     "Client Secret": "Client Secret",
     "Codex 渠道不支持批量创建": "Codexチャネルはバッチ作成をサポートしていません",

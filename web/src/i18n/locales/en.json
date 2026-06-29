@@ -3805,6 +3805,8 @@
     "Claude请求头追加": "Claude request header append",
     "Claude设置": "Claude settings",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Claude thinking adaptation BudgetTokens = MaxTokens * BudgetTokens percentage",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "When enabled, client-passthrough x-anthropic-billing-header is filtered to avoid affecting Claude cache; explicit channel Header Override can still add it back.",
+    "移除 Claude Code 计费请求头": "Remove Claude Code billing header",
     "Client ID": "Client ID",
     "Client Secret": "Client Secret",
     "Codex 渠道不支持批量创建": "Codex channel does not support batch creation",

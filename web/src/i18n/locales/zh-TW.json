@@ -3700,6 +3700,8 @@
     "Claude请求头追加": "Claude請求頭追加",
     "Claude设置": "Claude設定",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Claude思考相容 BudgetTokens = MaxTokens * BudgetTokens 百分比",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "啟用後會過濾用戶端透傳的 x-anthropic-billing-header，避免影響 Claude 快取；渠道顯式 Header Override 仍可重新加入。",
+    "移除 Claude Code 计费请求头": "移除 Claude Code 計費請求頭",
     "Client ID": "Client ID",
     "Client Secret": "Client Secret",
     "Codex 渠道不支持批量创建": "",

@@ -19,7 +19,10 @@ type ClaudeSettings struct {
 	DefaultMaxTokens                      map[string]int                 `json:"default_max_tokens"`
 	ThinkingAdapterEnabled                bool                           `json:"thinking_adapter_enabled"`
 	ThinkingAdapterBudgetTokensPercentage float64                        `json:"thinking_adapter_budget_tokens_percentage"`
+	RemoveClaudeCodeBillingHeaderEnabled  bool                           `json:"remove_claude_code_billing_header_enabled"`
 }
+
+const ClaudeCodeBillingHeader = "x-anthropic-billing-header"
 
 // 默认配置
 var defaultClaudeSettings = ClaudeSettings{
@@ -29,6 +32,7 @@ var defaultClaudeSettings = ClaudeSettings{
 		"default": 8192,
 	},
 	ThinkingAdapterBudgetTokensPercentage: 0.8,
+	RemoveClaudeCodeBillingHeaderEnabled:  true,
 }
 
 // 全局实例
@@ -49,6 +53,9 @@ func GetClaudeSettings() *ClaudeSettings {
 }
 
 func (c *ClaudeSettings) WriteHeaders(originModel string, httpHeader *http.Header) {
+	if httpHeader == nil {
+		return
+	}
 	if headers, ok := c.HeadersSettings[originModel]; ok {
 		for headerKey, headerValues := range headers {
 			mergedValues := normalizeHeaderListValues(
@@ -60,6 +67,14 @@ func (c *ClaudeSettings) WriteHeaders(originModel string, httpHeader *http.Heade
 			httpHeader.Set(headerKey, strings.Join(mergedValues, ","))
 		}
 	}
+	if c.RemoveClaudeCodeBillingHeaderEnabled {
+		httpHeader.Del(ClaudeCodeBillingHeader)
+	}
+}
+
+func ShouldRemoveClaudeCodeBillingHeader(headerName string) bool {
+	return GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled &&
+		strings.EqualFold(strings.TrimSpace(headerName), ClaudeCodeBillingHeader)
 }
 
 func normalizeHeaderListValues(values []string) []string {

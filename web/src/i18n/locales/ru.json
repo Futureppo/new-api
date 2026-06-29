@@ -3738,6 +3738,8 @@
     "Claude请求头追加": "Добавление заголовков запроса Claude",
     "Claude设置": "Настройки Claude",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Адаптация мышления Claude BudgetTokens = MaxTokens * процент BudgetTokens",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "После включения заголовок x-anthropic-billing-header, переданный клиентом, будет фильтроваться, чтобы не влиять на кэш Claude; явный Header Override канала всё ещё может добавить его обратно.",
+    "移除 Claude Code 计费请求头": "Удалять заголовок биллинга Claude Code",
     "Client ID": "ID клиента",
     "Client Secret": "Секрет клиента",
     "Codex 渠道不支持批量创建": "Канал Codex не поддерживает пакетное создание",

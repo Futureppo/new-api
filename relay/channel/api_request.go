@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
@@ -118,6 +119,9 @@ func isHeaderPassthroughRuleKey(key string) bool {
 func shouldSkipPassthroughHeader(name string) bool {
 	name = strings.TrimSpace(name)
 	if name == "" {
+		return true
+	}
+	if model_setting.ShouldRemoveClaudeCodeBillingHeader(name) {
 		return true
 	}
 	lower := strings.ToLower(name)

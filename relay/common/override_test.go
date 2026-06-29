@@ -1390,6 +1390,107 @@ func TestApplyParamOverridePassHeadersSkipsMissingHeaders(t *testing.T) {
 	}
 }
 
+func TestApplyParamOverridePassHeadersSkipsClaudeCodeBillingHeader(t *testing.T) {
+	original := model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled
+	model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = original
+	})
+
+	info := &RelayInfo{
+		RequestHeaders: map[string]string{
+			"X-Anthropic-Billing-Header": "cache-buster",
+			"X-Trace-Id":                 "trace-123",
+		},
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]interface{}{
+				"operations": []interface{}{
+					map[string]interface{}{
+						"mode": "pass_headers",
+						"value": []interface{}{
+							"X-Anthropic-Billing-Header",
+							"X-Trace-Id",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := ApplyParamOverrideWithRelayInfo([]byte(`{"model":"claude-3-7-sonnet-20250219"}`), info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	if info.RuntimeHeadersOverride["x-trace-id"] != "trace-123" {
+		t.Fatalf("expected x-trace-id to be passed, got: %v", info.RuntimeHeadersOverride["x-trace-id"])
+	}
+	if _, exists := info.RuntimeHeadersOverride[model_setting.ClaudeCodeBillingHeader]; exists {
+		t.Fatalf("expected %s to be filtered from pass_headers", model_setting.ClaudeCodeBillingHeader)
+	}
+}
+
+func TestApplyParamOverridePassHeadersOnlyClaudeCodeBillingHeaderDoesNotError(t *testing.T) {
+	original := model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled
+	model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = original
+	})
+
+	info := &RelayInfo{
+		RequestHeaders: map[string]string{
+			"X-Anthropic-Billing-Header": "cache-buster",
+		},
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]interface{}{
+				"operations": []interface{}{
+					map[string]interface{}{
+						"mode":  "pass_headers",
+						"value": []interface{}{"X-Anthropic-Billing-Header"},
+					},
+				},
+			},
+		},
+	}
+
+	_, err := ApplyParamOverrideWithRelayInfo([]byte(`{"model":"claude-3-7-sonnet-20250219"}`), info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	if _, exists := info.RuntimeHeadersOverride[model_setting.ClaudeCodeBillingHeader]; exists {
+		t.Fatalf("expected %s to be filtered from pass_headers", model_setting.ClaudeCodeBillingHeader)
+	}
+}
+
+func TestApplyParamOverrideSetHeaderAllowsClaudeCodeBillingHeader(t *testing.T) {
+	original := model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled
+	model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = original
+	})
+
+	info := &RelayInfo{
+		ChannelMeta: &ChannelMeta{
+			ParamOverride: map[string]interface{}{
+				"operations": []interface{}{
+					map[string]interface{}{
+						"mode":  "set_header",
+						"path":  "X-Anthropic-Billing-Header",
+						"value": "explicit-billing",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := ApplyParamOverrideWithRelayInfo([]byte(`{"model":"claude-3-7-sonnet-20250219"}`), info)
+	if err != nil {
+		t.Fatalf("ApplyParamOverrideWithRelayInfo returned error: %v", err)
+	}
+	if got := info.RuntimeHeadersOverride[model_setting.ClaudeCodeBillingHeader]; got != "explicit-billing" {
+		t.Fatalf("expected explicit set_header to be preserved, got: %v", got)
+	}
+}
+
 func TestApplyParamOverrideCopyHeaderSkipsMissingSource(t *testing.T) {
 	input := []byte(`{"temperature":0.7}`)
 	override := map[string]interface{}{

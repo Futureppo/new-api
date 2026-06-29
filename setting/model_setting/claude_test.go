@@ -58,3 +58,38 @@ func TestClaudeSettingsWriteHeadersDeduplicatesAcrossCommaSeparatedAndRepeatedVa
 		t.Fatalf("expected deduplicated merged header %q, got %q", expected, got[0])
 	}
 }
+
+func TestClaudeSettingsWriteHeadersRemovesClaudeCodeBillingHeaderWhenEnabled(t *testing.T) {
+	settings := &ClaudeSettings{
+		RemoveClaudeCodeBillingHeaderEnabled: true,
+		HeadersSettings: map[string]map[string][]string{
+			"claude-3-7-sonnet-20250219": {
+				ClaudeCodeBillingHeader: {"configured-billing"},
+			},
+		},
+	}
+
+	headers := http.Header{}
+	headers.Set(ClaudeCodeBillingHeader, "client-billing")
+
+	settings.WriteHeaders("claude-3-7-sonnet-20250219", &headers)
+
+	if got := headers.Get(ClaudeCodeBillingHeader); got != "" {
+		t.Fatalf("expected %s to be removed, got %q", ClaudeCodeBillingHeader, got)
+	}
+}
+
+func TestClaudeSettingsWriteHeadersKeepsClaudeCodeBillingHeaderWhenDisabled(t *testing.T) {
+	settings := &ClaudeSettings{
+		RemoveClaudeCodeBillingHeaderEnabled: false,
+	}
+
+	headers := http.Header{}
+	headers.Set(ClaudeCodeBillingHeader, "client-billing")
+
+	settings.WriteHeaders("claude-3-7-sonnet-20250219", &headers)
+
+	if got := headers.Get(ClaudeCodeBillingHeader); got != "client-billing" {
+		t.Fatalf("expected %s to be preserved, got %q", ClaudeCodeBillingHeader, got)
+	}
+}

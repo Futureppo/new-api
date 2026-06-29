@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -136,6 +137,65 @@ func TestProcessHeaderOverride_PassthroughSkipsAcceptEncoding(t *testing.T) {
 
 	_, hasAcceptEncoding := headers["accept-encoding"]
 	require.False(t, hasAcceptEncoding)
+}
+
+func TestProcessHeaderOverride_PassthroughSkipsClaudeCodeBillingHeader(t *testing.T) {
+	original := model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled
+	model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = original
+	})
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx.Request.Header.Set("X-Trace-Id", "trace-123")
+	ctx.Request.Header.Set("X-Anthropic-Billing-Header", "cache-buster")
+
+	info := &relaycommon.RelayInfo{
+		IsChannelTest: false,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			HeadersOverride: map[string]any{
+				"*": "",
+			},
+		},
+	}
+
+	headers, err := processHeaderOverride(info, ctx)
+	require.NoError(t, err)
+	require.Equal(t, "trace-123", headers["x-trace-id"])
+
+	_, hasBillingHeader := headers[model_setting.ClaudeCodeBillingHeader]
+	require.False(t, hasBillingHeader)
+}
+
+func TestProcessHeaderOverride_ExplicitOverrideCanSetClaudeCodeBillingHeader(t *testing.T) {
+	original := model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled
+	model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = true
+	t.Cleanup(func() {
+		model_setting.GetClaudeSettings().RemoveClaudeCodeBillingHeaderEnabled = original
+	})
+
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	ctx.Request.Header.Set("X-Anthropic-Billing-Header", "cache-buster")
+
+	info := &relaycommon.RelayInfo{
+		IsChannelTest: false,
+		ChannelMeta: &relaycommon.ChannelMeta{
+			HeadersOverride: map[string]any{
+				"*":                          "",
+				"X-Anthropic-Billing-Header": "explicit-billing",
+			},
+		},
+	}
+
+	headers, err := processHeaderOverride(info, ctx)
+	require.NoError(t, err)
+	require.Equal(t, "explicit-billing", headers[model_setting.ClaudeCodeBillingHeader])
 }
 
 func TestProcessHeaderOverride_PassHeadersTemplateSetsRuntimeHeaders(t *testing.T) {

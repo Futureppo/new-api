@@ -56,18 +56,21 @@ const CLAUDE_DEFAULT_MAX_TOKENS = {
   'claude-3-7-sonnet-20250219-thinking': 8192,
 };
 
+const defaultClaudeSettingInputs = {
+  'claude.model_headers_settings': '',
+  'claude.thinking_adapter_enabled': true,
+  'claude.default_max_tokens': '',
+  'claude.thinking_adapter_budget_tokens_percentage': 0.8,
+  'claude.remove_claude_code_billing_header_enabled': true,
+};
+
 export default function SettingClaudeModel(props) {
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState(false);
-  const [inputs, setInputs] = useState({
-    'claude.model_headers_settings': '',
-    'claude.thinking_adapter_enabled': true,
-    'claude.default_max_tokens': '',
-    'claude.thinking_adapter_budget_tokens_percentage': 0.8,
-  });
+  const [inputs, setInputs] = useState(defaultClaudeSettingInputs);
   const refForm = useRef();
-  const [inputsRow, setInputsRow] = useState(inputs);
+  const [inputsRow, setInputsRow] = useState(defaultClaudeSettingInputs);
 
   function onSubmit() {
     const updateArray = compareObjects(inputs, inputsRow);
@@ -102,10 +105,11 @@ export default function SettingClaudeModel(props) {
 
   useEffect(() => {
     const currentInputs = {};
-    for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
-      }
+    for (let key of Object.keys(defaultClaudeSettingInputs)) {
+      currentInputs[key] =
+        props.options[key] !== undefined
+          ? props.options[key]
+          : defaultClaudeSettingInputs[key];
     }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
@@ -121,6 +125,23 @@ export default function SettingClaudeModel(props) {
           style={{ marginBottom: 15 }}
         >
           <Form.Section text={t('Claude设置')}>
+            <Row>
+              <Col span={16}>
+                <Form.Switch
+                  label={t('移除 Claude Code 计费请求头')}
+                  field={'claude.remove_claude_code_billing_header_enabled'}
+                  extraText={t(
+                    '开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。',
+                  )}
+                  onChange={(value) =>
+                    setInputs({
+                      ...inputs,
+                      'claude.remove_claude_code_billing_header_enabled': value,
+                    })
+                  }
+                />
+              </Col>
+            </Row>
             <Row>
               <Col xs={24} sm={12} md={8} lg={8} xl={8}>
                 <Form.TextArea

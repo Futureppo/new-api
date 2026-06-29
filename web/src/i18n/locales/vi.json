@@ -4235,6 +4235,8 @@
     "Claude请求头追加": "Thêm tiêu đề yêu cầu Claude",
     "Claude设置": "Cài đặt Claude",
     "Claude思考适配 BudgetTokens = MaxTokens * BudgetTokens 百分比": "Thích ứng tư duy Claude BudgetTokens = MaxTokens * Tỷ lệ phần trăm BudgetTokens",
+    "开启后会过滤客户端透传的 x-anthropic-billing-header，避免影响 Claude 缓存；渠道显式 Header Override 仍可重新添加。": "Khi bật, x-anthropic-billing-header do client truyền qua sẽ bị lọc để tránh ảnh hưởng đến bộ nhớ đệm Claude; Header Override rõ ràng của kênh vẫn có thể thêm lại.",
+    "移除 Claude Code 计费请求头": "Xóa tiêu đề tính phí Claude Code",
     "Client ID": "Client ID",
     "Client Secret": "Client Secret",
     "Codex 渠道不支持批量创建": "Kênh Codex không hỗ trợ tạo hàng loạt",
