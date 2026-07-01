@@ -193,6 +193,7 @@ func BanUser(userId int, operatorId int, operatorRole int, reason string) error 
 	if err := user.Update(false); err != nil {
 		return err
 	}
+	_ = model.InvalidateUserCache(user.Id)
 	_ = model.InvalidateUserTokensCache(user.Id)
 	audit(operatorId, "enhancements.users", "ban", map[string]interface{}{
 		"target_user_id": user.Id,
@@ -214,6 +215,7 @@ func UnbanUser(userId int, operatorId int, operatorRole int) error {
 	if err := user.Update(false); err != nil {
 		return err
 	}
+	_ = model.InvalidateUserCache(user.Id)
 	_ = model.InvalidateUserTokensCache(user.Id)
 	audit(operatorId, "enhancements.users", "unban", map[string]interface{}{
 		"target_user_id": user.Id,
