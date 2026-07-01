@@ -191,7 +191,10 @@ const FIELD_LABELS = {
   used_user_id: '使用用户 ID',
   used_username: '兑换用户名',
   inviter_id: '邀请人 ID',
+  aff_code: '邀请码',
   aff_count: '邀请数',
+  redemption_count: '兑换码数',
+  redemption_codes: '兑换码',
   linux_do_id: 'LinuxDO ID',
   model_name: '模型',
   models: '模型',
@@ -299,6 +302,18 @@ const TOKEN_STATUS_META = {
   [TOKEN_STATUS.EXHAUSTED]: { color: 'grey', text: '已耗尽' },
 };
 
+const USER_STATUS = {
+  ENABLED: 1,
+  DISABLED: 2,
+  DELETED: 3,
+};
+
+const USER_STATUS_TEXT = {
+  [USER_STATUS.ENABLED]: '已启用',
+  [USER_STATUS.DISABLED]: '已禁用',
+  [USER_STATUS.DELETED]: '已注销',
+};
+
 const USER_PREVIEW_KEYS = [
   'id',
   'username',
@@ -312,8 +327,11 @@ const USER_PREVIEW_KEYS = [
   'today_used_tokens',
   'request_count',
   'group',
+  'aff_code',
   'inviter_id',
   'aff_count',
+  'redemption_count',
+  'redemption_codes',
   'linux_do_id',
 ];
 
@@ -504,6 +522,22 @@ function formatValue(value, key = '', t = (text) => text) {
   return String(value);
 }
 
+function hasDeletedAt(record = {}) {
+  const deletedAt = record?.DeletedAt ?? record?.deleted_at;
+  if (!deletedAt) return false;
+  if (typeof deletedAt === 'object' && 'Valid' in deletedAt) {
+    return Boolean(deletedAt.Valid);
+  }
+  return true;
+}
+
+function formatUserStatus(value, t = (text) => text, record = {}) {
+  if (hasDeletedAt(record)) {
+    return t('已注销');
+  }
+  return t(USER_STATUS_TEXT[value] || '未知状态');
+}
+
 function formatGitHubAgeBanUserIDRange(start, end, t = (text) => text) {
   if (start > 0 && end > 0) {
     return `${formatNumber(start)} - ${formatNumber(end)}`;
@@ -552,9 +586,15 @@ function copyableCell(content, value, t, className = '') {
   );
 }
 
-function tableTextValue(value, key = '', t = (text) => text, formatter) {
+function tableTextValue(
+  value,
+  key = '',
+  t = (text) => text,
+  formatter,
+  record,
+) {
   const formatted = formatter
-    ? formatter(value, key, t)
+    ? formatter(value, key, t, record)
     : formatValue(value, key, t);
   if (React.isValidElement(formatted)) {
     return value === null || typeof value === 'undefined' ? '' : String(value);
@@ -683,13 +723,13 @@ function enhanceTableColumns(columns, options = {}) {
       filteredValue: activeFilters[key] ? [activeFilters[key]] : [],
       renderFilterDropdown: renderTableFilterDropdown(t),
       onFilter: (filteredValue, record) =>
-        tableTextValue(record?.[key], key, t, valueFormatter)
+        tableTextValue(record?.[key], key, t, valueFormatter, record)
           .toLowerCase()
           .includes(String(filteredValue || '').toLowerCase()),
       render: (value, record, index, renderOptions) => {
         const rendered = column.render
           ? column.render(value, record, index, renderOptions)
-          : tableTextValue(value, key, t, valueFormatter);
+          : tableTextValue(value, key, t, valueFormatter, record);
         if (!copyable || column.copyable === false) {
           return rendered;
         }
@@ -699,7 +739,7 @@ function enhanceTableColumns(columns, options = {}) {
         const copyValue =
           typeof column.copyValue === 'function'
             ? column.copyValue(value, record)
-            : tableTextValue(value, key, t, valueFormatter);
+            : tableTextValue(value, key, t, valueFormatter, record);
         return copyableCell(rendered, copyValue, t, column.copyClassName || '');
       },
     };
@@ -785,7 +825,7 @@ function DataPreview({
           .trim()
           .toLowerCase();
         if (!text) return true;
-        return tableTextValue(row?.[key], key, t, renderValue)
+        return tableTextValue(row?.[key], key, t, renderValue, row)
           .toLowerCase()
           .includes(text);
       }),
@@ -818,8 +858,10 @@ function DataPreview({
     title: formatFieldLabel(key, t),
     dataIndex: key,
     key,
-    render: (value) => (
-      <span className='break-words text-sm'>{renderValue(value, key, t)}</span>
+    render: (value, record) => (
+      <span className='break-words text-sm'>
+        {renderValue(value, key, t, record)}
+      </span>
     ),
   }));
   const tableColumns = enhanceTableColumns(columns, {
@@ -1262,7 +1304,7 @@ function RedemptionsPanel({ data }) {
           </Select>
           <Input
             value={filters.keyword}
-            placeholder={t('搜索兑换用户名或用户 ID')}
+            placeholder={t('搜索兑换码、名称、兑换用户名或用户 ID')}
             onChange={(value) =>
               setFilters((prev) => ({ ...prev, keyword: value }))
             }
@@ -1674,7 +1716,10 @@ function UsersPanel({ data }) {
     }
   };
 
-  const formatUserValue = (value, key, t) => {
+  const formatUserValue = (value, key, t, record) => {
+    if (key === 'status') {
+      return formatUserStatus(value, t, record);
+    }
     if (key === 'quota' || key === 'used_quota') {
       return formatQuotaAsAmount(value, currency);
     }

@@ -99,6 +99,7 @@ func userToSummary(user model.User) UserSummary {
 		RequestCount:  user.RequestCount,
 		Group:         user.Group,
 		InviterId:     user.InviterId,
+		AffCode:       user.AffCode,
 		AffCount:      user.AffCount,
 		LinuxDOId:     user.LinuxDOId,
 	}

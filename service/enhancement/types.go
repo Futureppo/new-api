@@ -106,7 +106,10 @@ type UserSummary struct {
 	TodayUsedTokens   int64  `json:"today_used_tokens"`
 	Group             string `json:"group"`
 	InviterId         int    `json:"inviter_id"`
+	AffCode           string `json:"aff_code,omitempty"`
 	AffCount          int    `json:"aff_count"`
+	RedemptionCount   int    `json:"redemption_count"`
+	RedemptionCodes   string `json:"redemption_codes,omitempty"`
 	LinuxDOId         string `json:"linux_do_id,omitempty"`
 }
 

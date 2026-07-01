@@ -418,6 +418,46 @@ func attachTodayUsage(items []UserSummary) error {
 	return nil
 }
 
+func attachUserRedemptions(items []UserSummary) error {
+	userIDs := make([]int, 0, len(items))
+	indexByUserID := make(map[int]int, len(items))
+	for index, item := range items {
+		userIDs = append(userIDs, item.Id)
+		indexByUserID[item.Id] = index
+	}
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	var redemptions []model.Redemption
+	if err := model.DB.Model(&model.Redemption{}).
+		Where("used_user_id IN ?", userIDs).
+		Order("redeemed_time DESC, id DESC").
+		Find(&redemptions).Error; err != nil {
+		return err
+	}
+
+	codesByUserID := make(map[int][]string, len(items))
+	for _, redemption := range redemptions {
+		if redemption.UsedUserId <= 0 {
+			continue
+		}
+		codesByUserID[redemption.UsedUserId] = append(
+			codesByUserID[redemption.UsedUserId],
+			redemption.Key,
+		)
+	}
+	for userID, codes := range codesByUserID {
+		index, ok := indexByUserID[userID]
+		if !ok {
+			continue
+		}
+		items[index].RedemptionCount = len(codes)
+		items[index].RedemptionCodes = strings.Join(codes, ", ")
+	}
+	return nil
+}
+
 func userMatchesQuery(item UserSummary, query ListQuery) bool {
 	if !matchesKeyword(query.Keyword,
 		strconv.Itoa(item.Id),
@@ -435,7 +475,10 @@ func userMatchesQuery(item UserSummary, query ListQuery) bool {
 		strconv.FormatInt(item.TodayUsedTokens, 10),
 		item.Group,
 		strconv.Itoa(item.InviterId),
+		item.AffCode,
 		strconv.Itoa(item.AffCount),
+		strconv.Itoa(item.RedemptionCount),
+		item.RedemptionCodes,
 		item.LinuxDOId,
 	) {
 		return false
@@ -456,7 +499,10 @@ func userMatchesQuery(item UserSummary, query ListQuery) bool {
 		"today_used_tokens":   matchInt(item.TodayUsedTokens),
 		"group":               matchText(item.Group),
 		"inviter_id":          matchInt(int64(item.InviterId)),
+		"aff_code":            matchText(item.AffCode),
 		"aff_count":           matchInt(int64(item.AffCount)),
+		"redemption_count":    matchInt(int64(item.RedemptionCount)),
+		"redemption_codes":    matchText(item.RedemptionCodes),
 		"linux_do_id":         matchText(item.LinuxDOId),
 	})
 }
@@ -496,8 +542,14 @@ func sortUserSummaries(items []UserSummary, sortKey string, order string) {
 			result = compareString(left.Group, right.Group, desc)
 		case "inviter_id":
 			result = compareInt(int64(left.InviterId), int64(right.InviterId), desc)
+		case "aff_code":
+			result = compareString(left.AffCode, right.AffCode, desc)
 		case "aff_count":
 			result = compareInt(int64(left.AffCount), int64(right.AffCount), desc)
+		case "redemption_count":
+			result = compareInt(int64(left.RedemptionCount), int64(right.RedemptionCount), desc)
+		case "redemption_codes":
+			result = compareString(left.RedemptionCodes, right.RedemptionCodes, desc)
 		case "linux_do_id":
 			result = compareString(left.LinuxDOId, right.LinuxDOId, desc)
 		case "id", "":
@@ -521,6 +573,9 @@ func ListUsers(query ListQuery) (PageResult[UserSummary], error) {
 		items = append(items, userToSummary(user))
 	}
 	if err := attachTodayUsage(items); err != nil {
+		return PageResult[UserSummary]{}, err
+	}
+	if err := attachUserRedemptions(items); err != nil {
 		return PageResult[UserSummary]{}, err
 	}
 	filtered := make([]UserSummary, 0, len(items))
@@ -549,10 +604,15 @@ func UserActivityStats(start int64, end int64) (map[string]interface{}, error) {
 	if err := model.DB.Model(&model.User{}).Where("status = ?", common.UserStatusDisabled).Count(&disabledUsers).Error; err != nil {
 		return nil, err
 	}
+	var inviteCount int64
+	if err := model.DB.Model(&model.User{}).Select("COALESCE(SUM(aff_count), 0)").Scan(&inviteCount).Error; err != nil {
+		return nil, err
+	}
 	return map[string]interface{}{
 		"total_users":    totalUsers,
 		"active_users":   activeUsers,
 		"disabled_users": disabledUsers,
+		"invite_count":   inviteCount,
 	}, nil
 }
 

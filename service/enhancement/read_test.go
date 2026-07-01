@@ -138,6 +138,7 @@ func TestEnhancementSummariesRevealFieldsInsideEnhancementAPI(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, users.Items, 1)
 	require.Equal(t, "reveal@example.com", users.Items[0].Email)
+	require.Equal(t, "aff_reveal", users.Items[0].AffCode)
 	require.Equal(t, "linux_reveal", users.Items[0].LinuxDOId)
 	require.NotContains(t, users.Items[0].Email, "***masked***")
 	require.NotContains(t, users.Items[0].LinuxDOId, "***masked***")
@@ -164,8 +165,8 @@ func TestEnhancementListsFilterAndSortBeforePagination(t *testing.T) {
 		{UserId: beta.Id, Name: "beta-token", Key: "sk-beta-key", Status: common.TokenStatusEnabled, Group: "vip", UsedQuota: 90},
 	}).Error)
 	require.NoError(t, model.DB.Create(&[]model.Redemption{
-		{UserId: alpha.Id, Key: "alpha-redemption", Status: common.RedemptionCodeStatusEnabled, Name: "promo-alpha", Quota: 100},
-		{UserId: beta.Id, Key: "beta-redemption", Status: common.RedemptionCodeStatusEnabled, Name: "promo-beta", Quota: 300},
+		{UserId: alpha.Id, Key: "alpha-redemption", Status: common.RedemptionCodeStatusUsed, Name: "promo-alpha", Quota: 100, UsedUserId: alpha.Id},
+		{UserId: beta.Id, Key: "beta-redemption", Status: common.RedemptionCodeStatusUsed, Name: "promo-beta", Quota: 300, UsedUserId: beta.Id},
 	}).Error)
 
 	users, err := ListUsers(ListQuery{
@@ -178,6 +179,17 @@ func TestEnhancementListsFilterAndSortBeforePagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(1), users.Total)
 	require.Equal(t, "beta", users.Items[0].Username)
+
+	users, err = ListUsers(ListQuery{
+		Page:     1,
+		PageSize: 20,
+		Keyword:  "alpha-redemption",
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(1), users.Total)
+	require.Equal(t, "alpha", users.Items[0].Username)
+	require.Equal(t, 1, users.Items[0].RedemptionCount)
+	require.Contains(t, users.Items[0].RedemptionCodes, "alpha-redemption")
 
 	tokens, err := ListTokens(ListQuery{
 		Page:     1,
