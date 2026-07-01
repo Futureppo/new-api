@@ -3499,10 +3499,6 @@ function ModelStatusPanel({ data }) {
   const [yellowThreshold, setYellowThreshold] = useState(
     getModelStatusThreshold(data?.config, 'yellow_threshold', 80),
   );
-  const [statusList, setStatusList] = useState(EMPTY_PAGE);
-  const [statusListQuery, setStatusListQuery] = useState(DEFAULT_TABLE_QUERY);
-  const [statusListPageSize, setStatusListPageSize] = useState(20);
-  const [statusListLoading, setStatusListLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const publicUrl = getModelStatusPublicUrl(config);
 
@@ -3540,38 +3536,9 @@ function ModelStatusPanel({ data }) {
     }
   };
 
-  const loadStatusList = async (
-    page = 1,
-    size = statusListPageSize,
-    nextQuery = statusListQuery,
-    nextWindow = windowValue,
-  ) => {
-    setStatusListLoading(true);
-    try {
-      const params = new URLSearchParams({
-        p: String(page),
-        page_size: String(size),
-        window: nextWindow,
-      });
-      appendTableQueryParams(params, nextQuery);
-      const nextList = await API.get(
-        `/api/enhancements/model-status/status/all?${params.toString()}`,
-      ).then(unwrap);
-      setStatusList(nextList || { items: [], total: 0, page, page_size: size });
-    } catch (error) {
-      showError(error.message || error);
-    } finally {
-      setStatusListLoading(false);
-    }
-  };
-
   useEffect(() => {
     syncConfig(data?.config || {});
   }, [data, syncConfig]);
-
-  useEffect(() => {
-    loadStatusList(1, statusListPageSize, statusListQuery, windowValue);
-  }, []);
 
   const handleSaveSettings = async () => {
     setSaving(true);
@@ -3732,10 +3699,7 @@ function ModelStatusPanel({ data }) {
               <Text type='secondary'>{t('时间范围')}</Text>
               <ModelStatusWindowSelect
                 value={windowValue}
-                onChange={(value) => {
-                  setWindowValue(value);
-                  loadStatusList(1, statusListPageSize, statusListQuery, value);
-                }}
+                onChange={setWindowValue}
                 className='w-full'
               />
             </label>
@@ -3816,55 +3780,6 @@ function ModelStatusPanel({ data }) {
             </Space>
           </div>
         </div>
-      </Card>
-      <Card title={t('模型状态数据')} className='!rounded-lg'>
-        <DataPreview
-          data={statusList}
-          limit={null}
-          keys={[
-            'group',
-            'model_name',
-            'current_status',
-            'total_requests',
-            'success_count',
-            'error_count',
-            'success_rate',
-            'quota',
-            'avg_use_time',
-            'last_request_at',
-          ]}
-          valueFormatter={(value, key, translate) => {
-            if (key === 'success_rate') return formatStatusPercent(value);
-            if (key === 'quota') return formatDisplayAmount(value);
-            if (key === 'last_request_at')
-              return formatValue(value, key, translate);
-            return formatValue(value, key, translate);
-          }}
-          loading={statusListLoading}
-          tableQuery={statusListQuery}
-          onTableQueryChange={(nextQuery) => {
-            setStatusListQuery(nextQuery);
-            loadStatusList(1, statusListPageSize, nextQuery, windowValue);
-          }}
-          pagination={{
-            currentPage: statusList?.page || 1,
-            pageSize: statusListPageSize,
-            total: statusList?.total || 0,
-            showSizeChanger: true,
-            pageSizeOptions: [10, 20, 50, 100],
-            onPageChange: (page) =>
-              loadStatusList(
-                page,
-                statusListPageSize,
-                statusListQuery,
-                windowValue,
-              ),
-            onPageSizeChange: (size) => {
-              setStatusListPageSize(size);
-              loadStatusList(1, size, statusListQuery, windowValue);
-            },
-          }}
-        />
       </Card>
     </div>
   );
