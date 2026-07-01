@@ -69,6 +69,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		tokens.GET("/statistics", enhancementTokenStats)
 		tokens.GET("/groups", enhancementTokenGroups)
 		tokens.PUT("/:token_id", enhancementUpdateToken)
+		tokens.DELETE("/:token_id", enhancementDeleteToken)
 	}
 
 	risk := r.Group("/risk")
@@ -482,6 +483,17 @@ func enhancementUpdateToken(c *gin.Context) {
 	operatorId, _ := operator(c)
 	data, err := enhancement.UpdateToken(tokenId, req, operatorId)
 	respondPublic(c, data, err)
+}
+
+func enhancementDeleteToken(c *gin.Context) {
+	tokenId, err := pathInt(c, "token_id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	err = enhancement.DeleteToken(tokenId, operatorId)
+	respondPublic(c, gin.H{"deleted": true}, err)
 }
 
 func enhancementTokenStats(c *gin.Context) {

@@ -313,6 +313,24 @@ func DisableToken(tokenId int, operatorId int) error {
 	return nil
 }
 
+func DeleteToken(tokenId int, operatorId int) error {
+	if tokenId <= 0 {
+		return errors.New("invalid token id")
+	}
+	var token model.Token
+	if err := model.DB.Where("id = ?", tokenId).First(&token).Error; err != nil {
+		return err
+	}
+	if err := token.Delete(); err != nil {
+		return err
+	}
+	audit(operatorId, "enhancements.tokens", "delete", map[string]interface{}{
+		"token_id": token.Id,
+		"user_id":  token.UserId,
+	})
+	return nil
+}
+
 func EnableAllRecordIPLog(operatorId int) (map[string]interface{}, error) {
 	var users []struct {
 		Id      int    `gorm:"column:id"`

@@ -214,6 +214,40 @@ func TestEnhancementListsFilterAndSortBeforePagination(t *testing.T) {
 	require.Equal(t, "promo-alpha", redemptions.Items[0].Name)
 }
 
+func TestDeleteTokenRemovesToken(t *testing.T) {
+	setupEnhancementListTestDB(t)
+	user := seedEnhancementUser(t, "delete-token-user", 100, 10, "default")
+	token := model.Token{
+		UserId:      user.Id,
+		Name:        "delete-token",
+		Key:         "sk-delete-token-key",
+		Status:      common.TokenStatusEnabled,
+		Group:       "default",
+		RemainQuota: 100,
+	}
+	require.NoError(t, model.DB.Create(&token).Error)
+
+	require.NoError(t, DeleteToken(token.Id, 999))
+
+	var fetched model.Token
+	err := model.DB.First(&fetched, "id = ?", token.Id).Error
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+func TestDeleteTokenRejectsInvalidID(t *testing.T) {
+	setupEnhancementListTestDB(t)
+
+	require.Error(t, DeleteToken(0, 999))
+	require.Error(t, DeleteToken(-1, 999))
+}
+
+func TestDeleteTokenReturnsErrorForMissingToken(t *testing.T) {
+	setupEnhancementListTestDB(t)
+
+	err := DeleteToken(12345, 999)
+	require.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
 func TestEnhancementAggregateListsFilterBeforePagination(t *testing.T) {
 	db := setupEnhancementListTestDB(t)
 	alpha := seedEnhancementUser(t, "risk-alpha", 100, 10, "default")

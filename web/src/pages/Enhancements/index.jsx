@@ -61,6 +61,7 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Trash2,
   UserCog,
   X,
 } from 'lucide-react';
@@ -1971,6 +1972,29 @@ function TokensPanel({ data }) {
     }
   };
 
+  const deleteToken = (record) => {
+    if (!record?.id) return;
+    Modal.confirm({
+      title: t('确认删除令牌'),
+      content: t('删除后该 Key 将立即失效，此操作不可撤销。'),
+      okText: t('删除'),
+      cancelText: t('取消'),
+      okButtonProps: { type: 'danger' },
+      onOk: async () => {
+        try {
+          await API.delete(`/api/enhancements/tokens/${record.id}`);
+          showSuccess(t('删除成功'));
+          await Promise.all([
+            loadStatistics(),
+            loadTokens(list?.page || 1, pageSize),
+          ]);
+        } catch (error) {
+          showError(error.message || error);
+        }
+      },
+    });
+  };
+
   const setTokenExpiration = (months, days, hours) => {
     if (months === 0 && days === 0 && hours === 0) {
       patchEditForm({ expired_time: -1 });
@@ -2068,15 +2092,25 @@ function TokensPanel({ data }) {
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 110,
+      width: 170,
       render: (_, record) => (
-        <Button
-          size='small'
-          type='primary'
-          onClick={() => openEditToken(record)}
-        >
-          {t('编辑')}
-        </Button>
+        <Space>
+          <Button
+            size='small'
+            type='primary'
+            onClick={() => openEditToken(record)}
+          >
+            {t('编辑')}
+          </Button>
+          <Button
+            size='small'
+            type='danger'
+            icon={<Trash2 size={14} />}
+            onClick={() => deleteToken(record)}
+          >
+            {t('删除')}
+          </Button>
+        </Space>
       ),
     },
   ];
