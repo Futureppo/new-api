@@ -378,12 +378,117 @@ func EnableAllRecordIPLog(operatorId int) (map[string]interface{}, error) {
 	}, nil
 }
 
-func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operatorRole int, reason string) (map[string]interface{}, error) {
+func normalizeRiskIPBanTargets(targets []string) ([]string, error) {
+	if len(targets) == 0 {
+		return nil, errors.New("targets cannot be empty")
+	}
+	if len(targets) > MaxBatchOperation {
+		return nil, fmt.Errorf("targets exceeds limit %d", MaxBatchOperation)
+	}
+	seen := make(map[string]struct{}, len(targets))
+	normalizedTargets := make([]string, 0, len(targets))
+	for _, target := range targets {
+		normalized, err := model.NormalizeIPBanTarget(target)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		normalizedTargets = append(normalizedTargets, normalized)
+	}
+	if len(normalizedTargets) == 0 {
+		return nil, errors.New("targets cannot be empty")
+	}
+	return normalizedTargets, nil
+}
+
+func CreateRiskIPBans(req RiskIPBanRequest, operatorId int) (map[string]interface{}, error) {
+	targets, err := normalizeRiskIPBanTargets(req.Targets)
+	if err != nil {
+		return nil, err
+	}
+	reason := strings.TrimSpace(req.Reason)
+	if reason == "" {
+		reason = "risk ip ban"
+	}
+	if len([]rune(reason)) > 255 {
+		return nil, errors.New("reason is too long")
+	}
+
+	created := make([]*model.IPBan, 0, len(targets))
+	skipped := make([]string, 0)
+	for _, target := range targets {
+		if _, err := model.GetIPBanByTarget(target); err == nil {
+			skipped = append(skipped, target)
+			continue
+		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+
+		ban := &model.IPBan{
+			Target:      target,
+			Reason:      reason,
+			ExpiresAt:   0,
+			AutoBanUser: true,
+			CreatedBy:   operatorId,
+		}
+		if err := model.CreateIPBan(ban); err != nil {
+			return nil, err
+		}
+		created = append(created, ban)
+	}
+	if len(created) > 0 {
+		model.InitIPBanCache()
+	}
+	audit(operatorId, "enhancements.risk", "create_ip_bans", map[string]interface{}{
+		"targets": len(targets),
+		"created": len(created),
+		"skipped": len(skipped),
+	})
+	return map[string]interface{}{
+		"targets":         targets,
+		"created":         len(created),
+		"skipped":         len(skipped),
+		"created_items":   created,
+		"skipped_targets": skipped,
+	}, nil
+}
+
+func selectedUserIDSet(userIds *[]int) (map[int]struct{}, bool, error) {
+	if userIds == nil {
+		return nil, false, nil
+	}
+	if len(*userIds) == 0 {
+		return nil, true, errors.New("user_ids cannot be empty")
+	}
+	if len(*userIds) > MaxBatchOperation {
+		return nil, true, fmt.Errorf("user_ids exceeds limit %d", MaxBatchOperation)
+	}
+	set := make(map[int]struct{}, len(*userIds))
+	for _, id := range *userIds {
+		if id <= 0 {
+			continue
+		}
+		set[id] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil, true, errors.New("user_ids cannot be empty")
+	}
+	return set, true, nil
+}
+
+func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operatorRole int, reason string, userIds *[]int) (map[string]interface{}, error) {
 	ip = strings.TrimSpace(ip)
 	if ip == "" {
 		return nil, errors.New("ip cannot be empty")
 	}
 	query = normalizeIPRiskQuery(query)
+	selectedIDs, hasSelectedIDs, err := selectedUserIDSet(userIds)
+	if err != nil {
+		return nil, err
+	}
 	rows, err := listIPRiskLogs(query.Start, query.End)
 	if err != nil {
 		return nil, err
@@ -393,6 +498,11 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 	for _, row := range rows {
 		if row.IP != ip || row.UserId <= 0 || row.TokenId <= 0 {
 			continue
+		}
+		if hasSelectedIDs {
+			if _, ok := selectedIDs[row.UserId]; !ok {
+				continue
+			}
 		}
 		if user, ok := usersByID[row.UserId]; ok {
 			user.RequestCount++
@@ -410,6 +520,9 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 
 	users := sortedIPRiskUsers(usersByID)
 	if len(users) == 0 {
+		if hasSelectedIDs {
+			return nil, errors.New("no selected users found for this ip in the selected window")
+		}
 		return nil, errors.New("no users found for this ip in the selected window")
 	}
 	if len(users) > MaxBatchOperation {
@@ -435,12 +548,13 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 	}
 
 	audit(operatorId, "enhancements.risk", "ban_shared_ip_users", map[string]interface{}{
-		"ip":      ip,
-		"total":   len(users),
-		"success": success,
-		"fail":    len(failures),
-		"start":   query.Start,
-		"end":     query.End,
+		"ip":       ip,
+		"total":    len(users),
+		"success":  success,
+		"fail":     len(failures),
+		"start":    query.Start,
+		"end":      query.End,
+		"selected": hasSelectedIDs,
 	})
 	return map[string]interface{}{
 		"ip":          ip,

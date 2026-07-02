@@ -287,7 +287,14 @@ type BatchIDsRequest struct {
 }
 
 type BanUserRequest struct {
-	Reason string `json:"reason"`
+	Reason  string `json:"reason"`
+	UserIds *[]int `json:"user_ids,omitempty"`
+}
+
+type RiskIPBanRequest struct {
+	Targets         []string `json:"targets"`
+	Reason          string   `json:"reason"`
+	ConfirmSelfLock bool     `json:"confirm_self_lock"`
 }
 
 type UpdateTokenRequest struct {

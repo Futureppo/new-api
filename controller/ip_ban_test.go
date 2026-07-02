@@ -87,3 +87,84 @@ func TestAddIPBanForcesTemporaryAutoBanUserOff(t *testing.T) {
 	require.NoError(t, db.First(&ban, "target = ?", "203.0.113.10").Error)
 	require.False(t, ban.AutoBanUser)
 }
+
+func setupRiskIPBanControllerTestDB(t *testing.T) *gorm.DB {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	model.DB = db
+	model.LOG_DB = db
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		model.InitIPBanCache()
+	})
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.IPBan{}, &model.Log{}))
+	return db
+}
+
+func TestEnhancementCreateRiskIPBansRequiresSelfLockConfirmation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupRiskIPBanControllerTestDB(t)
+	body, err := common.Marshal(map[string]interface{}{
+		"targets": []string{"203.0.113.10"},
+		"reason":  "risk self lock",
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/enhancements/risk/ip-bans", bytes.NewReader(body))
+	c.Request.RemoteAddr = "203.0.113.10:12345"
+	c.Set("id", 900)
+
+	enhancementCreateRiskIPBans(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var res struct {
+		Success bool                   `json:"success"`
+		Message string                 `json:"message"`
+		Data    map[string]interface{} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &res))
+	require.False(t, res.Success)
+	require.Equal(t, true, res.Data["requires_confirmation"])
+	require.Equal(t, "203.0.113.10", res.Data["client_ip"])
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.IPBan{}).Count(&count).Error)
+	require.Zero(t, count)
+}
+
+func TestEnhancementCreateRiskIPBansCreatesAfterSelfLockConfirmation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	setupRiskIPBanControllerTestDB(t)
+	body, err := common.Marshal(map[string]interface{}{
+		"targets":           []string{"203.0.113.10"},
+		"reason":            "risk confirmed",
+		"confirm_self_lock": true,
+	})
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/enhancements/risk/ip-bans", bytes.NewReader(body))
+	c.Request.RemoteAddr = "203.0.113.10:12345"
+	c.Set("id", 900)
+
+	enhancementCreateRiskIPBans(c)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	var ban model.IPBan
+	require.NoError(t, model.DB.First(&ban, "target = ?", "203.0.113.10").Error)
+	require.Equal(t, "risk confirmed", ban.Reason)
+	require.True(t, ban.AutoBanUser)
+	require.Zero(t, ban.ExpiresAt)
+}

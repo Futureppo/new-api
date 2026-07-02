@@ -2527,6 +2527,148 @@ function riskTokenLabel(token) {
   return `${token?.token_name || '-'} (#${token?.token_id || '-'}, U${token?.user_id || '-'})`;
 }
 
+function RiskUserBanConfirmContent({
+  ip,
+  users,
+  reason,
+  onReasonChange,
+  onSelectedUserIdsChange,
+}) {
+  const { t } = useTranslation();
+  const [selectedUserIds, setSelectedUserIds] = useState(() =>
+    users.map((user) => user.user_id),
+  );
+
+  useEffect(() => {
+    onSelectedUserIdsChange?.(selectedUserIds);
+  }, [onSelectedUserIdsChange, selectedUserIds]);
+
+  return (
+    <div className='space-y-3'>
+      <div>
+        {t('将封禁当前时间范围内使用该 IP 的选中用户')}：{ip}
+      </div>
+      <div className='flex items-center justify-between gap-3 text-semi-color-text-1'>
+        <span>
+          {t('已选择')}：{formatNumber(selectedUserIds.length)} /{' '}
+          {formatNumber(users.length)}
+        </span>
+      </div>
+      <Table
+        size='small'
+        rowKey='user_id'
+        columns={[
+          {
+            title: t('用户 ID'),
+            dataIndex: 'user_id',
+            width: 110,
+          },
+          {
+            title: t('用户名'),
+            dataIndex: 'username',
+            render: (value) => value || '-',
+          },
+          {
+            title: t('请求数'),
+            dataIndex: 'request_count',
+            width: 110,
+            render: (value) => formatNumber(value),
+          },
+        ]}
+        dataSource={users}
+        pagination={false}
+        scroll={{ y: 260 }}
+        rowSelection={{
+          selectedRowKeys: selectedUserIds,
+          onChange: (keys) =>
+            setSelectedUserIds(keys.map((key) => Number(key))),
+        }}
+        empty={<Empty description={t('暂无数据')} />}
+      />
+      <TextArea
+        autosize
+        rows={2}
+        defaultValue={reason}
+        placeholder={t('封禁原因')}
+        onChange={onReasonChange}
+      />
+    </div>
+  );
+}
+
+function RiskSingleIPBanConfirmContent({ ip, reason, onReasonChange }) {
+  const { t } = useTranslation();
+  return (
+    <div className='space-y-3'>
+      <div>
+        {t('将创建永久 IP 封禁规则，并开启命中后封禁账号')}：{ip}
+      </div>
+      <div className='text-semi-color-text-2'>
+        {t('后续命中该 IP 规则的普通用户账号会被同步封禁')}
+      </div>
+      <TextArea
+        autosize
+        rows={2}
+        defaultValue={reason}
+        placeholder={t('封禁原因')}
+        onChange={onReasonChange}
+      />
+    </div>
+  );
+}
+
+function RiskIPSelectionBanConfirmContent({
+  ips,
+  reason,
+  onReasonChange,
+  onSelectedIPsChange,
+}) {
+  const { t } = useTranslation();
+  const [selectedIPs, setSelectedIPs] = useState(() => [...ips]);
+
+  useEffect(() => {
+    onSelectedIPsChange?.(selectedIPs);
+  }, [onSelectedIPsChange, selectedIPs]);
+
+  return (
+    <div className='space-y-3'>
+      <div>{t('选择需要封禁的 IP')}</div>
+      <div className='text-semi-color-text-2'>
+        {t('将创建永久 IP 封禁规则，并开启命中后封禁账号')}
+      </div>
+      <div className='text-semi-color-text-1'>
+        {t('已选择')}：{formatNumber(selectedIPs.length)} /{' '}
+        {formatNumber(ips.length)}
+      </div>
+      <Table
+        size='small'
+        rowKey='ip'
+        columns={[
+          {
+            title: 'IP',
+            dataIndex: 'ip',
+          },
+        ]}
+        dataSource={ips.map((ip) => ({ ip }))}
+        pagination={false}
+        scroll={{ y: 260 }}
+        rowSelection={{
+          selectedRowKeys: selectedIPs,
+          onChange: (keys) => setSelectedIPs(keys.map((key) => String(key))),
+        }}
+        empty={<Empty description={t('暂无数据')} />}
+      />
+      <TextArea
+        autosize
+        rows={2}
+        defaultValue={reason}
+        placeholder={t('封禁原因')}
+        onChange={onReasonChange}
+      />
+    </div>
+  );
+}
+
 function RiskPanel({ data }) {
   const { t } = useTranslation();
   const currency = getCurrencyConfig();
@@ -2554,6 +2696,8 @@ function RiskPanel({ data }) {
   const [applying, setApplying] = useState(false);
   const [selectedSharedIP, setSelectedSharedIP] = useState(null);
   const [banLoadingIP, setBanLoadingIP] = useState('');
+  const [ipBanLoadingKey, setIPBanLoadingKey] = useState('');
+  const [tokenActionLoading, setTokenActionLoading] = useState('');
 
   useEffect(() => {
     setCoverage(data?.coverage || {});
@@ -2676,6 +2820,59 @@ function RiskPanel({ data }) {
     }
   };
 
+  const handleRiskIPBanResponse = (res, retry) => {
+    if (res?.data?.success) {
+      return false;
+    }
+    const data = res?.data?.data;
+    if (data?.requires_confirmation) {
+      Modal.confirm({
+        title: t('确认封禁当前IP'),
+        content: `${t('该规则会封禁你当前访问后台使用的IP')}：${data.client_ip}`,
+        okText: t('确认封禁'),
+        cancelText: t('取消'),
+        onOk: retry,
+      });
+      return true;
+    }
+    throw new Error(res?.data?.message || '请求失败');
+  };
+
+  const createRiskIPBans = async (
+    { targets, reason, loadingKey, onSuccess },
+    confirmSelfLock = false,
+  ) => {
+    setIPBanLoadingKey(loadingKey);
+    try {
+      const res = await API.post('/api/enhancements/risk/ip-bans', {
+        targets,
+        reason,
+        confirm_self_lock: confirmSelfLock,
+      });
+      if (
+        handleRiskIPBanResponse(res, () =>
+          createRiskIPBans(
+            { targets, reason, loadingKey, onSuccess },
+            true,
+          ),
+        )
+      ) {
+        return;
+      }
+      const result = unwrap(res);
+      showSuccess(
+        `${t('IP 封禁完成')}：${t('新增')} ${formatNumber(
+          result?.created || 0,
+        )}，${t('跳过')} ${formatNumber(result?.skipped || 0)}`,
+      );
+      onSuccess?.(result);
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setIPBanLoadingKey('');
+    }
+  };
+
   const banSharedIPUsers = (record) => {
     const ip = record?.ip;
     const users = record?.users || [];
@@ -2684,35 +2881,34 @@ function RiskPanel({ data }) {
       return;
     }
     let reason = `共享 IP 风控封禁：${ip}`;
+    let selectedUserIds = users.map((user) => user.user_id);
     Modal.confirm({
       title: t('封禁该 IP 下的用户'),
       content: (
-        <div className='space-y-3'>
-          <div>
-            {t('将封禁当前时间范围内使用该 IP 的全部用户')}：{ip}
-          </div>
-          <div className='text-semi-color-text-1'>
-            {t('用户数')}：{formatNumber(users.length)}
-          </div>
-          <TextArea
-            autosize
-            rows={2}
-            defaultValue={reason}
-            placeholder={t('封禁原因')}
-            onChange={(value) => {
-              reason = value;
-            }}
-          />
-        </div>
+        <RiskUserBanConfirmContent
+          ip={ip}
+          users={users}
+          reason={reason}
+          onReasonChange={(value) => {
+            reason = value;
+          }}
+          onSelectedUserIdsChange={(ids) => {
+            selectedUserIds = ids;
+          }}
+        />
       ),
       okText: t('确认封禁'),
       cancelText: t('取消'),
       onOk: async () => {
+        if (selectedUserIds.length === 0) {
+          showError(t('请选择至少一个用户'));
+          return false;
+        }
         setBanLoadingIP(ip);
         try {
           const res = await API.post(
             `/api/enhancements/risk/shared-token-ips/${encodeURIComponent(ip)}/ban-users`,
-            { reason },
+            { reason, user_ids: selectedUserIds },
             { params: riskParams(1, sharedPageSize, filters, sharedSort) },
           );
           const result = unwrap(res);
@@ -2731,6 +2927,110 @@ function RiskPanel({ data }) {
           showError(error.message || error);
         } finally {
           setBanLoadingIP('');
+        }
+      },
+    });
+  };
+
+  const banSharedIP = (record) => {
+    const ip = record?.ip;
+    if (!ip) {
+      showError(t('请选择需要封禁的 IP'));
+      return;
+    }
+    let reason = `共享 IP 风控封禁：${ip}`;
+    const loadingKey = `shared:${ip}`;
+    Modal.confirm({
+      title: t('封禁该 IP'),
+      content: (
+        <RiskSingleIPBanConfirmContent
+          ip={ip}
+          reason={reason}
+          onReasonChange={(value) => {
+            reason = value;
+          }}
+        />
+      ),
+      okText: t('确认封禁'),
+      cancelText: t('取消'),
+      okButtonProps: { type: 'danger' },
+      onOk: () =>
+        createRiskIPBans({
+          targets: [ip],
+          reason,
+          loadingKey,
+        }),
+    });
+  };
+
+  const banTokenIPs = (record) => {
+    const ips = record?.ips || [];
+    if (ips.length === 0) {
+      showError(t('请选择需要封禁的 IP'));
+      return;
+    }
+    let selectedIPs = [...ips];
+    let reason = `单令牌多 IP 风控封禁：${record?.token_name || record?.token_id || '-'}`;
+    const loadingKey = `token:${record?.token_id}`;
+    Modal.confirm({
+      title: t('封禁令牌使用过的 IP'),
+      content: (
+        <RiskIPSelectionBanConfirmContent
+          ips={ips}
+          reason={reason}
+          onReasonChange={(value) => {
+            reason = value;
+          }}
+          onSelectedIPsChange={(nextIPs) => {
+            selectedIPs = nextIPs;
+          }}
+        />
+      ),
+      okText: t('确认封禁'),
+      cancelText: t('取消'),
+      okButtonProps: { type: 'danger' },
+      onOk: () => {
+        if (selectedIPs.length === 0) {
+          showError(t('请选择至少一个 IP'));
+          return false;
+        }
+        return createRiskIPBans({
+          targets: selectedIPs,
+          reason,
+          loadingKey,
+        });
+      },
+    });
+  };
+
+  const deleteRiskToken = (record) => {
+    const tokenId = record?.token_id;
+    if (!tokenId) return;
+    Modal.confirm({
+      title: t('确认删除令牌'),
+      content: (
+        <div className='space-y-2'>
+          <div>{riskTokenLabel(record)}</div>
+          <div className='text-semi-color-text-2'>
+            {t('删除后该 Key 将立即失效，此操作不可撤销。')}
+          </div>
+        </div>
+      ),
+      okText: t('删除'),
+      cancelText: t('取消'),
+      okButtonProps: { type: 'danger' },
+      onOk: async () => {
+        setTokenActionLoading(`delete:${tokenId}`);
+        try {
+          await API.delete(`/api/enhancements/tokens/${tokenId}`).then(
+            unwrap,
+          );
+          showSuccess(t('删除成功'));
+          await loadTokenMultiIPs(tokenMultiIPs?.page || 1, tokenPageSize);
+        } catch (error) {
+          showError(error.message || error);
+        } finally {
+          setTokenActionLoading('');
         }
       },
     });
@@ -2798,7 +3098,7 @@ function RiskPanel({ data }) {
       title: t('操作'),
       dataIndex: 'operate',
       fixed: 'right',
-      width: 190,
+      width: 280,
       render: (_, record) => (
         <Space>
           <Button
@@ -2820,6 +3120,17 @@ function RiskPanel({ data }) {
             onClick={() => banSharedIPUsers(record)}
           >
             {t('封禁用户')}
+          </Button>
+          <Button
+            size='small'
+            type='danger'
+            theme='borderless'
+            icon={<Ban size={14} />}
+            loading={ipBanLoadingKey === `shared:${record.ip}`}
+            disabled={!record?.ip}
+            onClick={() => banSharedIP(record)}
+          >
+            {t('封禁 IP')}
           </Button>
         </Space>
       ),
@@ -2885,6 +3196,38 @@ function RiskPanel({ data }) {
       dataIndex: 'ips',
       width: 300,
       render: (ips) => compactRiskLabels(ips, (ip) => ip, 5),
+    },
+    {
+      title: t('操作'),
+      dataIndex: 'operate',
+      fixed: 'right',
+      width: 220,
+      render: (_, record) => (
+        <Space>
+          <Button
+            size='small'
+            type='danger'
+            theme='borderless'
+            icon={<Trash2 size={14} />}
+            loading={tokenActionLoading === `delete:${record.token_id}`}
+            disabled={!record?.token_id}
+            onClick={() => deleteRiskToken(record)}
+          >
+            {t('删除令牌')}
+          </Button>
+          <Button
+            size='small'
+            type='danger'
+            theme='borderless'
+            icon={<Ban size={14} />}
+            loading={ipBanLoadingKey === `token:${record.token_id}`}
+            disabled={!record?.ips?.length}
+            onClick={() => banTokenIPs(record)}
+          >
+            {t('封禁 IP')}
+          </Button>
+        </Space>
+      ),
     },
   ];
 
@@ -3151,7 +3494,16 @@ function RiskPanel({ data }) {
                 disabled={!selectedSharedUsers.length}
                 onClick={() => banSharedIPUsers(selectedSharedIP)}
               >
-                {t('封禁全部用户')}
+                {t('封禁用户')}
+              </Button>
+              <Button
+                type='danger'
+                icon={<Ban size={16} />}
+                loading={ipBanLoadingKey === `shared:${selectedSharedIP?.ip}`}
+                disabled={!selectedSharedIP?.ip}
+                onClick={() => banSharedIP(selectedSharedIP)}
+              >
+                {t('封禁 IP')}
               </Button>
               <Button
                 theme='light'

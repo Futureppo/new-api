@@ -78,6 +78,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		risk.POST("/ip-log/enable-all", enhancementEnableAllRecordIPLog)
 		risk.GET("/shared-token-ips", enhancementSharedTokenIPs)
 		risk.POST("/shared-token-ips/:ip/ban-users", enhancementBanSharedTokenIPUsers)
+		risk.POST("/ip-bans", enhancementCreateRiskIPBans)
 		risk.GET("/token-multi-ips", enhancementTokenMultiIPs)
 		risk.GET("/leaderboards", enhancementRiskLeaderboards)
 		risk.GET("/users/:user_id/analysis", enhancementUserRiskAnalysis)
@@ -549,7 +550,21 @@ func enhancementBanSharedTokenIPUsers(c *gin.Context) {
 		return
 	}
 	operatorId, role := operator(c)
-	data, err := enhancement.BanSharedTokenIPUsers(ip, ipRiskQuery(c), operatorId, role, req.Reason)
+	data, err := enhancement.BanSharedTokenIPUsers(ip, ipRiskQuery(c), operatorId, role, req.Reason, req.UserIds)
+	respondPublic(c, data, err)
+}
+
+func enhancementCreateRiskIPBans(c *gin.Context) {
+	var req enhancement.RiskIPBanRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if selfLockConfirmationRequired(c, req.ConfirmSelfLock, req.Targets) {
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.CreateRiskIPBans(req, operatorId)
 	respondPublic(c, data, err)
 }
 
