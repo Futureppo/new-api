@@ -62,6 +62,7 @@ import {
   Perplexity,
   Replicate,
   Poe,
+  Cerebras,
 } from '@lobehub/icons';
 
 import {
@@ -368,6 +369,8 @@ export function getChannelIcon(channelType) {
       return <Cloudflare.Color size={iconSize} />;
     case 43: // DeepSeek
       return <DeepSeek.Color size={iconSize} />;
+    case 62: // Cerebras
+      return <Cerebras.Color size={iconSize} />;
     case 15: // 百度文心千帆
     case 46: // 百度文心千帆V2
       return <Wenxin.Color size={iconSize} />;

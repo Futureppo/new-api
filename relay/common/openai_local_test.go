@@ -10,3 +10,7 @@ import (
 func TestOpenAILocalSupportsStreamOptions(t *testing.T) {
 	require.True(t, streamSupportedChannels[constant.ChannelTypeOpenAILocal])
 }
+
+func TestCerebrasSupportsStreamOptions(t *testing.T) {
+	require.True(t, streamSupportedChannels[constant.ChannelTypeCerebras])
+}

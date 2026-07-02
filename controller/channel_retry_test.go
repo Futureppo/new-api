@@ -238,6 +238,11 @@ func TestResolveFetchModelsURL(t *testing.T) {
 		"https://api.poe.com/v1/models",
 		resolveFetchModelsURL(constant.ChannelTypePoe, constant.ChannelBaseURLs[constant.ChannelTypePoe], ""),
 	)
+	require.Equal(
+		t,
+		"https://api.cerebras.ai/v1/models",
+		resolveFetchModelsURL(constant.ChannelTypeCerebras, constant.ChannelBaseURLs[constant.ChannelTypeCerebras], ""),
+	)
 }
 
 func TestFetchModelsUsesCustomModelListURL(t *testing.T) {

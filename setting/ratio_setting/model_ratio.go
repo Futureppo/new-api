@@ -286,6 +286,10 @@ var defaultModelRatio = map[string]float64{
 	"deepseek-ai/DeepSeek-R1":                 0.8,
 	"deepseek-ai/DeepSeek-V3-0324":            0.8,
 	"deepseek-ai/DeepSeek-V3.1":               0.8,
+	// Cerebras
+	"zai-glm-4.7":  1.125,
+	"gpt-oss-120b": 0.175,
+	"gemma-4-31b":  0.495,
 }
 
 var defaultModelPrice = map[string]float64{
@@ -362,6 +366,9 @@ var defaultCompletionRatio = map[string]float64{
 	"gpt-image-1":     8,
 	"agnes-1.5-flash": 15.0 / 7.0, // $0.15 output / $0.07 input
 	"agnes-2.0-flash": 2,
+	"zai-glm-4.7":     1.2222222222,
+	"gpt-oss-120b":    2.1428571429,
+	"gemma-4-31b":     1.5050505051,
 }
 
 // InitRatioSettings initializes all model related settings maps

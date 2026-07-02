@@ -13,6 +13,12 @@ func TestOpenAILocalChannelMapsToOpenAIAPI(t *testing.T) {
 	require.Equal(t, constant.APITypeOpenAI, apiType)
 }
 
+func TestCerebrasChannelMapsToCerebrasAPI(t *testing.T) {
+	apiType, ok := ChannelType2APIType(constant.ChannelTypeCerebras)
+	require.True(t, ok)
+	require.Equal(t, constant.APITypeCerebras, apiType)
+}
+
 func TestOpenAILocalImageModelsAreRecognized(t *testing.T) {
 	require.True(t, IsImageGenerationModel("gpt-image-2"))
 	require.True(t, IsImageGenerationModel("codex-gpt-image-2"))

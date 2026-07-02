@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/baidu"
 	"github.com/QuantumNous/new-api/relay/channel/baidu_v2"
+	"github.com/QuantumNous/new-api/relay/channel/cerebras"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/cloudflare"
 	"github.com/QuantumNous/new-api/relay/channel/codex"
@@ -131,6 +132,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &openai.Adaptor{}
 	case constant.APITypeGCP:
 		return &gcp.Adaptor{}
+	case constant.APITypeCerebras:
+		return &cerebras.Adaptor{}
 	}
 	return nil
 }
