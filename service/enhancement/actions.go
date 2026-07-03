@@ -715,7 +715,7 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		"model_status_slot_minutes":                  {},
 		"model_status_green_threshold":               {},
 		"model_status_yellow_threshold":              {},
-		"model_status_show_zero_requests":            {},
+		"model_status_request_count_hide_threshold":  {},
 		"model_status_ignore_error_keywords_enabled": {},
 		"model_status_ignored_error_keywords":        {},
 		"model_status_theme":                         {},
@@ -755,9 +755,10 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		if err != nil || threshold <= 0 || threshold > 100 {
 			return errors.New("status threshold must be between 0 and 100")
 		}
-	case "model_status_show_zero_requests":
-		if _, err := strconv.ParseBool(value); err != nil {
-			return errors.New("show zero request models must be boolean")
+	case "model_status_request_count_hide_threshold":
+		threshold, err := strconv.Atoi(value)
+		if err != nil || threshold < 0 || threshold > 1000000 {
+			return errors.New("request count hide threshold must be an integer between 0 and 1000000")
 		}
 	case "model_status_ignore_error_keywords_enabled":
 		if _, err := strconv.ParseBool(value); err != nil {

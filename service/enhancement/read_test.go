@@ -368,9 +368,56 @@ func configureModelStatusIgnoredErrorKeywords(t *testing.T, enabled bool, keywor
 	cfg.ModelStatusIgnoredErrorKeywords = append([]string{}, keywords...)
 }
 
+func configureModelStatusRequestCountHideThreshold(t *testing.T, threshold int) {
+	t.Helper()
+
+	cfg := setting.GetEnhancementSetting()
+	originalThreshold := cfg.ModelStatusRequestCountHideThreshold
+
+	t.Cleanup(func() {
+		cfg.ModelStatusRequestCountHideThreshold = originalThreshold
+		ClearModelStatusPublicCache()
+	})
+
+	cfg.ModelStatusRequestCountHideThreshold = threshold
+	ClearModelStatusPublicCache()
+}
+
 func seedModelStatusLogs(t *testing.T, db *gorm.DB, logs ...model.Log) {
 	t.Helper()
 	require.NoError(t, db.Create(&logs).Error)
+}
+
+func seedModelStatusRequestLogs(t *testing.T, db *gorm.DB, group string, modelName string, count int) {
+	t.Helper()
+
+	now := common.GetTimestamp()
+	logs := make([]model.Log, 0, count)
+	for i := 0; i < count; i++ {
+		logs = append(logs, model.Log{
+			CreatedAt: now - int64(i*10),
+			Type:      model.LogTypeConsume,
+			ModelName: modelName,
+			Group:     group,
+			UseTime:   1,
+		})
+	}
+	if len(logs) > 0 {
+		seedModelStatusLogs(t, db, logs...)
+	}
+}
+
+func seedModelStatusThresholdTargets(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	channel := model.Channel{Name: "threshold", Key: "threshold-key", Status: common.ChannelStatusEnabled}
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "visible", Model: "zz-threshold-zero", ChannelId: channel.Id, Enabled: true},
+		{Group: "visible", Model: "zz-threshold-one", ChannelId: channel.Id, Enabled: true},
+		{Group: "visible", Model: "zz-threshold-two", ChannelId: channel.Id, Enabled: true},
+		{Group: "visible", Model: "zz-threshold-three", ChannelId: channel.Id, Enabled: true},
+	}).Error)
 }
 
 func TestModelStatusIgnoredErrorKeywordsDisabledCountsErrors(t *testing.T) {
@@ -463,6 +510,29 @@ func TestNormalizeModelStatusIgnoredErrorKeywordsTrimsAndDeduplicates(t *testing
 	require.Equal(t, []string{"Foo", "BAR"}, keywords)
 }
 
+func TestPublicModelStatusHidesRequestsAtOrBelowDefaultThreshold(t *testing.T) {
+	configurePublicModelStatusGroups(
+		t,
+		`{"visible":true}`,
+		`{"visible":"Visible group"}`,
+	)
+	configureModelStatusRequestCountHideThreshold(t, 2)
+	db := setupModelStatusTestDB(t)
+	seedModelStatusThresholdTargets(t, db)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-one", 1)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-two", 2)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-three", 3)
+
+	statuses, err := ModelStatusesForPublicConfig()
+	require.NoError(t, err)
+
+	keys := statusKeys(statuses)
+	require.NotContains(t, keys, "visible:zz-threshold-zero")
+	require.NotContains(t, keys, "visible:zz-threshold-one")
+	require.NotContains(t, keys, "visible:zz-threshold-two")
+	require.Contains(t, keys, "visible:zz-threshold-three")
+}
+
 func TestPublicModelStatusesFilterGroupsByMarketplaceDisplay(t *testing.T) {
 	configurePublicModelStatusGroups(
 		t,
@@ -498,6 +568,8 @@ func TestPublicModelStatusCacheVariesByGroupDisplay(t *testing.T) {
 	)
 	db := setupModelStatusTestDB(t)
 	seedModelStatusTargets(t, db)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-visible-model", 3)
+	seedModelStatusRequestLogs(t, db, "hidden", "zz-hidden-model", 3)
 
 	statuses, err := ModelStatusesForPublicConfig()
 	require.NoError(t, err)
@@ -508,4 +580,36 @@ func TestPublicModelStatusCacheVariesByGroupDisplay(t *testing.T) {
 	statuses, err = ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 	require.Contains(t, statusKeys(statuses), "hidden:zz-hidden-model")
+}
+
+func TestPublicModelStatusCacheVariesByRequestCountHideThreshold(t *testing.T) {
+	configurePublicModelStatusGroups(
+		t,
+		`{"visible":true}`,
+		`{"visible":"Visible group"}`,
+	)
+	db := setupModelStatusTestDB(t)
+	seedModelStatusThresholdTargets(t, db)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-two", 2)
+	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-three", 3)
+
+	cfg := setting.GetEnhancementSetting()
+	originalThreshold := cfg.ModelStatusRequestCountHideThreshold
+	t.Cleanup(func() {
+		cfg.ModelStatusRequestCountHideThreshold = originalThreshold
+		ClearModelStatusPublicCache()
+	})
+
+	cfg.ModelStatusRequestCountHideThreshold = 1
+	ClearModelStatusPublicCache()
+	statuses, err := ModelStatusesForPublicConfig()
+	require.NoError(t, err)
+	require.Contains(t, statusKeys(statuses), "visible:zz-threshold-two")
+	require.Contains(t, statusKeys(statuses), "visible:zz-threshold-three")
+
+	cfg.ModelStatusRequestCountHideThreshold = 2
+	statuses, err = ModelStatusesForPublicConfig()
+	require.NoError(t, err)
+	require.NotContains(t, statusKeys(statuses), "visible:zz-threshold-two")
+	require.Contains(t, statusKeys(statuses), "visible:zz-threshold-three")
 }

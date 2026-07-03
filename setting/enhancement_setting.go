@@ -10,7 +10,7 @@ type EnhancementSetting struct {
 	ModelStatusSlotMinutes                int      `json:"model_status_slot_minutes"`
 	ModelStatusGreenThreshold             float64  `json:"model_status_green_threshold"`
 	ModelStatusYellowThreshold            float64  `json:"model_status_yellow_threshold"`
-	ModelStatusShowZeroRequests           bool     `json:"model_status_show_zero_requests"`
+	ModelStatusRequestCountHideThreshold  int      `json:"model_status_request_count_hide_threshold"`
 	ModelStatusIgnoreErrorKeywordsEnabled bool     `json:"model_status_ignore_error_keywords_enabled"`
 	ModelStatusIgnoredErrorKeywords       []string `json:"model_status_ignored_error_keywords"`
 	ModelStatusTheme                      string   `json:"model_status_theme"`
@@ -31,7 +31,7 @@ var enhancementSetting = EnhancementSetting{
 	ModelStatusSlotMinutes:                30,
 	ModelStatusGreenThreshold:             95,
 	ModelStatusYellowThreshold:            80,
-	ModelStatusShowZeroRequests:           true,
+	ModelStatusRequestCountHideThreshold:  2,
 	ModelStatusIgnoreErrorKeywordsEnabled: false,
 	ModelStatusIgnoredErrorKeywords:       []string{},
 	ModelStatusTheme:                      "light",

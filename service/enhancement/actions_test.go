@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -87,6 +88,46 @@ func setupRiskActionTestDB(t *testing.T) {
 	})
 }
 
+func setupModelStatusOptionTestDB(t *testing.T) {
+	t.Helper()
+
+	originalDB := model.DB
+	originalLogDB := model.LOG_DB
+	originalUsingSQLite := common.UsingSQLite
+	originalUsingMySQL := common.UsingMySQL
+	originalUsingPostgreSQL := common.UsingPostgreSQL
+	originalRedisEnabled := common.RedisEnabled
+	originalOptionMap := common.OptionMap
+
+	common.UsingSQLite = true
+	common.UsingMySQL = false
+	common.UsingPostgreSQL = false
+	common.RedisEnabled = false
+	common.OptionMap = map[string]string{}
+
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", strings.ReplaceAll(t.Name(), "/", "_"))
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	model.DB = db
+	model.LOG_DB = db
+
+	require.NoError(t, db.AutoMigrate(&model.Option{}))
+
+	t.Cleanup(func() {
+		sqlDB, err := db.DB()
+		if err == nil {
+			_ = sqlDB.Close()
+		}
+		model.DB = originalDB
+		model.LOG_DB = originalLogDB
+		common.UsingSQLite = originalUsingSQLite
+		common.UsingMySQL = originalUsingMySQL
+		common.UsingPostgreSQL = originalUsingPostgreSQL
+		common.RedisEnabled = originalRedisEnabled
+		common.OptionMap = originalOptionMap
+	})
+}
+
 func seedPurgeUser(t *testing.T, id int, role int, status int, softDeleted bool) {
 	t.Helper()
 
@@ -142,6 +183,33 @@ func requirePurgeUserExists(t *testing.T, id int, expected bool) {
 		return
 	}
 	require.Equal(t, int64(0), count)
+}
+
+func TestSaveModelStatusRequestCountHideThreshold(t *testing.T) {
+	setupModelStatusOptionTestDB(t)
+
+	cfg := setting.GetEnhancementSetting()
+	originalThreshold := cfg.ModelStatusRequestCountHideThreshold
+	t.Cleanup(func() {
+		cfg.ModelStatusRequestCountHideThreshold = originalThreshold
+		ClearModelStatusPublicCache()
+	})
+
+	require.NoError(t, SaveModelStatusOption("model_status_request_count_hide_threshold", "12", 1))
+	require.Equal(t, 12, cfg.ModelStatusRequestCountHideThreshold)
+
+	var option model.Option
+	require.NoError(t, model.DB.Where("key = ?", "enhancement_setting.model_status_request_count_hide_threshold").First(&option).Error)
+	require.Equal(t, "12", option.Value)
+}
+
+func TestSaveModelStatusRequestCountHideThresholdRejectsInvalidValues(t *testing.T) {
+	setupModelStatusOptionTestDB(t)
+
+	for _, value := range []string{"-1", "1000001", "1.5", "true", "abc"} {
+		err := SaveModelStatusOption("model_status_request_count_hide_threshold", value, 1)
+		require.Error(t, err, "value %q should be rejected", value)
+	}
 }
 
 func TestPurgeSoftDeletedUsersAdminDeletesOnlyCommonUsers(t *testing.T) {

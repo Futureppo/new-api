@@ -1609,22 +1609,13 @@ func ClearModelStatusPublicCache() {
 	modelStatusPublicCache.data = nil
 }
 
-func modelStatusHasRequests(status ModelStatus) bool {
-	if status.TotalRequests > 0 {
-		return true
+func filterLowRequestModelStatuses(statuses []ModelStatus, threshold int) []ModelStatus {
+	if threshold < 0 {
+		threshold = 0
 	}
-	for _, slot := range status.SlotData {
-		if slot.TotalRequests > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-func filterZeroRequestModelStatuses(statuses []ModelStatus) []ModelStatus {
 	filtered := make([]ModelStatus, 0, len(statuses))
 	for _, status := range statuses {
-		if modelStatusHasRequests(status) {
+		if status.TotalRequests > int64(threshold) {
 			filtered = append(filtered, status)
 		}
 	}
@@ -1637,12 +1628,12 @@ func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
 	}
 	window := ModelStatusConfiguredWindow()
 	greenThreshold, yellowThreshold := ModelStatusThresholds()
-	showZeroRequests := setting.GetEnhancementSetting().ModelStatusShowZeroRequests
+	requestCountHideThreshold := setting.GetEnhancementSetting().ModelStatusRequestCountHideThreshold
 	key := "public:" + window + ":" +
 		strconv.Itoa(ModelStatusSlotMinutes()) + ":" +
 		strconv.FormatFloat(greenThreshold, 'f', -1, 64) + ":" +
 		strconv.FormatFloat(yellowThreshold, 'f', -1, 64) + ":" +
-		strconv.FormatBool(showZeroRequests) + ":" +
+		strconv.Itoa(requestCountHideThreshold) + ":" +
 		ratio_setting.GroupDisplay2JSONString() + ":" +
 		setting.UserUsableGroups2JSONString()
 	now := common.GetTimestamp()
@@ -1659,9 +1650,7 @@ func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !showZeroRequests {
-		statuses = filterZeroRequestModelStatuses(statuses)
-	}
+	statuses = filterLowRequestModelStatuses(statuses, requestCountHideThreshold)
 
 	modelStatusPublicCache.Lock()
 	modelStatusPublicCache.key = key
@@ -1689,7 +1678,6 @@ func ModelStatusConfig(public bool) map[string]interface{} {
 		"slot_minutes":             ModelStatusSlotMinutes(),
 		"green_threshold":          greenThreshold,
 		"yellow_threshold":         yellowThreshold,
-		"show_zero_request_models": cfg.ModelStatusShowZeroRequests,
 		"sort_mode":                cfg.ModelStatusSortMode,
 		"selected_models":          selected,
 		"time_window_minutes":      cfg.ModelStatusTimeWindowMins,
@@ -1699,6 +1687,7 @@ func ModelStatusConfig(public bool) map[string]interface{} {
 		"public_embed_enabled":     cfg.PublicEmbedEnabled,
 		"public_url_path":          "/model-status",
 	}
+	base["model_status_request_count_hide_threshold"] = cfg.ModelStatusRequestCountHideThreshold
 	if public {
 		base["public"] = true
 	} else {

@@ -214,7 +214,7 @@ const FIELD_LABELS = {
   site_title: '站点标题',
   theme: '主题',
   public_embed_enabled: '公开嵌入',
-  show_zero_request_models: '展示0请求次数的模型',
+  model_status_request_count_hide_threshold: '低请求隐藏阈值',
   public: '公开',
   window: '时间窗口',
   start: '开始时间',
@@ -424,6 +424,16 @@ function getModelStatusThreshold(config = {}, key, fallback) {
   const value = Number(config[key]);
   if (!Number.isFinite(value)) return fallback;
   return Math.min(100, Math.max(1, value));
+}
+
+function getModelStatusRequestCountHideThreshold(config = {}) {
+  const value = Number(
+    config.model_status_request_count_hide_threshold ??
+      config.request_count_hide_threshold ??
+      2,
+  );
+  if (!Number.isFinite(value)) return 2;
+  return Math.min(1000000, Math.max(0, Math.round(value)));
 }
 
 function formatModelStatusIgnoredErrorKeywords(value) {
@@ -3862,8 +3872,8 @@ function ModelStatusPanel({ data }) {
   const [publicEnabled, setPublicEnabled] = useState(
     !!data?.config?.public_embed_enabled,
   );
-  const [showZeroRequestModels, setShowZeroRequestModels] = useState(
-    !!data?.config?.show_zero_request_models,
+  const [requestCountHideThreshold, setRequestCountHideThreshold] = useState(
+    getModelStatusRequestCountHideThreshold(data?.config),
   );
   const [ignoreErrorKeywordsEnabled, setIgnoreErrorKeywordsEnabled] = useState(
     !!data?.config?.model_status_ignore_error_keywords_enabled,
@@ -3892,7 +3902,9 @@ function ModelStatusPanel({ data }) {
     setConfig(nextConfig);
     setWindowValue(getModelStatusConfigWindow(nextConfig));
     setPublicEnabled(!!nextConfig.public_embed_enabled);
-    setShowZeroRequestModels(!!nextConfig.show_zero_request_models);
+    setRequestCountHideThreshold(
+      getModelStatusRequestCountHideThreshold(nextConfig),
+    );
     setIgnoreErrorKeywordsEnabled(
       !!nextConfig.model_status_ignore_error_keywords_enabled,
     );
@@ -3942,6 +3954,11 @@ function ModelStatusPanel({ data }) {
         100,
         Math.max(1, Number(yellowThreshold || 80)),
       );
+      const nextRequestCountHideThreshold =
+        getModelStatusRequestCountHideThreshold({
+          model_status_request_count_hide_threshold:
+            requestCountHideThreshold,
+        });
       if (nextGreenThreshold < nextYellowThreshold) {
         showError(t('绿色阈值不能低于黄色阈值'));
         return;
@@ -3951,9 +3968,9 @@ function ModelStatusPanel({ data }) {
           value: publicEnabled,
         }).then(unwrap),
         API.put(
-          '/api/enhancements/model-status/config/show-zero-request-models',
+          '/api/enhancements/model-status/config/request-count-hide-threshold',
           {
-            value: showZeroRequestModels,
+            value: nextRequestCountHideThreshold,
           },
         ).then(unwrap),
         API.put(
@@ -4003,13 +4020,13 @@ function ModelStatusPanel({ data }) {
     <div className='space-y-4'>
       <Card className='!rounded-lg'>
         <div className='flex flex-col gap-4'>
-          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3'>
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-2'>
             <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
               <div className='flex items-center gap-3'>
-                <div className='h-10 w-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
+                <div className='h-10 w-10 shrink-0 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center'>
                   <Globe2 size={20} />
                 </div>
-                <div>
+                <div className='min-w-0'>
                   <div className='text-base font-semibold text-semi-color-text-0'>
                     {t('公开嵌入')}
                   </div>
@@ -4021,33 +4038,15 @@ function ModelStatusPanel({ data }) {
               <Switch
                 checked={publicEnabled}
                 onChange={setPublicEnabled}
-                checkedText={t('开启')}
-                uncheckedText={t('关闭')}
               />
             </div>
 
             <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
               <div className='flex items-center gap-3'>
-                <div className='h-10 w-10 rounded-lg bg-semi-color-fill-0 text-semi-color-text-2 flex items-center justify-center'>
-                  <LineChart size={20} />
-                </div>
-                <div className='text-base font-semibold text-semi-color-text-0'>
-                  {t('展示0请求次数的模型')}
-                </div>
-              </div>
-              <Switch
-                checked={showZeroRequestModels}
-                onChange={setShowZeroRequestModels}
-                checkedText={t('开启')}
-                uncheckedText={t('关闭')}
-              />
-            </div>
-            <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
-              <div className='flex items-center gap-3'>
-                <div className='h-10 w-10 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center'>
+                <div className='h-10 w-10 shrink-0 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center'>
                   <AlertTriangle size={20} />
                 </div>
-                <div>
+                <div className='min-w-0'>
                   <div className='text-base font-semibold text-semi-color-text-0'>
                     {t('忽略错误关键词')}
                   </div>
@@ -4059,8 +4058,6 @@ function ModelStatusPanel({ data }) {
               <Switch
                 checked={ignoreErrorKeywordsEnabled}
                 onChange={setIgnoreErrorKeywordsEnabled}
-                checkedText={t('开启')}
-                uncheckedText={t('关闭')}
               />
             </div>
           </div>
@@ -4080,7 +4077,7 @@ function ModelStatusPanel({ data }) {
             </div>
           </label>
 
-          <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5'>
+          <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6'>
             <label className='space-y-1'>
               <Text type='secondary'>{t('时间范围')}</Text>
               <ModelStatusWindowSelect
@@ -4131,17 +4128,34 @@ function ModelStatusPanel({ data }) {
                 style={{ width: '100%' }}
               />
             </label>
+            <label className='space-y-1'>
+              <Text type='secondary'>{t('隐藏低请求模型')}</Text>
+              <InputNumber
+                min={0}
+                max={1000000}
+                precision={0}
+                value={requestCountHideThreshold}
+                onChange={(value) =>
+                  setRequestCountHideThreshold(value ?? 2)
+                }
+                style={{ width: '100%' }}
+              />
+              <div className='text-xs text-semi-color-text-2'>
+                {t('隐藏请求次数小于等于该数值的模型')}
+              </div>
+            </label>
           </div>
 
-          <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto]'>
+          <div className='grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_auto]'>
             <Input
               readOnly
               value={publicUrl}
               prefix={<Link2 size={16} />}
               addonBefore={t('公开访问地址')}
             />
-            <Space>
+            <div className='flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:justify-end'>
               <Button
+                className='w-full sm:w-auto'
                 icon={<CopyIcon size={16} />}
                 onClick={handleCopy}
                 disabled={!publicEnabled}
@@ -4149,6 +4163,7 @@ function ModelStatusPanel({ data }) {
                 {t('复制地址')}
               </Button>
               <Button
+                className='w-full sm:w-auto'
                 icon={<ExternalLink size={16} />}
                 onClick={() => window.open(publicUrl, '_blank', 'noopener')}
                 disabled={!publicEnabled}
@@ -4156,6 +4171,7 @@ function ModelStatusPanel({ data }) {
                 {t('打开页面')}
               </Button>
               <Button
+                className='w-full sm:w-auto'
                 type='primary'
                 icon={<Save size={16} />}
                 loading={saving}
@@ -4163,7 +4179,7 @@ function ModelStatusPanel({ data }) {
               >
                 {t('保存设置')}
               </Button>
-            </Space>
+            </div>
           </div>
         </div>
       </Card>
