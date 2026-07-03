@@ -26,6 +26,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
       home: true,
       console: true,
       pricing: true,
+      status: true,
       docs: true,
       about: true,
     };
@@ -48,6 +49,12 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         text: t('模型广场'),
         itemKey: 'pricing',
         to: '/pricing',
+      },
+      {
+        text: t('状态查看'),
+        itemKey: 'status',
+        isExternal: true,
+        externalLink: 'https://api.futureppo.top/model-status',
       },
       ...(docsLink
         ? [
@@ -76,6 +83,9 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         return typeof modules.pricing === 'object'
           ? modules.pricing.enabled
           : modules.pricing;
+      }
+      if (link.itemKey === 'status') {
+        return modules.status !== false;
       }
       return modules[link.itemKey] === true;
     });
