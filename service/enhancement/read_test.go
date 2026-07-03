@@ -420,6 +420,136 @@ func seedModelStatusThresholdTargets(t *testing.T, db *gorm.DB) {
 	}).Error)
 }
 
+func TestModelStatusRecentPerformanceMetricsUseLastTenSuccessLogs(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	now := common.GetTimestamp()
+	modelName := "zz-recent-last-ten-model"
+	logs := []model.Log{
+		{
+			CreatedAt:        now - 1000,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 999,
+			UseTime:          999,
+			Other:            `{"frt":9999}`,
+		},
+	}
+	for i := 0; i < 10; i++ {
+		logs = append(logs, model.Log{
+			CreatedAt:        now - int64(i),
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 20,
+			UseTime:          2,
+			Other:            `{"frt":1000}`,
+		})
+	}
+	seedModelStatusLogs(t, db, logs...)
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.InDelta(t, 1000, status.RecentAvgFirstResponseTime, 0.001)
+	require.InDelta(t, 10, status.RecentAvgOutputTokenSpeed, 0.001)
+}
+
+func TestModelStatusRecentPerformanceMetricsRespectGroupAndSkipInvalid(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	now := common.GetTimestamp()
+	modelName := "zz-recent-shared-model"
+
+	seedModelStatusLogs(t, db,
+		model.Log{
+			CreatedAt:        now,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 10,
+			UseTime:          2,
+			Other:            `{"frt":1000}`,
+		},
+		model.Log{
+			CreatedAt:        now - 1,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 15,
+			UseTime:          2,
+			IsStream:         true,
+			Other:            `{"frt":500}`,
+		},
+		model.Log{
+			CreatedAt:        now - 2,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 0,
+			UseTime:          2,
+			Other:            `{"frt":-100}`,
+		},
+		model.Log{
+			CreatedAt:        now - 3,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 10,
+			UseTime:          0,
+			Other:            `{"frt":"bad"}`,
+		},
+		model.Log{
+			CreatedAt:        now - 4,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "default",
+			CompletionTokens: 0,
+			UseTime:          3,
+			Other:            `{}`,
+		},
+		model.Log{
+			CreatedAt:        now,
+			Type:             model.LogTypeConsume,
+			ModelName:        modelName,
+			Group:            "vip",
+			CompletionTokens: 100,
+			UseTime:          1,
+			Other:            `{"frt":9000}`,
+		},
+	)
+
+	defaultStatus, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.InDelta(t, 750, defaultStatus.RecentAvgFirstResponseTime, 0.001)
+	require.InDelta(t, 7.5, defaultStatus.RecentAvgOutputTokenSpeed, 0.001)
+
+	vipStatus, err := ModelStatusForGroupWindow("vip", modelName, ModelStatusWindow24h, false)
+	require.NoError(t, err)
+	require.InDelta(t, 9000, vipStatus.RecentAvgFirstResponseTime, 0.001)
+	require.InDelta(t, 100, vipStatus.RecentAvgOutputTokenSpeed, 0.001)
+}
+
+func TestModelStatusRecentPerformanceMetricsIgnoreStatusWindow(t *testing.T) {
+	db := setupModelStatusTestDB(t)
+	now := common.GetTimestamp()
+	modelName := "zz-recent-window-independent-model"
+
+	seedModelStatusLogs(t, db, model.Log{
+		CreatedAt:        now - 7*24*60*60,
+		Type:             model.LogTypeConsume,
+		ModelName:        modelName,
+		Group:            "default",
+		CompletionTokens: 12,
+		UseTime:          3,
+		Other:            `{"frt":1200}`,
+	})
+
+	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindowToday, false)
+	require.NoError(t, err)
+	require.Equal(t, int64(0), status.TotalRequests)
+	require.InDelta(t, 1200, status.RecentAvgFirstResponseTime, 0.001)
+	require.InDelta(t, 4, status.RecentAvgOutputTokenSpeed, 0.001)
+}
+
 func TestModelStatusIgnoredErrorKeywordsDisabledCountsErrors(t *testing.T) {
 	db := setupModelStatusTestDB(t)
 	configureModelStatusIgnoredErrorKeywords(t, false, []string{"unsupported_feature_for_model"})

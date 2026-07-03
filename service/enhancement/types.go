@@ -264,15 +264,17 @@ type ModelStatus struct {
 	SlotData      []ModelStatusSlot `json:"slot_data"`
 	GeneratedAt   int64             `json:"generated_at"`
 
-	Status            string  `json:"status"`
-	Requests          int64   `json:"requests"`
-	ErrorRate         float64 `json:"error_rate"`
-	Quota             int64   `json:"quota"`
-	AvgUseTime        float64 `json:"avg_use_time"`
-	PromptTokens      int64   `json:"prompt_tokens"`
-	CompletionTokens  int64   `json:"completion_tokens"`
-	LastRequestAt     int64   `json:"last_request_at"`
-	TimeWindowMinutes int     `json:"time_window_minutes"`
+	Status                     string  `json:"status"`
+	Requests                   int64   `json:"requests"`
+	ErrorRate                  float64 `json:"error_rate"`
+	Quota                      int64   `json:"quota"`
+	AvgUseTime                 float64 `json:"avg_use_time"`
+	PromptTokens               int64   `json:"prompt_tokens"`
+	CompletionTokens           int64   `json:"completion_tokens"`
+	RecentAvgFirstResponseTime float64 `json:"recent_avg_first_response_time"`
+	RecentAvgOutputTokenSpeed  float64 `json:"recent_avg_output_token_speed"`
+	LastRequestAt              int64   `json:"last_request_at"`
+	TimeWindowMinutes          int     `json:"time_window_minutes"`
 }
 
 type GenerateRedemptionsRequest struct {

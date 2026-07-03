@@ -388,6 +388,24 @@ function formatStatusPercent(value) {
   return `${number.toFixed(1)}%`;
 }
 
+function formatRecentFirstResponseTime(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return '-';
+  return `${(number / 1000).toFixed(1)} s`;
+}
+
+function formatRecentOutputTokenSpeed(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return '-';
+  if (number >= 10) {
+    return `${Math.round(number)}t/s`;
+  }
+  if (number >= 1) {
+    return `${number.toFixed(1).replace(/\.0$/, '')}t/s`;
+  }
+  return `${number.toFixed(2).replace(/0+$/, '').replace(/\.$/, '')}t/s`;
+}
+
 function getModelStatusMeta(status) {
   return MODEL_STATUS_META[status] || MODEL_STATUS_META.green;
 }
@@ -3766,6 +3784,27 @@ function ModelStatusCard({ status }) {
         </div>
 
         <ModelStatusTimeline status={status} />
+
+        <div className='flex justify-end text-right text-xs leading-5 text-semi-color-text-2'>
+          <div>
+            <div>
+              {t('近期平均首字延迟')}：
+              <span className='font-medium text-semi-color-text-0'>
+                {formatRecentFirstResponseTime(
+                  status?.recent_avg_first_response_time,
+                )}
+              </span>
+            </div>
+            <div>
+              {t('近期平均输出速度')}：
+              <span className='font-medium text-semi-color-text-0'>
+                {formatRecentOutputTokenSpeed(
+                  status?.recent_avg_output_token_speed,
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
     </Card>
   );

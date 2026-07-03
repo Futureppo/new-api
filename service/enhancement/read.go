@@ -966,6 +966,8 @@ const (
 	ModelStatusWindow24h   = "24h"
 	ModelStatusWindow7d    = "7d"
 	ModelStatusWindow30d   = "30d"
+
+	recentModelStatusLogLimit = 10
 )
 
 type modelStatusWindow struct {
@@ -1264,6 +1266,119 @@ func maxInt64(a, b int64) int64 {
 	return b
 }
 
+func floatFromInterface(value interface{}) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return 0, false
+		}
+		return v, true
+	case float32:
+		value := float64(v)
+		if math.IsNaN(value) || math.IsInf(value, 0) {
+			return 0, false
+		}
+		return value, true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case string:
+		parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+			return 0, false
+		}
+		return parsed, true
+	default:
+		return 0, false
+	}
+}
+
+func modelStatusFirstResponseTimeMs(other string) float64 {
+	other = strings.TrimSpace(other)
+	if other == "" {
+		return 0
+	}
+	var data map[string]interface{}
+	if err := common.UnmarshalJsonStr(other, &data); err != nil {
+		return 0
+	}
+	frt, ok := floatFromInterface(data["frt"])
+	if !ok || frt <= 0 {
+		return 0
+	}
+	return frt
+}
+
+func modelStatusOutputTokenSpeed(row model.Log, firstResponseMs float64) float64 {
+	if row.CompletionTokens <= 0 || row.UseTime <= 0 {
+		return 0
+	}
+	durationSeconds := float64(row.UseTime)
+	if row.IsStream && firstResponseMs > 0 {
+		firstResponseSeconds := firstResponseMs / 1000
+		if firstResponseSeconds > 0 && firstResponseSeconds < durationSeconds {
+			durationSeconds -= firstResponseSeconds
+		}
+	}
+	if durationSeconds <= 0 {
+		return 0
+	}
+	speed := float64(row.CompletionTokens) / durationSeconds
+	if math.IsNaN(speed) || math.IsInf(speed, 0) || speed <= 0 {
+		return 0
+	}
+	return speed
+}
+
+func populateRecentModelStatusMetrics(status *ModelStatus, groupName string, modelName string) error {
+	var rows []model.Log
+	query := model.LOG_DB.Model(&model.Log{}).
+		Select("id, created_at, completion_tokens, use_time, is_stream, other").
+		Where("model_name = ? AND type = ?", modelName, model.LogTypeConsume)
+	if groupName != "" {
+		if common.UsingPostgreSQL {
+			query = query.Where(`"group" = ?`, groupName)
+		} else {
+			query = query.Where("`group` = ?", groupName)
+		}
+	}
+	if err := query.Order("created_at DESC, id DESC").Limit(recentModelStatusLogLimit).Find(&rows).Error; err != nil {
+		return err
+	}
+
+	var firstResponseTotal float64
+	var firstResponseCount int
+	var outputSpeedTotal float64
+	var outputSpeedCount int
+	for _, row := range rows {
+		firstResponseMs := modelStatusFirstResponseTimeMs(row.Other)
+		if firstResponseMs > 0 {
+			firstResponseTotal += firstResponseMs
+			firstResponseCount++
+		}
+		if speed := modelStatusOutputTokenSpeed(row, firstResponseMs); speed > 0 {
+			outputSpeedTotal += speed
+			outputSpeedCount++
+		}
+	}
+	if firstResponseCount > 0 {
+		status.RecentAvgFirstResponseTime = firstResponseTotal / float64(firstResponseCount)
+	}
+	if outputSpeedCount > 0 {
+		status.RecentAvgOutputTokenSpeed = outputSpeedTotal / float64(outputSpeedCount)
+	}
+	return nil
+}
+
 func modelStatusForTarget(target modelStatusTarget, window string, public bool) (ModelStatus, error) {
 	groupName := strings.TrimSpace(target.Group)
 	if groupName == "" {
@@ -1398,6 +1513,10 @@ func buildModelStatus(groupName string, modelName string, window string, public 
 		slots[i].Status = modelStatusColor(slots[i].SuccessRate, slots[i].TotalRequests)
 	}
 	status.SlotData = slots
+
+	if err := populateRecentModelStatusMetrics(&status, groupName, modelName); err != nil {
+		return status, err
+	}
 
 	return status, nil
 }
