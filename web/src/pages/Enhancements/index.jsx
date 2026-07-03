@@ -3785,24 +3785,18 @@ function ModelStatusCard({ status }) {
 
         <ModelStatusTimeline status={status} />
 
-        <div className='flex justify-end text-right text-xs leading-5 text-semi-color-text-2'>
-          <div>
-            <div>
-              {t('近期平均首字延迟')}：
-              <span className='font-medium text-semi-color-text-0'>
-                {formatRecentFirstResponseTime(
-                  status?.recent_avg_first_response_time,
-                )}
-              </span>
-            </div>
-            <div>
-              {t('近期平均输出速度')}：
-              <span className='font-medium text-semi-color-text-0'>
-                {formatRecentOutputTokenSpeed(
-                  status?.recent_avg_output_token_speed,
-                )}
-              </span>
-            </div>
+        <div className='flex flex-col gap-1 text-base font-semibold text-semi-color-text-0 sm:flex-row sm:items-center sm:justify-between'>
+          <div className='text-left'>
+            {t('近期平均首字延迟')}：
+            {formatRecentFirstResponseTime(
+              status?.recent_avg_first_response_time,
+            )}
+          </div>
+          <div className='text-right'>
+            {t('近期平均输出速度')}：
+            {formatRecentOutputTokenSpeed(
+              status?.recent_avg_output_token_speed,
+            )}
           </div>
         </div>
       </div>
