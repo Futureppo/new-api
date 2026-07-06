@@ -86,8 +86,8 @@ import {
 const { Title, Text } = Typography;
 
 const SECTIONS = [
-  { id: 'redemptions', label: '兑换码增强', icon: Gift },
-  { id: 'registration-codes', label: '注册增强', icon: KeyRound },
+  { id: 'redemptions', label: '兑换码管理', icon: Gift },
+  { id: 'registration-codes', label: '注册码管理', icon: KeyRound },
   { id: 'users', label: '用户增强', icon: UserCog },
   { id: 'tokens', label: '令牌审计', icon: ShieldCheck },
   { id: 'risk', label: '风控中心', icon: ShieldCheck },
@@ -1480,7 +1480,7 @@ function RegistrationCodesPanel({ data }) {
   const [config, setConfig] = useState(data?.config || defaultConfig);
   const [configForm, setConfigForm] = useState(data?.config || defaultConfig);
   const [form, setForm] = useState({
-    name: '增强管理',
+    name: '薄荷鸡鸡大',
     max_uses: 1,
     open_time: 0,
     end_time: 0,
