@@ -211,8 +211,6 @@ const FIELD_LABELS = {
   end_time: '结束时间',
   last_used_time: '最后使用时间',
   registration_code_required: '强制注册码注册',
-  registration_code_force_active: '强制已生效',
-  registration_code_force_start_time: '强制生效时间',
   force_active: '强制已生效',
   not_open: '未开启',
   expired: '已结束',
@@ -1478,8 +1476,6 @@ function RegistrationCodesPanel({ data }) {
   const { t } = useTranslation();
   const defaultConfig = {
     registration_code_required: false,
-    registration_code_force_start_time: 0,
-    registration_code_force_active: false,
   };
   const [config, setConfig] = useState(data?.config || defaultConfig);
   const [configForm, setConfigForm] = useState(data?.config || defaultConfig);
@@ -1570,9 +1566,6 @@ function RegistrationCodesPanel({ data }) {
     try {
       await API.put('/api/enhancements/registration-codes/config', {
         registration_code_required: !!configForm.registration_code_required,
-        registration_code_force_start_time: Number(
-          configForm.registration_code_force_start_time || 0,
-        ),
       }).then(unwrap);
       showSuccess(t('配置已保存'));
       await Promise.all([loadConfig(), loadStatistics()]);
@@ -1811,7 +1804,7 @@ function RegistrationCodesPanel({ data }) {
       <SummaryGrid data={{ ...statistics, ...config }} />
 
       <Card title={t('全局配置')} className='!rounded-lg'>
-        <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end'>
+        <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto] lg:items-end'>
           <label className='space-y-1'>
             <Text type='secondary'>{t('强制注册码注册')}</Text>
             <div className='h-8 flex items-center'>
@@ -1825,26 +1818,6 @@ function RegistrationCodesPanel({ data }) {
                 }
               />
             </div>
-          </label>
-          <label className='space-y-1'>
-            <Text type='secondary'>{t('强制生效时间')}</Text>
-            <DatePicker
-              type='dateTime'
-              className='w-full'
-              inputReadOnly
-              showClear
-              value={timestampToDateValue(
-                configForm.registration_code_force_start_time,
-              )}
-              placeholder={t('不设置')}
-              onChange={(value) =>
-                setConfigForm((prev) => ({
-                  ...prev,
-                  registration_code_force_start_time:
-                    dateValueToTimestamp(value),
-                }))
-              }
-            />
           </label>
           <Button
             type='primary'

@@ -214,7 +214,7 @@ func Register(c *gin.Context) {
 		if err := cleanUser.InsertWithTx(tx, inviterId); err != nil {
 			return err
 		}
-		if err := model.ConsumeRegistrationCodeTx(tx, user.RegistrationCode, cleanUser.Id, cleanUser.Username, "password", setting.IsRegistrationCodeForceActive()); err != nil {
+		if err := model.ConsumeRegistrationCodeTx(tx, user.RegistrationCode, cleanUser.Id, cleanUser.Username, "password", setting.IsRegistrationCodeRequired()); err != nil {
 			return err
 		}
 		if constant.GenerateDefaultToken {

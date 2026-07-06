@@ -102,7 +102,7 @@ func WeChatAuth(c *gin.Context) {
 				if err := user.InsertWithTx(tx, 0); err != nil {
 					return err
 				}
-				return model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, "wechat", setting.IsRegistrationCodeForceActive())
+				return model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, "wechat", setting.IsRegistrationCodeRequired())
 			}); err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,

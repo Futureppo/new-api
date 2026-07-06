@@ -35,32 +35,22 @@ type GenerateRegistrationCodesRequest struct {
 }
 
 type RegistrationCodeConfigRequest struct {
-	RegistrationCodeRequired       bool  `json:"registration_code_required"`
-	RegistrationCodeForceStartTime int64 `json:"registration_code_force_start_time"`
+	RegistrationCodeRequired bool `json:"registration_code_required"`
 }
 
 func RegistrationCodeConfig() map[string]interface{} {
 	cfg := setting.GetEnhancementSetting()
 	return map[string]interface{}{
-		"registration_code_required":         cfg.RegistrationCodeRequired,
-		"registration_code_force_active":     setting.IsRegistrationCodeForceActive(),
-		"registration_code_force_start_time": cfg.RegistrationCodeForceStartTime,
+		"registration_code_required": cfg.RegistrationCodeRequired,
 	}
 }
 
 func SaveRegistrationCodeConfig(req RegistrationCodeConfigRequest, operatorId int) error {
-	if req.RegistrationCodeForceStartTime < 0 {
-		return errors.New("registration_code_force_start_time is invalid")
-	}
 	if err := model.UpdateOption("enhancement_setting.registration_code_required", strconv.FormatBool(req.RegistrationCodeRequired)); err != nil {
 		return err
 	}
-	if err := model.UpdateOption("enhancement_setting.registration_code_force_start_time", strconv.FormatInt(req.RegistrationCodeForceStartTime, 10)); err != nil {
-		return err
-	}
 	audit(operatorId, "enhancements.registration_codes", "save_config", map[string]interface{}{
-		"required":         req.RegistrationCodeRequired,
-		"force_start_time": req.RegistrationCodeForceStartTime,
+		"required": req.RegistrationCodeRequired,
 	})
 	return nil
 }

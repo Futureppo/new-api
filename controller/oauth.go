@@ -286,7 +286,7 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 	}
 	registrationCode, _ := session.Get("registration_code").(string)
-	registrationCodeRequired := setting.IsRegistrationCodeForceActive()
+	registrationCodeRequired := setting.IsRegistrationCodeRequired()
 	registrationSource := "oauth:" + provider.GetName()
 
 	// Use transaction to ensure user creation and OAuth binding are atomic

@@ -141,9 +141,7 @@ const RegisterForm = () => {
       status.telegram_oauth ||
       hasCustomOAuthProviders,
   );
-  const registrationCodeRequired = Boolean(
-    status.registration_code_required && status.registration_code_force_active,
-  );
+  const registrationCodeRequired = Boolean(status.registration_code_required);
   const registrationOAuthOptions = {
     shouldLogout: true,
     registrationCode: inputs.registration_code,
