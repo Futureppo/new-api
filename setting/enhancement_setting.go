@@ -1,6 +1,9 @@
 package setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 type EnhancementSetting struct {
 	PublicEmbedEnabled                    bool     `json:"public_embed_enabled"`
@@ -21,6 +24,8 @@ type EnhancementSetting struct {
 	AIBanModel                            string   `json:"ai_ban_model"`
 	AIBanBaseURL                          string   `json:"ai_ban_base_url"`
 	AIBanAPIKey                           string   `json:"ai_ban_api_key"`
+	RegistrationCodeRequired              bool     `json:"registration_code_required"`
+	RegistrationCodeForceStartTime        int64    `json:"registration_code_force_start_time"`
 }
 
 var enhancementSetting = EnhancementSetting{
@@ -39,6 +44,8 @@ var enhancementSetting = EnhancementSetting{
 	ModelStatusSiteTitle:                  "Model Status",
 	AIBanEnabled:                          false,
 	AIBanDryRun:                           true,
+	RegistrationCodeRequired:              false,
+	RegistrationCodeForceStartTime:        0,
 }
 
 func init() {
@@ -47,4 +54,12 @@ func init() {
 
 func GetEnhancementSetting() *EnhancementSetting {
 	return &enhancementSetting
+}
+
+func IsRegistrationCodeForceActive() bool {
+	cfg := GetEnhancementSetting()
+	if !cfg.RegistrationCodeRequired {
+		return false
+	}
+	return cfg.RegistrationCodeForceStartTime <= 0 || common.GetTimestamp() >= cfg.RegistrationCodeForceStartTime
 }

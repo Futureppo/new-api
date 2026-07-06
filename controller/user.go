@@ -23,6 +23,7 @@ import (
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type LoginRequest struct {
@@ -209,51 +210,53 @@ func Register(c *gin.Context) {
 	if common.EmailVerificationEnabled {
 		cleanUser.Email = user.Email
 	}
-	if err := cleanUser.Insert(inviterId); err != nil {
+	if err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := cleanUser.InsertWithTx(tx, inviterId); err != nil {
+			return err
+		}
+		if err := model.ConsumeRegistrationCodeTx(tx, user.RegistrationCode, cleanUser.Id, cleanUser.Username, "password", setting.IsRegistrationCodeForceActive()); err != nil {
+			return err
+		}
+		if constant.GenerateDefaultToken {
+			if err := createDefaultTokenForNewUserTx(tx, cleanUser.Id, cleanUser.Username); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		common.ApiError(c, err)
 		return
 	}
-
-	// 获取插入后的用户ID
-	var insertedUser model.User
-	if err := model.DB.Where("username = ?", cleanUser.Username).First(&insertedUser).Error; err != nil {
-		common.ApiErrorI18n(c, i18n.MsgUserRegisterFailed)
-		return
-	}
-	// 生成默认令牌
-	if constant.GenerateDefaultToken {
-		key, err := common.GenerateKey()
-		if err != nil {
-			common.ApiErrorI18n(c, i18n.MsgUserDefaultTokenFailed)
-			common.SysLog("failed to generate token key: " + err.Error())
-			return
-		}
-		// 生成默认令牌
-		token := model.Token{
-			UserId:             insertedUser.Id, // 使用插入后的用户ID
-			Name:               cleanUser.Username + "的初始令牌",
-			Key:                key,
-			CreatedTime:        common.GetTimestamp(),
-			AccessedTime:       common.GetTimestamp(),
-			ExpiredTime:        -1,     // 永不过期
-			RemainQuota:        500000, // 示例额度
-			UnlimitedQuota:     true,
-			ModelLimitsEnabled: false,
-		}
-		if setting.DefaultUseAutoGroup {
-			token.Group = "auto"
-		}
-		if err := token.Insert(); err != nil {
-			common.ApiErrorI18n(c, i18n.MsgCreateDefaultTokenErr)
-			return
-		}
-	}
+	cleanUser.FinalizeOAuthUserCreation(inviterId)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "",
 	})
 	return
+}
+
+func createDefaultTokenForNewUserTx(tx *gorm.DB, userId int, username string) error {
+	key, err := common.GenerateKey()
+	if err != nil {
+		common.SysLog("failed to generate token key: " + err.Error())
+		return err
+	}
+	token := model.Token{
+		UserId:             userId,
+		Name:               username + "的初始令牌",
+		Key:                key,
+		CreatedTime:        common.GetTimestamp(),
+		AccessedTime:       common.GetTimestamp(),
+		ExpiredTime:        -1,
+		RemainQuota:        500000,
+		UnlimitedQuota:     true,
+		ModelLimitsEnabled: false,
+	}
+	if setting.DefaultUseAutoGroup {
+		token.Group = "auto"
+	}
+	return tx.Create(&token).Error
 }
 
 func GetAllUsers(c *gin.Context) {

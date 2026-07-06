@@ -10,6 +10,7 @@ import (
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/oauth"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -27,6 +28,12 @@ func GenerateOAuthCode(c *gin.Context) {
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
+	}
+	registrationCode := c.Query("registration_code")
+	if registrationCode != "" {
+		session.Set("registration_code", registrationCode)
+	} else {
+		session.Delete("registration_code")
 	}
 	session.Set("oauth_state", state)
 	err := session.Save()
@@ -278,6 +285,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if affCode != nil {
 		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
 	}
+	registrationCode, _ := session.Get("registration_code").(string)
+	registrationCodeRequired := setting.IsRegistrationCodeForceActive()
+	registrationSource := "oauth:" + provider.GetName()
 
 	// Use transaction to ensure user creation and OAuth binding are atomic
 	if genericProvider, ok := provider.(*oauth.GenericOAuthProvider); ok {
@@ -285,6 +295,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
+				return err
+			}
+			if err := model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, registrationSource, registrationCodeRequired); err != nil {
 				return err
 			}
 
@@ -311,6 +324,9 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 		err := model.DB.Transaction(func(tx *gorm.DB) error {
 			// Create user
 			if err := user.InsertWithTx(tx, inviterId); err != nil {
+				return err
+			}
+			if err := model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, registrationSource, registrationCodeRequired); err != nil {
 				return err
 			}
 

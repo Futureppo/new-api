@@ -80,6 +80,7 @@ const RegisterForm = () => {
     email: '',
     verification_code: '',
     wechat_verification_code: '',
+    registration_code: '',
   });
   const { username, password, password2 } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
@@ -140,6 +141,21 @@ const RegisterForm = () => {
       status.telegram_oauth ||
       hasCustomOAuthProviders,
   );
+  const registrationCodeRequired = Boolean(
+    status.registration_code_required && status.registration_code_force_active,
+  );
+  const registrationOAuthOptions = {
+    shouldLogout: true,
+    registrationCode: inputs.registration_code,
+  };
+
+  const ensureRegistrationCode = () => {
+    if (registrationCodeRequired && !inputs.registration_code.trim()) {
+      showInfo(t('请输入注册码'));
+      return false;
+    }
+    return true;
+  };
 
   const [showEmailVerification, setShowEmailVerification] = useState(false);
 
@@ -177,6 +193,9 @@ const RegisterForm = () => {
   }, []);
 
   const onWeChatLoginClicked = () => {
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setWechatLoading(true);
     setShowWeChatLoginModal(true);
     setWechatLoading(false);
@@ -189,9 +208,13 @@ const RegisterForm = () => {
     }
     setWechatCodeSubmitLoading(true);
     try {
-      const res = await API.get(
-        `/api/oauth/wechat?code=${inputs.wechat_verification_code}`,
-      );
+      const params = new URLSearchParams({
+        code: inputs.wechat_verification_code,
+      });
+      if (inputs.registration_code.trim()) {
+        params.set('registration_code', inputs.registration_code.trim());
+      }
+      const res = await API.get(`/api/oauth/wechat?${params.toString()}`);
       const { success, message, data } = res.data;
       if (success) {
         userDispatch({ type: 'login', payload: data });
@@ -225,6 +248,9 @@ const RegisterForm = () => {
       return;
     }
     if (username && password) {
+      if (!ensureRegistrationCode()) {
+        return;
+      }
       if (turnstileEnabled && turnstileToken === '') {
         showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
         return;
@@ -283,6 +309,9 @@ const RegisterForm = () => {
     if (githubButtonDisabled) {
       return;
     }
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setGithubLoading(true);
     setGithubButtonDisabled(true);
     setGithubButtonState('redirecting');
@@ -295,29 +324,35 @@ const RegisterForm = () => {
       setGithubButtonDisabled(true);
     }, 20000);
     try {
-      onGitHubOAuthClicked(status.github_client_id, { shouldLogout: true });
+      onGitHubOAuthClicked(status.github_client_id, registrationOAuthOptions);
     } finally {
       setTimeout(() => setGithubLoading(false), 3000);
     }
   };
 
   const handleDiscordClick = () => {
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setDiscordLoading(true);
     try {
-      onDiscordOAuthClicked(status.discord_client_id, { shouldLogout: true });
+      onDiscordOAuthClicked(status.discord_client_id, registrationOAuthOptions);
     } finally {
       setTimeout(() => setDiscordLoading(false), 3000);
     }
   };
 
   const handleOIDCClick = () => {
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setOidcLoading(true);
     try {
       onOIDCClicked(
         status.oidc_authorization_endpoint,
         status.oidc_client_id,
         false,
-        { shouldLogout: true },
+        registrationOAuthOptions,
       );
     } finally {
       setTimeout(() => setOidcLoading(false), 3000);
@@ -325,18 +360,24 @@ const RegisterForm = () => {
   };
 
   const handleLinuxDOClick = () => {
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setLinuxdoLoading(true);
     try {
-      onLinuxDOOAuthClicked(status.linuxdo_client_id, { shouldLogout: true });
+      onLinuxDOOAuthClicked(status.linuxdo_client_id, registrationOAuthOptions);
     } finally {
       setTimeout(() => setLinuxdoLoading(false), 3000);
     }
   };
 
   const handleCustomOAuthClick = (provider) => {
+    if (!ensureRegistrationCode()) {
+      return;
+    }
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
     try {
-      onCustomOAuthClicked(provider, { shouldLogout: true });
+      onCustomOAuthClicked(provider, registrationOAuthOptions);
     } finally {
       setTimeout(() => {
         setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: false }));
@@ -409,6 +450,22 @@ const RegisterForm = () => {
               </Title>
             </div>
             <div className='px-2 py-8'>
+              <Form className='mb-4'>
+                <Form.Input
+                  field='registration_code'
+                  label={t('注册码')}
+                  placeholder={
+                    registrationCodeRequired
+                      ? t('请输入注册码')
+                      : t('注册码（选填）')
+                  }
+                  name='registration_code'
+                  value={inputs.registration_code}
+                  onChange={(value) => handleChange('registration_code', value)}
+                  prefix={<IconKey />}
+                />
+              </Form>
+
               <div className='space-y-3'>
                 {status.wechat_login && (
                   <Button
@@ -637,6 +694,19 @@ const RegisterForm = () => {
                   </>
                 )}
 
+                <Form.Input
+                  field='registration_code'
+                  label={t('注册码')}
+                  placeholder={
+                    registrationCodeRequired
+                      ? t('请输入注册码')
+                      : t('注册码（选填）')
+                  }
+                  name='registration_code'
+                  onChange={(value) => handleChange('registration_code', value)}
+                  prefix={<IconKey />}
+                />
+
                 {(hasUserAgreement || hasPrivacyPolicy) && (
                   <div className='pt-4'>
                     <Checkbox
@@ -781,8 +851,7 @@ const RegisterForm = () => {
         style={{ top: '50%', left: '-120px' }}
       />
       <div className='w-full max-w-sm mt-[60px]'>
-        {showEmailRegister ||
-        !hasOAuthRegisterOptions
+        {showEmailRegister || !hasOAuthRegisterOptions
           ? renderEmailRegisterForm()
           : renderOAuthOptions()}
         {renderWeChatLoginModal()}

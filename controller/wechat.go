@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,9 +10,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type wechatLoginResponse struct {
@@ -40,7 +41,7 @@ func getWeChatIdByCode(code string) (string, error) {
 	}
 	defer httpResponse.Body.Close()
 	var res wechatLoginResponse
-	err = json.NewDecoder(httpResponse.Body).Decode(&res)
+	err = common.DecodeJson(httpResponse.Body, &res)
 	if err != nil {
 		return "", err
 	}
@@ -96,13 +97,20 @@ func WeChatAuth(c *gin.Context) {
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
-			if err := user.Insert(0); err != nil {
+			registrationCode := c.Query("registration_code")
+			if err := model.DB.Transaction(func(tx *gorm.DB) error {
+				if err := user.InsertWithTx(tx, 0); err != nil {
+					return err
+				}
+				return model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, "wechat", setting.IsRegistrationCodeForceActive())
+			}); err != nil {
 				c.JSON(http.StatusOK, gin.H{
 					"success": false,
 					"message": err.Error(),
 				})
 				return
 			}
+			user.FinalizeOAuthUserCreation(0)
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,

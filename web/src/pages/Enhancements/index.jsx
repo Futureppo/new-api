@@ -87,6 +87,7 @@ const { Title, Text } = Typography;
 
 const SECTIONS = [
   { id: 'redemptions', label: '兑换码增强', icon: Gift },
+  { id: 'registration-codes', label: '注册增强', icon: KeyRound },
   { id: 'users', label: '用户增强', icon: UserCog },
   { id: 'tokens', label: '令牌审计', icon: ShieldCheck },
   { id: 'risk', label: '风控中心', icon: ShieldCheck },
@@ -161,6 +162,7 @@ const FIELD_LABELS = {
   user_id_end: '用户 ID 结束',
   group: '分组',
   key: '密钥',
+  code: '注册码',
   name: '名称',
   message: '消息',
   reason: '原因',
@@ -202,6 +204,17 @@ const FIELD_LABELS = {
   channels: '渠道数',
   tokens: '令牌数',
   redemptions: '兑换码数',
+  registration_codes: '注册码数',
+  max_uses: '可注册次数',
+  used_count: '已注册次数',
+  open_time: '可用开始时间',
+  last_used_time: '最后使用时间',
+  registration_code_required: '强制注册码注册',
+  registration_code_force_active: '强制已生效',
+  registration_code_force_start_time: '强制生效时间',
+  force_active: '强制已生效',
+  not_open: '未到可用时间',
+  exhausted: '已用尽',
   users: '用户',
   last_24h: '最近 24 小时',
   generated_at: '生成时间',
@@ -289,6 +302,16 @@ const REDEMPTION_STATUS_META = {
   [REDEMPTION_STATUS.USED]: { color: 'grey', text: '已兑换' },
 };
 
+const REGISTRATION_CODE_STATUS = {
+  ENABLED: 1,
+  DISABLED: 2,
+};
+
+const REGISTRATION_CODE_STATUS_META = {
+  [REGISTRATION_CODE_STATUS.ENABLED]: { color: 'green', text: '已启用' },
+  [REGISTRATION_CODE_STATUS.DISABLED]: { color: 'red', text: '已禁用' },
+};
+
 const TOKEN_STATUS = {
   ENABLED: 1,
   DISABLED: 2,
@@ -347,12 +370,7 @@ const GITHUB_AGE_BAN_PREVIEW_KEYS = [
 ];
 
 const GITHUB_AGE_BAN_ISSUE_KEYS = ['id', 'username', 'github_id', 'reason'];
-const GITHUB_AGE_BAN_FAILURE_KEYS = [
-  'id',
-  'username',
-  'github_id',
-  'message',
-];
+const GITHUB_AGE_BAN_FAILURE_KEYS = ['id', 'username', 'github_id', 'message'];
 
 function unwrap(res) {
   if (!res?.data?.success) {
@@ -962,6 +980,58 @@ function redemptionUserText(record) {
   return `${username} (#${record.used_user_id})`;
 }
 
+function timestampToDateValue(timestamp) {
+  const value = Number(timestamp || 0);
+  return value > 0 ? dayjs.unix(value).toDate() : undefined;
+}
+
+function dateValueToTimestamp(value) {
+  if (!value) return 0;
+  const parsed = dayjs(value);
+  return parsed.isValid() ? parsed.unix() : 0;
+}
+
+function isRegistrationCodeNotOpen(record) {
+  return (
+    record?.status === REGISTRATION_CODE_STATUS.ENABLED &&
+    Number(record.open_time || 0) > Math.floor(Date.now() / 1000)
+  );
+}
+
+function isRegistrationCodeExhausted(record) {
+  return (
+    Number(record?.max_uses || 0) > 0 &&
+    Number(record?.used_count || 0) >= Number(record?.max_uses || 0)
+  );
+}
+
+function renderRegistrationCodeStatus(record, t) {
+  if (record?.status === REGISTRATION_CODE_STATUS.ENABLED) {
+    if (isRegistrationCodeNotOpen(record)) {
+      return <Tag color='orange'>{t('未到可用时间')}</Tag>;
+    }
+    if (isRegistrationCodeExhausted(record)) {
+      return <Tag color='grey'>{t('已用尽')}</Tag>;
+    }
+  }
+  const meta = REGISTRATION_CODE_STATUS_META[record?.status] || {
+    color: 'black',
+    text: '未知',
+  };
+  return <Tag color={meta.color}>{t(meta.text)}</Tag>;
+}
+
+function registrationCodeStatusText(record, t) {
+  if (record?.status === REGISTRATION_CODE_STATUS.ENABLED) {
+    if (isRegistrationCodeNotOpen(record)) return t('未到可用时间');
+    if (isRegistrationCodeExhausted(record)) return t('已用尽');
+  }
+  const meta = REGISTRATION_CODE_STATUS_META[record?.status] || {
+    text: '未知',
+  };
+  return t(meta.text);
+}
+
 function renderTokenStatus(status, t) {
   const meta = TOKEN_STATUS_META[status] || {
     color: 'black',
@@ -1390,6 +1460,530 @@ function RedemptionsPanel({ data }) {
   );
 }
 
+function RegistrationCodesPanel({ data }) {
+  const { t } = useTranslation();
+  const defaultConfig = {
+    registration_code_required: false,
+    registration_code_force_start_time: 0,
+    registration_code_force_active: false,
+  };
+  const [config, setConfig] = useState(data?.config || defaultConfig);
+  const [configForm, setConfigForm] = useState(data?.config || defaultConfig);
+  const [form, setForm] = useState({
+    count: 1,
+    name: '增强管理',
+    max_uses: 1,
+    open_time: 0,
+    code: '',
+  });
+  const [statistics, setStatistics] = useState(data?.statistics || {});
+  const [list, setList] = useState(
+    data?.list || { items: [], total: 0, page: 1, page_size: 20 },
+  );
+  const [filters, setFilters] = useState({ status: '0', keyword: '' });
+  const [tableQuery, setTableQuery] = useState(DEFAULT_TABLE_QUERY);
+  const [pageSize, setPageSize] = useState(data?.list?.page_size || 20);
+  const [listLoading, setListLoading] = useState(false);
+  const [generated, setGenerated] = useState([]);
+  const [generating, setGenerating] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
+  useEffect(() => {
+    const nextConfig = data?.config || defaultConfig;
+    setConfig(nextConfig);
+    setConfigForm(nextConfig);
+  }, [data?.config]);
+
+  useEffect(() => {
+    setStatistics(data?.statistics || {});
+  }, [data?.statistics]);
+
+  useEffect(() => {
+    if (data?.list) {
+      setList(data.list);
+      setPageSize(data.list.page_size || 20);
+    }
+  }, [data?.list]);
+
+  const loadConfig = async () => {
+    const nextConfig = await API.get(
+      '/api/enhancements/registration-codes/config',
+    ).then(unwrap);
+    setConfig(nextConfig || defaultConfig);
+    setConfigForm(nextConfig || defaultConfig);
+  };
+
+  const loadStatistics = async () => {
+    const nextStatistics = await API.get(
+      '/api/enhancements/registration-codes/statistics',
+    ).then(unwrap);
+    setStatistics(nextStatistics || {});
+  };
+
+  const loadRegistrationCodes = async (
+    page = 1,
+    size = pageSize,
+    nextFilters = filters,
+    nextTableQuery = tableQuery,
+  ) => {
+    setListLoading(true);
+    try {
+      const params = new URLSearchParams({
+        p: String(page),
+        page_size: String(size),
+      });
+      if (nextFilters.status !== '0') {
+        params.set('status', nextFilters.status);
+      }
+      const keyword = nextFilters.keyword.trim();
+      if (keyword) {
+        params.set('keyword', keyword);
+      }
+      appendTableQueryParams(params, nextTableQuery);
+      const nextList = await API.get(
+        `/api/enhancements/registration-codes?${params.toString()}`,
+      ).then(unwrap);
+      setList(nextList || { items: [], total: 0, page, page_size: size });
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  const saveConfig = async () => {
+    setSavingConfig(true);
+    try {
+      await API.put('/api/enhancements/registration-codes/config', {
+        registration_code_required: !!configForm.registration_code_required,
+        registration_code_force_start_time: Number(
+          configForm.registration_code_force_start_time || 0,
+        ),
+      }).then(unwrap);
+      showSuccess(t('配置已保存'));
+      await Promise.all([loadConfig(), loadStatistics()]);
+    } catch (error) {
+      showError(error.message || error);
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
+  const generate = () => {
+    Modal.confirm({
+      title: t('生成注册码'),
+      content: t('确认生成注册码？'),
+      okText: t('确认'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        setGenerating(true);
+        try {
+          const res = await API.post(
+            '/api/enhancements/registration-codes/generate',
+            {
+              ...form,
+              count: Number(form.count || 1),
+              code: Number(form.count || 1) === 1 ? form.code.trim() : '',
+              max_uses: Number(form.max_uses || 1),
+              open_time: Number(form.open_time || 0),
+            },
+          );
+          const rows = unwrap(res);
+          setGenerated(rows || []);
+          showSuccess(t('生成成功'));
+          await Promise.all([
+            loadStatistics(),
+            loadRegistrationCodes(1, pageSize),
+          ]);
+        } catch (error) {
+          showError(error.message || error);
+        } finally {
+          setGenerating(false);
+        }
+      },
+    });
+  };
+
+  const copyGeneratedCodes = async () => {
+    const codes = generated.map((item) => item.code).filter(Boolean);
+    if (codes.length === 0) return;
+    if (await copy(codes.join('\n'))) {
+      showSuccess(t('复制成功'));
+    } else {
+      showError(t('复制失败'));
+    }
+  };
+
+  const updateRegistrationCodeEnabled = (record, enabled) => {
+    Modal.confirm({
+      title: enabled ? t('启用注册码') : t('禁用注册码'),
+      content: enabled ? t('确认启用这个注册码？') : t('确认禁用这个注册码？'),
+      okText: enabled ? t('启用') : t('禁用'),
+      cancelText: t('取消'),
+      onOk: async () => {
+        try {
+          await API.post(
+            `/api/enhancements/registration-codes/${record.id}/${enabled ? 'enable' : 'disable'}`,
+          ).then(unwrap);
+          showSuccess(t('操作成功'));
+          await Promise.all([
+            loadStatistics(),
+            loadRegistrationCodes(list?.page || 1, pageSize),
+          ]);
+        } catch (error) {
+          showError(error.message || error);
+        }
+      },
+    });
+  };
+
+  const deleteRegistrationCode = (record) => {
+    Modal.confirm({
+      title: t('删除注册码'),
+      content: t('确认删除这个注册码？'),
+      okText: t('删除'),
+      cancelText: t('取消'),
+      type: 'warning',
+      onOk: async () => {
+        try {
+          await API.delete(
+            `/api/enhancements/registration-codes/${record.id}`,
+          ).then(unwrap);
+          showSuccess(t('删除成功'));
+          await Promise.all([
+            loadStatistics(),
+            loadRegistrationCodes(list?.page || 1, pageSize),
+          ]);
+        } catch (error) {
+          showError(error.message || error);
+        }
+      },
+    });
+  };
+
+  const renderTimeCell = (value, emptyText = t('立即可用')) => {
+    const text =
+      Number(value || 0) > 0 ? formatValue(value, 'open_time', t) : emptyText;
+    return copyableCell(text, text, t);
+  };
+
+  const columns = [
+    {
+      title: t('ID'),
+      dataIndex: 'id',
+      width: 80,
+      render: (value) => copyableCell(value, value, t),
+    },
+    {
+      title: t('名称'),
+      dataIndex: 'name',
+      width: 160,
+      render: (value) => copyableCell(value || '-', value || '-', t),
+    },
+    {
+      title: t('注册码'),
+      dataIndex: 'code',
+      width: 260,
+      render: (value) =>
+        copyableCell(
+          value || '-',
+          value || '-',
+          t,
+          'font-mono text-xs break-all',
+        ),
+    },
+    {
+      title: t('状态'),
+      dataIndex: 'status',
+      width: 130,
+      render: (_, record) =>
+        copyableCell(
+          renderRegistrationCodeStatus(record, t),
+          registrationCodeStatusText(record, t),
+          t,
+        ),
+    },
+    {
+      title: t('可注册次数'),
+      dataIndex: 'max_uses',
+      width: 120,
+      render: (value) => copyableCell(value, value, t),
+    },
+    {
+      title: t('已注册次数'),
+      dataIndex: 'used_count',
+      width: 120,
+      render: (value) => copyableCell(value, value, t),
+    },
+    {
+      title: t('可用开始时间'),
+      dataIndex: 'open_time',
+      width: 180,
+      render: (value) => renderTimeCell(value),
+    },
+    {
+      title: t('创建时间'),
+      dataIndex: 'created_time',
+      width: 180,
+      render: (value) => {
+        const text = formatValue(value, 'created_time', t);
+        return copyableCell(text, text, t);
+      },
+    },
+    {
+      title: t('最后使用时间'),
+      dataIndex: 'last_used_time',
+      width: 180,
+      render: (value) => renderTimeCell(value, t('暂无')),
+    },
+    {
+      title: t('操作'),
+      dataIndex: 'operate',
+      fixed: 'right',
+      width: 190,
+      render: (_, record) => (
+        <Space>
+          {record.status === REGISTRATION_CODE_STATUS.DISABLED ? (
+            <Button
+              size='small'
+              type='primary'
+              onClick={() => updateRegistrationCodeEnabled(record, true)}
+            >
+              {t('启用')}
+            </Button>
+          ) : (
+            <Button
+              size='small'
+              type='danger'
+              onClick={() => updateRegistrationCodeEnabled(record, false)}
+            >
+              {t('禁用')}
+            </Button>
+          )}
+          <Button
+            size='small'
+            type='danger'
+            theme='borderless'
+            icon={<Trash2 size={14} />}
+            disabled={record.used_count > 0 && !isRoot()}
+            onClick={() => deleteRegistrationCode(record)}
+          />
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <div className='space-y-4'>
+      <SummaryGrid data={{ ...statistics, ...config }} />
+
+      <Card title={t('全局配置')} className='!rounded-lg'>
+        <div className='grid grid-cols-1 gap-3 lg:grid-cols-[1fr_1fr_auto] lg:items-end'>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('强制注册码注册')}</Text>
+            <div className='h-8 flex items-center'>
+              <Switch
+                checked={!!configForm.registration_code_required}
+                onChange={(checked) =>
+                  setConfigForm((prev) => ({
+                    ...prev,
+                    registration_code_required: checked,
+                  }))
+                }
+              />
+            </div>
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('强制生效时间')}</Text>
+            <DatePicker
+              type='dateTime'
+              className='w-full'
+              inputReadOnly
+              showClear
+              value={timestampToDateValue(
+                configForm.registration_code_force_start_time,
+              )}
+              placeholder={t('不设置')}
+              onChange={(value) =>
+                setConfigForm((prev) => ({
+                  ...prev,
+                  registration_code_force_start_time:
+                    dateValueToTimestamp(value),
+                }))
+              }
+            />
+          </label>
+          <Button
+            type='primary'
+            icon={<Save size={16} />}
+            loading={savingConfig}
+            disabled={!isRoot()}
+            onClick={saveConfig}
+          >
+            {t('保存')}
+          </Button>
+        </div>
+      </Card>
+
+      <Card title={t('批量生成')} className='!rounded-lg'>
+        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6 xl:items-end'>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('名称')}</Text>
+            <Input
+              value={form.name}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, name: value }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('数量')}</Text>
+            <InputNumber
+              min={1}
+              max={100}
+              value={form.count}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, count: value || 1 }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('可注册次数')}</Text>
+            <InputNumber
+              min={1}
+              value={form.max_uses}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, max_uses: value || 1 }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('手动指定')}</Text>
+            <Input
+              value={form.code}
+              disabled={Number(form.count || 1) !== 1}
+              placeholder={t('仅数量为 1 时可用')}
+              onChange={(value) =>
+                setForm((prev) => ({ ...prev, code: value }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('可用开始时间')}</Text>
+            <DatePicker
+              type='dateTime'
+              className='w-full'
+              inputReadOnly
+              showClear
+              value={timestampToDateValue(form.open_time)}
+              placeholder={t('立即可用')}
+              onChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  open_time: dateValueToTimestamp(value),
+                }))
+              }
+            />
+          </label>
+          <Button
+            type='primary'
+            icon={<KeyRound size={16} />}
+            loading={generating}
+            onClick={generate}
+          >
+            {t('生成')}
+          </Button>
+        </div>
+      </Card>
+
+      {generated.length > 0 && (
+        <Card title={t('本次生成结果')} className='!rounded-lg'>
+          <div className='mb-3'>
+            <Button type='primary' onClick={copyGeneratedCodes}>
+              {t('一键复制注册码')}
+            </Button>
+          </div>
+          <DataPreview data={generated} />
+        </Card>
+      )}
+
+      <Card title={t('注册码列表')} className='!rounded-lg'>
+        <div className='flex flex-col gap-3 mb-4 lg:flex-row'>
+          <Select
+            value={filters.status}
+            style={{ width: 160 }}
+            onChange={(value) => {
+              const nextFilters = { ...filters, status: String(value) };
+              setFilters(nextFilters);
+              loadRegistrationCodes(1, pageSize, nextFilters);
+            }}
+          >
+            <Select.Option value='0'>{t('全部')}</Select.Option>
+            <Select.Option value='1'>{t('已启用')}</Select.Option>
+            <Select.Option value='2'>{t('已禁用')}</Select.Option>
+          </Select>
+          <Input
+            value={filters.keyword}
+            placeholder={t('搜索注册码、名称或用户 ID')}
+            onChange={(value) =>
+              setFilters((prev) => ({ ...prev, keyword: value }))
+            }
+            onEnterPress={() => loadRegistrationCodes(1, pageSize)}
+            className='lg:max-w-sm'
+          />
+          <Space>
+            <Button
+              type='primary'
+              onClick={() => loadRegistrationCodes(1, pageSize)}
+            >
+              {t('搜索')}
+            </Button>
+            <Button
+              onClick={() => {
+                const nextFilters = { status: '0', keyword: '' };
+                const nextTableQuery = DEFAULT_TABLE_QUERY;
+                setFilters(nextFilters);
+                setTableQuery(nextTableQuery);
+                loadRegistrationCodes(1, pageSize, nextFilters, nextTableQuery);
+              }}
+            >
+              {t('重置')}
+            </Button>
+          </Space>
+        </div>
+        <Table
+          size='small'
+          columns={enhanceTableColumns(columns, { t, tableQuery })}
+          dataSource={(list?.items || []).map((row) => ({
+            ...row,
+            _rowKey: row.id,
+          }))}
+          rowKey='_rowKey'
+          loading={listLoading}
+          scroll={{ x: 'max-content' }}
+          onChange={(changeInfo) => {
+            const nextTableQuery = queryFromTableChange(changeInfo, tableQuery);
+            setTableQuery(nextTableQuery);
+            loadRegistrationCodes(1, pageSize, filters, nextTableQuery);
+          }}
+          pagination={{
+            currentPage: list?.page || 1,
+            pageSize,
+            total: list?.total || 0,
+            showSizeChanger: true,
+            pageSizeOptions: [10, 20, 50, 100],
+            onPageChange: (page) => loadRegistrationCodes(page, pageSize),
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              loadRegistrationCodes(1, size);
+            },
+          }}
+        />
+      </Card>
+    </div>
+  );
+}
+
 function GitHubAgeBanCard({ onApplied }) {
   const { t } = useTranslation();
   const defaultForm = {
@@ -1480,7 +2074,8 @@ function GitHubAgeBanCard({ onApplied }) {
             {t('封禁原因')}：{form.reason?.trim() || t('使用默认封禁原因')}
           </div>
           <div className='text-semi-color-text-1 break-words'>
-            {t('用户 ID 范围')}：{formatGitHubAgeBanUserIDRange(
+            {t('用户 ID 范围')}：
+            {formatGitHubAgeBanUserIDRange(
               normalizedUserIdStart,
               normalizedUserIdEnd,
               t,
@@ -2879,10 +3474,7 @@ function RiskPanel({ data }) {
       });
       if (
         handleRiskIPBanResponse(res, () =>
-          createRiskIPBans(
-            { targets, reason, loadingKey, onSuccess },
-            true,
-          ),
+          createRiskIPBans({ targets, reason, loadingKey, onSuccess }, true),
         )
       ) {
         return;
@@ -3050,9 +3642,7 @@ function RiskPanel({ data }) {
       onOk: async () => {
         setTokenActionLoading(`delete:${tokenId}`);
         try {
-          await API.delete(`/api/enhancements/tokens/${tokenId}`).then(
-            unwrap,
-          );
+          await API.delete(`/api/enhancements/tokens/${tokenId}`).then(unwrap);
           showSuccess(t('删除成功'));
           await loadTokenMultiIPs(tokenMultiIPs?.page || 1, tokenPageSize);
         } catch (error) {
@@ -3989,8 +4579,7 @@ function ModelStatusPanel({ data }) {
       );
       const nextRequestCountHideThreshold =
         getModelStatusRequestCountHideThreshold({
-          model_status_request_count_hide_threshold:
-            requestCountHideThreshold,
+          model_status_request_count_hide_threshold: requestCountHideThreshold,
         });
       if (nextGreenThreshold < nextYellowThreshold) {
         showError(t('绿色阈值不能低于黄色阈值'));
@@ -4068,10 +4657,7 @@ function ModelStatusPanel({ data }) {
                   </div>
                 </div>
               </div>
-              <Switch
-                checked={publicEnabled}
-                onChange={setPublicEnabled}
-              />
+              <Switch checked={publicEnabled} onChange={setPublicEnabled} />
             </div>
 
             <div className='flex flex-col gap-3 md:flex-row md:items-center md:justify-between'>
@@ -4168,9 +4754,7 @@ function ModelStatusPanel({ data }) {
                 max={1000000}
                 precision={0}
                 value={requestCountHideThreshold}
-                onChange={(value) =>
-                  setRequestCountHideThreshold(value ?? 2)
-                }
+                onChange={(value) => setRequestCountHideThreshold(value ?? 2)}
                 style={{ width: '100%' }}
               />
               <div className='text-xs text-semi-color-text-2'>
@@ -4374,6 +4958,9 @@ function GenericSection({ section, data, onRefresh }) {
   if (section === 'redemptions') {
     return <RedemptionsPanel data={data} onRefresh={onRefresh} />;
   }
+  if (section === 'registration-codes') {
+    return <RegistrationCodesPanel data={data} onRefresh={onRefresh} />;
+  }
   if (section === 'users') {
     return <UsersPanel data={data} />;
   }
@@ -4415,6 +5002,14 @@ async function fetchSection(section) {
         API.get('/api/enhancements/redemptions').then(unwrap),
       ]);
       return { statistics, list };
+    }
+    case 'registration-codes': {
+      const [config, statistics, list] = await Promise.all([
+        API.get('/api/enhancements/registration-codes/config').then(unwrap),
+        API.get('/api/enhancements/registration-codes/statistics').then(unwrap),
+        API.get('/api/enhancements/registration-codes').then(unwrap),
+      ]);
+      return { config, statistics, list };
     }
     case 'users': {
       const [summary, list] = await Promise.all([

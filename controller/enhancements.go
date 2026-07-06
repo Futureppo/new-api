@@ -48,6 +48,18 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 		redemptions.DELETE("/:id", enhancementDeleteRedemption)
 	}
 
+	registrationCodes := r.Group("/registration-codes")
+	{
+		registrationCodes.GET("/config", enhancementRegistrationCodeConfig)
+		registrationCodes.GET("/statistics", enhancementRegistrationCodeStats)
+		registrationCodes.GET("", enhancementListRegistrationCodes)
+		registrationCodes.GET("/", enhancementListRegistrationCodes)
+		registrationCodes.POST("/generate", enhancementGenerateRegistrationCodes)
+		registrationCodes.POST("/:id/disable", enhancementDisableRegistrationCode)
+		registrationCodes.POST("/:id/enable", enhancementEnableRegistrationCode)
+		registrationCodes.DELETE("/:id", enhancementDeleteRegistrationCode)
+	}
+
 	users := r.Group("/users")
 	{
 		users.GET("/activity-stats", enhancementUserActivityStats)
@@ -173,6 +185,7 @@ func RegisterEnhancementRootRoutes(r *gin.RouterGroup) {
 	r.PUT("/model-status/config/groups", enhancementReadOnlyPlaceholder("token groups are derived from tokens"))
 	r.PUT("/model-status/config/site-title", enhancementModelStatusSaveOption("model_status_site_title"))
 	r.PUT("/model-status/config/public-embed", enhancementModelStatusSaveOption("public_embed_enabled"))
+	r.PUT("/registration-codes/config", enhancementSaveRegistrationCodeConfig)
 	r.POST("/auto-group/batch-move", enhancementRootDryRunPlaceholder("auto-group batch move"))
 	r.POST("/auto-group/revert", enhancementRootDryRunPlaceholder("auto-group revert"))
 	r.POST("/ai-ban/config", enhancementSaveAIBanConfig)
@@ -395,6 +408,75 @@ func enhancementBatchDeleteRedemptions(c *gin.Context) {
 	}
 	operatorId, role := operator(c)
 	data, err := enhancement.BatchDeleteRedemptions(req.Ids, operatorId, role >= common.RoleRootUser)
+	respondPublic(c, data, err)
+}
+
+func enhancementRegistrationCodeConfig(c *gin.Context) {
+	common.ApiSuccess(c, enhancement.RegistrationCodeConfig())
+}
+
+func enhancementSaveRegistrationCodeConfig(c *gin.Context) {
+	var req enhancement.RegistrationCodeConfigRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	err := enhancement.SaveRegistrationCodeConfig(req, operatorId)
+	respondPublic(c, gin.H{"saved": true}, err)
+}
+
+func enhancementListRegistrationCodes(c *gin.Context) {
+	data, err := enhancement.ListRegistrationCodes(enhancementListQuery(c))
+	respondPublic(c, data, err)
+}
+
+func enhancementRegistrationCodeStats(c *gin.Context) {
+	data, err := enhancement.RegistrationCodeStats()
+	respondPublic(c, data, err)
+}
+
+func enhancementGenerateRegistrationCodes(c *gin.Context) {
+	var req enhancement.GenerateRegistrationCodesRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.GenerateRegistrationCodes(req, operatorId)
+	respondPublic(c, data, err)
+}
+
+func enhancementDeleteRegistrationCode(c *gin.Context) {
+	id, err := pathInt(c, "id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, role := operator(c)
+	err = enhancement.DeleteRegistrationCode(id, operatorId, role >= common.RoleRootUser)
+	respondPublic(c, gin.H{"deleted": true}, err)
+}
+
+func enhancementDisableRegistrationCode(c *gin.Context) {
+	id, err := pathInt(c, "id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.DisableRegistrationCode(id, operatorId)
+	respondPublic(c, data, err)
+}
+
+func enhancementEnableRegistrationCode(c *gin.Context) {
+	id, err := pathInt(c, "id")
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	operatorId, _ := operator(c)
+	data, err := enhancement.EnableRegistrationCode(id, operatorId)
 	respondPublic(c, data, err)
 }
 
