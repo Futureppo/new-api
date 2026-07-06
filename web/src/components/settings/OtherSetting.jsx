@@ -29,7 +29,6 @@ import {
   Card,
 } from '@douyinfe/semi-ui';
 import { API, showError, showSuccess, timestamp2string } from '../../helpers';
-import { marked } from 'marked';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
@@ -40,8 +39,8 @@ const UPDATE_REPOSITORY = 'Futureppo/new-api';
 const UPDATE_BRANCH = 'main';
 const GITHUB_API_BASE_URL = `https://api.github.com/repos/${UPDATE_REPOSITORY}`;
 const GITHUB_REPOSITORY_URL = `https://github.com/${UPDATE_REPOSITORY}`;
-const GITHUB_LATEST_RELEASE_URL = `${GITHUB_API_BASE_URL}/releases/latest`;
 const GITHUB_COMMITS_URL = `${GITHUB_API_BASE_URL}/commits?sha=${UPDATE_BRANCH}&per_page=5`;
+const COMMIT_HASH_PATTERN = /\b[0-9a-f]{7,40}\b/gi;
 
 const escapeHtml = (value = '') =>
   String(value)
@@ -67,7 +66,20 @@ const fetchGitHubJson = async (url) => {
   return response.json();
 };
 
-const renderCommitUpdates = (commits) => {
+const extractCommitHash = (version = '') => {
+  const matches = String(version).match(COMMIT_HASH_PATTERN);
+  return matches?.length ? matches[matches.length - 1] : '';
+};
+
+const getCompareUrl = (localCommit) =>
+  `${GITHUB_API_BASE_URL}/compare/${encodeURIComponent(
+    localCommit,
+  )}...${encodeURIComponent(UPDATE_BRANCH)}`;
+
+const getCommitUrl = (sha) =>
+  `${GITHUB_REPOSITORY_URL}/commit/${encodeURIComponent(sha)}`;
+
+const renderCommitList = (commits) => {
   const items = commits
     .map((item) => {
       const sha = item.sha?.slice(0, 7) || 'unknown';
@@ -78,9 +90,7 @@ const renderCommitUpdates = (commits) => {
       const date = item.commit?.author?.date
         ? new Date(item.commit.author.date).toLocaleString()
         : '';
-      const url =
-        item.html_url ||
-        `${GITHUB_REPOSITORY_URL}/commit/${encodeURIComponent(item.sha)}`;
+      const url = item.html_url || getCommitUrl(item.sha);
 
       return `<li><a href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(
         sha,
@@ -88,10 +98,137 @@ const renderCommitUpdates = (commits) => {
     })
     .join('');
 
-  return `<p>当前 fork 暂无 Release，以下为 ${escapeHtml(
-    UPDATE_REPOSITORY,
-  )} ${escapeHtml(UPDATE_BRANCH)} 分支最新提交：</p><ul>${items}</ul>`;
+  return `<ul>${items}</ul>`;
 };
+
+const renderUpdateContent = ({
+  currentVersion,
+  localCommit,
+  commits,
+  notice = '',
+  fallback = false,
+}) => {
+  const compareSummary = fallback
+    ? `无法精确比较当前版本，以下为 ${escapeHtml(
+        UPDATE_REPOSITORY,
+      )} ${escapeHtml(UPDATE_BRANCH)} 分支最新提交：`
+    : `以下为远端 ${escapeHtml(UPDATE_BRANCH)} 分支相对本地版本新增的提交：`;
+
+  return `
+    ${notice ? `<p>${escapeHtml(notice)}</p>` : ''}
+    <p>当前版本：${escapeHtml(currentVersion || '未知')}</p>
+    <p>本地 commit：${escapeHtml(localCommit || '无法识别')}</p>
+    <p>远端分支：${escapeHtml(UPDATE_REPOSITORY)} ${escapeHtml(
+      UPDATE_BRANCH,
+    )}</p>
+    <p>${compareSummary}</p>
+    ${renderCommitList(commits)}
+  `;
+};
+
+const renderFallbackCommitUpdates = (currentVersion, localCommit, commits) =>
+  renderUpdateContent({
+    currentVersion,
+    localCommit,
+    commits,
+    fallback: true,
+  });
+
+const getFallbackDetailUrl = () =>
+  `${GITHUB_REPOSITORY_URL}/commits/${encodeURIComponent(UPDATE_BRANCH)}`;
+
+const getFallbackTitle = () => `无法精确比较：${UPDATE_BRANCH} 最新提交`;
+
+const fetchFallbackCommits = async () => {
+  const commits = await fetchGitHubJson(GITHUB_COMMITS_URL);
+  if (!Array.isArray(commits) || commits.length === 0) {
+    throw new Error('No commits found for update check');
+  }
+  return commits;
+};
+
+const renderCompareUpdates = (currentVersion, localCommit, compareResult) => {
+  const commits = Array.isArray(compareResult.commits)
+    ? compareResult.commits
+    : [];
+  const notice =
+    compareResult.status === 'diverged'
+      ? '本地版本与远端 main 已分叉，下面列出远端 main 相对本地缺失的新提交。'
+      : '';
+
+  return renderUpdateContent({
+    currentVersion,
+    localCommit,
+    commits,
+    notice,
+  });
+};
+
+const getCompareTitle = (compareResult) => {
+  const aheadBy = Number(compareResult.ahead_by || 0);
+  const statusText =
+    compareResult.status === 'diverged' ? 'main 已分叉并领先' : 'main 领先';
+  return `发现新版本：${statusText} ${aheadBy} 个提交`;
+};
+
+const getCompareDetailUrl = (localCommit) =>
+  `${GITHUB_REPOSITORY_URL}/compare/${encodeURIComponent(
+    localCommit,
+  )}...${encodeURIComponent(UPDATE_BRANCH)}`;
+
+const showFallbackUpdateModal = async ({
+  currentVersion,
+  localCommit,
+  setUpdateData,
+  setShowUpdateModal,
+}) => {
+  const commits = await fetchFallbackCommits();
+  const title = getFallbackTitle();
+  setUpdateData({
+    tag_name: UPDATE_BRANCH,
+    title,
+    content: renderFallbackCommitUpdates(currentVersion, localCommit, commits),
+    detailUrl: getFallbackDetailUrl(),
+  });
+  setShowUpdateModal(true);
+};
+
+const renderLatestCommitSummary = (commit) => {
+  const sha = commit.sha?.slice(0, 7) || UPDATE_BRANCH;
+  const message = commit.commit?.message?.split('\n')[0] || 'No commit message';
+  return `${sha} ${message}`;
+};
+
+const getLatestCommitSuccessText = (compareResult) => {
+  const latestCommit =
+    compareResult.base_commit || compareResult.merge_base_commit;
+  if (!latestCommit?.sha) {
+    return `已是最新版本：${UPDATE_BRANCH}`;
+  }
+  return `已是最新版本：${renderLatestCommitSummary(latestCommit)}`;
+};
+
+const getAheadBy = (compareResult) => Number(compareResult?.ahead_by || 0);
+
+const isRemoteAhead = (compareResult) => getAheadBy(compareResult) > 0;
+
+const isIdentical = (compareResult) =>
+  getAheadBy(compareResult) === 0 && compareResult?.status === 'identical';
+
+const isLocalAhead = (compareResult) =>
+  getAheadBy(compareResult) === 0 && compareResult?.status === 'behind';
+
+const getLocalAheadMessage = (compareResult) => {
+  const behindBy = Number(compareResult?.behind_by || 0);
+  return behindBy > 0
+    ? `当前本地版本已领先远端 main ${behindBy} 个提交`
+    : '当前本地版本已领先远端 main';
+};
+
+const getNoRemoteCommitMessage = (compareResult) =>
+  compareResult?.status === 'diverged'
+    ? '本地版本与远端 main 已分叉，但远端 main 暂无相对本地的新提交'
+    : '远端 main 暂无相对本地的新提交';
 
 const OtherSetting = () => {
   const { t } = useTranslation();
@@ -110,6 +247,7 @@ const OtherSetting = () => {
   const [statusState, statusDispatch] = useContext(StatusContext);
   const [updateData, setUpdateData] = useState({
     tag_name: '',
+    title: '',
     content: '',
     detailUrl: '',
   });
@@ -292,41 +430,52 @@ const OtherSetting = () => {
         CheckUpdate: true,
       }));
 
-      let res;
-      try {
-        res = await fetchGitHubJson(GITHUB_LATEST_RELEASE_URL);
-      } catch (error) {
-        if (error.status !== 404) {
-          throw error;
-        }
+      const currentVersion = statusState?.status?.version || '';
+      const localCommit = extractCommitHash(currentVersion);
+      if (!localCommit) {
+        await showFallbackUpdateModal({
+          currentVersion,
+          localCommit,
+          setUpdateData,
+          setShowUpdateModal,
+        });
+        return;
       }
 
-      const { tag_name, body, html_url } = res || {};
-      if (tag_name === statusState?.status?.version) {
-        showSuccess(`已是最新版本：${tag_name}`);
-      } else if (tag_name) {
-        setUpdateData({
-          tag_name: tag_name,
-          content: marked.parse(body || ''),
-          detailUrl:
-            html_url ||
-            `${GITHUB_REPOSITORY_URL}/releases/tag/${encodeURIComponent(tag_name)}`,
-        });
-        setShowUpdateModal(true);
-      } else {
-        const commits = await fetchGitHubJson(GITHUB_COMMITS_URL);
-        if (!Array.isArray(commits) || commits.length === 0) {
-          throw new Error('No commits found for update check');
+      let compareResult;
+      try {
+        compareResult = await fetchGitHubJson(getCompareUrl(localCommit));
+      } catch (error) {
+        if (error.status === 404) {
+          await showFallbackUpdateModal({
+            currentVersion,
+            localCommit,
+            setUpdateData,
+            setShowUpdateModal,
+          });
+          return;
         }
-        const latestCommit = commits[0];
+        throw error;
+      }
+
+      if (isRemoteAhead(compareResult)) {
         setUpdateData({
-          tag_name: latestCommit.sha?.slice(0, 7) || UPDATE_BRANCH,
-          content: renderCommitUpdates(commits),
-          detailUrl:
-            latestCommit.html_url ||
-            `${GITHUB_REPOSITORY_URL}/commits/${UPDATE_BRANCH}`,
+          tag_name: UPDATE_BRANCH,
+          title: getCompareTitle(compareResult),
+          content: renderCompareUpdates(
+            currentVersion,
+            localCommit,
+            compareResult,
+          ),
+          detailUrl: compareResult.html_url || getCompareDetailUrl(localCommit),
         });
         setShowUpdateModal(true);
+      } else if (isIdentical(compareResult)) {
+        showSuccess(getLatestCommitSuccessText(compareResult));
+      } else if (isLocalAhead(compareResult)) {
+        showSuccess(getLocalAheadMessage(compareResult));
+      } else {
+        showSuccess(getNoRemoteCommitMessage(compareResult));
       }
     } catch (error) {
       console.error('Failed to check for updates:', error);
@@ -360,7 +509,7 @@ const OtherSetting = () => {
     getOptions();
   }, []);
 
-  // Function to open GitHub release page
+  // Function to open GitHub update detail page
   const openGitHubRelease = () => {
     window.open(updateData.detailUrl || GITHUB_REPOSITORY_URL, '_blank');
   };
@@ -556,7 +705,7 @@ const OtherSetting = () => {
         </Form>
       </Col>
       <Modal
-        title={t('新版本') + '：' + updateData.tag_name}
+        title={updateData.title || t('新版本') + '：' + updateData.tag_name}
         visible={showUpdateModal}
         onCancel={() => setShowUpdateModal(false)}
         footer={[
