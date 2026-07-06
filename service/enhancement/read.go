@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
 )
 
@@ -1805,6 +1806,7 @@ func ModelStatusConfig(public bool) map[string]interface{} {
 		"current_window":           currentWindow,
 		"public_embed_enabled":     cfg.PublicEmbedEnabled,
 		"public_url_path":          "/model-status",
+		"server_address":           system_setting.ServerAddress,
 	}
 	base["model_status_request_count_hide_threshold"] = cfg.ModelStatusRequestCountHideThreshold
 	if public {

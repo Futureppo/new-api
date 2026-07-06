@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -638,6 +639,20 @@ func TestNormalizeModelStatusIgnoredErrorKeywordsTrimsAndDeduplicates(t *testing
 	keywords, err := parseModelStatusIgnoredErrorKeywords(" Foo \nfoo\n\nBAR\r\nbar ")
 	require.NoError(t, err)
 	require.Equal(t, []string{"Foo", "BAR"}, keywords)
+}
+
+func TestModelStatusConfigIncludesServerAddress(t *testing.T) {
+	originalServerAddress := system_setting.ServerAddress
+	system_setting.ServerAddress = "https://example.com"
+	t.Cleanup(func() {
+		system_setting.ServerAddress = originalServerAddress
+	})
+
+	config := ModelStatusConfig(false)
+	require.Equal(t, "https://example.com", config["server_address"])
+
+	publicConfig := ModelStatusConfig(true)
+	require.Equal(t, "https://example.com", publicConfig["server_address"])
 }
 
 func TestPublicModelStatusHidesRequestsAtOrBelowDefaultThreshold(t *testing.T) {

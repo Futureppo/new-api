@@ -18,8 +18,21 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useMemo } from 'react';
+import { getServerAddress } from '../../helpers';
 
-export const useNavigation = (t, docsLink, headerNavModules) => {
+const getModelStatusLink = (serverAddress) => {
+  const base = String(serverAddress || getServerAddress() || '')
+    .trim()
+    .replace(/\/+$/, '');
+  return `${base || window.location.origin}/model-status`;
+};
+
+export const useNavigation = (
+  t,
+  docsLink,
+  headerNavModules,
+  serverAddress,
+) => {
   const mainNavLinks = useMemo(() => {
     // 默认配置，如果没有传入配置则显示所有模块
     const defaultModules = {
@@ -54,7 +67,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
         text: t('状态查看'),
         itemKey: 'status',
         isExternal: true,
-        externalLink: 'https://api.futureppo.top/model-status',
+        externalLink: getModelStatusLink(serverAddress),
       },
       ...(docsLink
         ? [
@@ -89,7 +102,7 @@ export const useNavigation = (t, docsLink, headerNavModules) => {
       }
       return modules[link.itemKey] === true;
     });
-  }, [t, docsLink, headerNavModules]);
+  }, [t, docsLink, headerNavModules, serverAddress]);
 
   return {
     mainNavLinks,
