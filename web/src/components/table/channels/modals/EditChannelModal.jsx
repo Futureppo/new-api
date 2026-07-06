@@ -48,7 +48,6 @@ import {
   Highlight,
   Input,
   Tooltip,
-  Collapse,
   Dropdown,
 } from '@douyinfe/semi-ui';
 import {
@@ -78,7 +77,6 @@ import {
   IconSave,
   IconClose,
   IconServer,
-  IconSetting,
   IconCode,
   IconCopy,
   IconGlobe,
@@ -104,7 +102,6 @@ const REGION_EXAMPLE = {
   'claude-3-5-sonnet-20240620': 'europe-west1',
 };
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8;
-const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded';
 
 const PARAM_OVERRIDE_LEGACY_TEMPLATE = {
   temperature: 0,
@@ -419,12 +416,6 @@ const EditChannelModal = (props) => {
   // 剪贴板连接信息自动检测
   const [clipboardConfig, setClipboardConfig] = useState(null);
 
-  // 高级设置折叠状态
-  const [advancedSettingsOpen, setAdvancedSettingsOpen] = useState(false);
-  const toggleAdvancedSettings = (open) => {
-    setAdvancedSettingsOpen(open);
-    localStorage.setItem(ADVANCED_SETTINGS_EXPANDED_KEY, String(open));
-  };
   const formContainerRef = useRef(null);
   const doubaoApiClickCountRef = useRef(0);
   const initialBaseUrlRef = useRef('');
@@ -1031,28 +1022,6 @@ const EditChannelModal = (props) => {
       const managedByIonet = !!parsedIonet;
       setIsIonetChannel(managedByIonet);
       setIonetMetadata(parsedIonet);
-
-      // Smart expand: auto-open advanced settings if any advanced field has a value
-      const hasAdvancedValues =
-        (data.model_mapping && data.model_mapping.trim()) ||
-        (data.param_override && data.param_override.trim()) ||
-        (data.status_code_mapping && data.status_code_mapping.trim()) ||
-        (data.header_override && data.header_override.trim()) ||
-        (data.tag && data.tag.trim()) ||
-        (data.remark && data.remark.trim()) ||
-        (data.priority && data.priority !== 0) ||
-        (data.weight && data.weight !== 0) ||
-        (data.daily_success_limit && data.daily_success_limit !== 0) ||
-        (data.proxy && data.proxy.trim()) ||
-        (data.system_prompt && data.system_prompt.trim()) ||
-        data.thinking_to_content ||
-        data.pass_through_body_enabled ||
-        data.force_format ||
-        data.claude_beta_query ||
-        data.system_prompt_override;
-      if (hasAdvancedValues) {
-        setAdvancedSettingsOpen(true);
-      }
     } else {
       showError(message);
     }
@@ -1359,10 +1328,6 @@ const EditChannelModal = (props) => {
       fetchModelGroups();
       // 重置手动输入模式状态
       setUseManualInput(false);
-      // 编辑模式下恢复用户偏好，创建模式一律折叠
-      setAdvancedSettingsOpen(
-        isEdit && localStorage.getItem(ADVANCED_SETTINGS_EXPANDED_KEY) === 'true'
-      );
     } else {
       // 统一的模态框关闭重置逻辑
       resetModalState();
@@ -1407,8 +1372,6 @@ const EditChannelModal = (props) => {
     setDoubaoApiEditUnlocked(false);
     doubaoApiClickCountRef.current = 0;
     setModelSearchValue('');
-    // 重置高级设置折叠状态
-    setAdvancedSettingsOpen(false);
     // 清空表单中的key_mode字段
     if (formApiRef.current) {
       formApiRef.current.setValue('key_mode', undefined);
@@ -3780,118 +3743,11 @@ const EditChannelModal = (props) => {
                     }
                     showClear
                   />
-                </Card>
 
-                {/* Advanced Settings Toggle / Collapse */}
-                {isMobile ? (
-                <Collapse
-                  activeKey={advancedSettingsOpen ? ['advanced'] : []}
-                  onChange={(keys) => toggleAdvancedSettings(keys.includes('advanced'))}
-                >
-                  <Collapse.Panel
-                    header={
-                      <div className='flex items-center gap-2'>
-                        <IconSetting size={16} />
-                        <Text className='font-medium'>{t('高级设置')}</Text>
-                      </div>
-                    }
-                    itemKey='advanced'
-                  >
-                    {advancedSettingsContent}
-                  </Collapse.Panel>
-                </Collapse>
-                ) : (
-                  /* Desktop: toggle button to open side panel */
-                  <div
-                    className='flex items-center justify-between p-3 rounded-xl cursor-pointer transition-colors hover:bg-gray-50'
-                    style={{
-                      backgroundColor: advancedSettingsOpen ? 'var(--semi-color-primary-light-default)' : 'var(--semi-color-fill-0)',
-                      border: '1px solid var(--semi-color-fill-2)',
-                    }}
-                    onClick={() => toggleAdvancedSettings(!advancedSettingsOpen)}
-                  >
-                    <div className='flex items-center gap-2'>
-                      <IconSetting size={16} />
-                      <Text className='font-medium'>{t('高级设置')}</Text>
-                    </div>
-                    <div className='flex items-center gap-1 text-sm' style={{ color: 'var(--semi-color-primary)' }}>
-                      <Text size='small' style={{ color: 'var(--semi-color-primary)' }}>
-                        {advancedSettingsOpen ? t('收起') : isEdit ? t('向左展开') : t('向右展开')}
-                      </Text>
-                      <IconChevronDown
-                        size={14}
-                        style={{
-                          transform: advancedSettingsOpen
-                            ? 'rotate(180deg)'
-                            : isEdit ? 'rotate(90deg)' : 'rotate(-90deg)',
-                          transition: 'transform 0.2s',
-                        }}
-                      />
-                    </div>
-                  </div>
-                )}
+                  {advancedSettingsContent}
+                </Card>
               </div>
             </Spin>
-
-            {/* Desktop: Advanced Settings Side Panel - rendered inside Form tree */}
-            {!isMobile && advancedSettingsOpen && (
-              <div
-                className='fixed top-0 h-full overflow-y-auto z-[999] semi-sidesheet-inner'
-                style={{
-                  width: 600,
-                  [isEdit ? 'right' : 'left']: 600,
-                  backgroundColor: 'var(--semi-color-bg-0)',
-                  borderLeft: isEdit ? 'none' : '1px solid var(--semi-color-border)',
-                  borderRight: isEdit ? '1px solid var(--semi-color-border)' : 'none',
-                  animation: `slideIn${isEdit ? 'Left' : 'Right'} 0.3s ease-out`,
-                }}
-              >
-                <div className='semi-sidesheet-header'>
-                  <div className='semi-sidesheet-title'>
-                    <Space>
-                      <Tag color='cyan' shape='circle'>
-                        {t('高级')}
-                      </Tag>
-                      <Title heading={4} className='m-0'>
-                        {t('高级设置')}
-                      </Title>
-                    </Space>
-                  </div>
-                  <Button
-                    className='semi-sidesheet-close'
-                    type='tertiary'
-                    theme='borderless'
-                    icon={<IconClose />}
-                    size='small'
-                    onClick={() => setAdvancedSettingsOpen(false)}
-                  />
-                </div>
-                <div className='semi-sidesheet-body' style={{ padding: 0 }}>
-                  <div className='p-2 space-y-3'>
-                    <Card className='!rounded-2xl shadow-sm border-0'>
-                      <div className='flex items-center mb-4'>
-                        <Avatar
-                          size='small'
-                          color='orange'
-                          className='mr-2 shadow-md'
-                        >
-                          <IconSetting size={16} />
-                        </Avatar>
-                        <div>
-                          <Text className='text-lg font-medium'>
-                            {t('高级设置')}
-                          </Text>
-                          <div className='text-xs text-gray-600'>
-                            {t('渠道的高级配置选项')}
-                          </div>
-                        </div>
-                      </div>
-                      {advancedSettingsContent}
-                    </Card>
-                  </div>
-                </div>
-              </div>
-            )}
             </>
           );
           }}

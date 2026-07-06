@@ -1000,27 +1000,4 @@ html.dark .with-pastel-balls::before {
   border-radius: 10px !important;
 }
 
-@keyframes slideInLeft {
-  from {
-    transform: translateX(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-/* Channel advanced settings side panel animations */
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
 .ec-dbcd0a3c01b55203 { forced-color-adjust: auto; }
