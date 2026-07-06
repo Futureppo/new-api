@@ -2,7 +2,6 @@ package enhancement
 
 import (
 	"errors"
-	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,8 +10,6 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 )
-
-const MaxGenerateRegistrationCode = 100
 
 type RegistrationCodeSummary struct {
 	Id           int    `json:"id"`
@@ -23,15 +20,17 @@ type RegistrationCodeSummary struct {
 	MaxUses      int    `json:"max_uses"`
 	UsedCount    int    `json:"used_count"`
 	OpenTime     int64  `json:"open_time"`
+	EndTime      int64  `json:"end_time"`
 	CreatedTime  int64  `json:"created_time"`
 	LastUsedTime int64  `json:"last_used_time"`
 }
 
 type GenerateRegistrationCodesRequest struct {
-	Count    int    `json:"count"`
+	Count    int    `json:"count,omitempty"`
 	Name     string `json:"name"`
 	MaxUses  int    `json:"max_uses"`
 	OpenTime int64  `json:"open_time"`
+	EndTime  int64  `json:"end_time"`
 	Code     string `json:"code"`
 }
 
@@ -67,14 +66,27 @@ func SaveRegistrationCodeConfig(req RegistrationCodeConfigRequest, operatorId in
 }
 
 func GenerateRegistrationCodes(req GenerateRegistrationCodesRequest, operatorId int) ([]RegistrationCodeSummary, error) {
-	if req.Count <= 0 || req.Count > MaxGenerateRegistrationCode {
-		return nil, fmt.Errorf("count must be between 1 and %d", MaxGenerateRegistrationCode)
+	if req.Count > 1 {
+		return nil, errors.New("only one registration code can be generated at a time")
 	}
+	if req.Count < 0 {
+		return nil, errors.New("count is invalid")
+	}
+	now := common.GetTimestamp()
 	if req.MaxUses <= 0 {
 		return nil, errors.New("max_uses must be greater than 0")
 	}
 	if req.OpenTime < 0 {
 		return nil, errors.New("open_time is invalid")
+	}
+	if req.EndTime < 0 {
+		return nil, errors.New("end_time is invalid")
+	}
+	if req.EndTime > 0 && req.EndTime < now {
+		return nil, errors.New("end_time must be in the future")
+	}
+	if req.OpenTime > 0 && req.EndTime > 0 && req.EndTime < req.OpenTime {
+		return nil, errors.New("end_time must be later than open_time")
 	}
 	name := strings.TrimSpace(req.Name)
 	if len([]rune(name)) > 64 {
@@ -85,44 +97,34 @@ func GenerateRegistrationCodes(req GenerateRegistrationCodesRequest, operatorId 
 	}
 	manualCode := strings.TrimSpace(req.Code)
 	if manualCode != "" {
-		if req.Count != 1 {
-			return nil, errors.New("manual code can only be used when count is 1")
-		}
 		if len([]rune(manualCode)) > 64 {
 			return nil, errors.New("code is too long")
 		}
 	}
 
-	now := common.GetTimestamp()
-	codes := make([]model.RegistrationCode, 0, req.Count)
-	for i := 0; i < req.Count; i++ {
-		code := common.GetUUID()
-		if manualCode != "" {
-			code = manualCode
-		}
-		codes = append(codes, model.RegistrationCode{
-			UserId:      operatorId,
-			Code:        code,
-			Status:      common.RegistrationCodeStatusEnabled,
-			Name:        name,
-			MaxUses:     req.MaxUses,
-			OpenTime:    req.OpenTime,
-			CreatedTime: now,
-		})
+	codeValue := common.GetUUID()
+	if manualCode != "" {
+		codeValue = manualCode
 	}
-	if err := model.DB.Create(&codes).Error; err != nil {
+	code := model.RegistrationCode{
+		UserId:      operatorId,
+		Code:        codeValue,
+		Status:      common.RegistrationCodeStatusEnabled,
+		Name:        name,
+		MaxUses:     req.MaxUses,
+		OpenTime:    req.OpenTime,
+		EndTime:     req.EndTime,
+		CreatedTime: now,
+	}
+	if err := model.DB.Create(&code).Error; err != nil {
 		return nil, err
 	}
 	audit(operatorId, "enhancements.registration_codes", "generate", map[string]interface{}{
-		"count":     req.Count,
 		"max_uses":  req.MaxUses,
 		"open_time": req.OpenTime,
+		"end_time":  req.EndTime,
 	})
-	out := make([]RegistrationCodeSummary, 0, len(codes))
-	for _, code := range codes {
-		out = append(out, registrationCodeToSummary(code))
-	}
-	return out, nil
+	return []RegistrationCodeSummary{registrationCodeToSummary(code)}, nil
 }
 
 func DeleteRegistrationCode(id int, operatorId int, force bool) error {
@@ -196,6 +198,7 @@ func registrationCodeToSummary(code model.RegistrationCode) RegistrationCodeSumm
 		MaxUses:      code.MaxUses,
 		UsedCount:    code.UsedCount,
 		OpenTime:     code.OpenTime,
+		EndTime:      code.EndTime,
 		CreatedTime:  code.CreatedTime,
 		LastUsedTime: code.LastUsedTime,
 	}
@@ -211,6 +214,7 @@ func registrationCodeMatchesQuery(item RegistrationCodeSummary, query ListQuery)
 		strconv.Itoa(item.MaxUses),
 		strconv.Itoa(item.UsedCount),
 		strconv.FormatInt(item.OpenTime, 10),
+		strconv.FormatInt(item.EndTime, 10),
 		strconv.FormatInt(item.CreatedTime, 10),
 		strconv.FormatInt(item.LastUsedTime, 10),
 	) {
@@ -225,6 +229,7 @@ func registrationCodeMatchesQuery(item RegistrationCodeSummary, query ListQuery)
 		"max_uses":       matchInt(int64(item.MaxUses)),
 		"used_count":     matchInt(int64(item.UsedCount)),
 		"open_time":      matchInt(item.OpenTime),
+		"end_time":       matchInt(item.EndTime),
 		"created_time":   matchInt(item.CreatedTime),
 		"last_used_time": matchInt(item.LastUsedTime),
 	})
@@ -251,6 +256,8 @@ func sortRegistrationCodeSummaries(items []RegistrationCodeSummary, sortKey stri
 			result = compareInt(int64(left.UsedCount), int64(right.UsedCount), desc)
 		case "open_time":
 			result = compareInt(left.OpenTime, right.OpenTime, desc)
+		case "end_time":
+			result = compareInt(left.EndTime, right.EndTime, desc)
 		case "created_time":
 			result = compareInt(left.CreatedTime, right.CreatedTime, desc)
 		case "last_used_time":
@@ -318,6 +325,14 @@ func RegistrationCodeStats() (map[string]interface{}, error) {
 		return nil, err
 	}
 	out["not_open"] = notOpen
+
+	var expired int64
+	if err := model.DB.Model(&model.RegistrationCode{}).
+		Where("status = ? AND end_time != 0 AND end_time < ?", common.RegistrationCodeStatusEnabled, now).
+		Count(&expired).Error; err != nil {
+		return nil, err
+	}
+	out["expired"] = expired
 
 	var usedCount int64
 	if err := model.DB.Model(&model.RegistrationCode{}).

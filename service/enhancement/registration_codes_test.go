@@ -33,7 +33,7 @@ func setupRegistrationCodeServiceTestDB(t *testing.T) {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.RegistrationCode{}, &model.RegistrationCodeUsage{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.RegistrationCode{}, &model.RegistrationCodeUsage{}, &model.Log{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -53,19 +53,20 @@ func TestGenerateRegistrationCodesAndStats(t *testing.T) {
 	setupRegistrationCodeServiceTestDB(t)
 
 	generated, err := GenerateRegistrationCodes(GenerateRegistrationCodesRequest{
-		Count:   2,
 		Name:    "launch",
 		MaxUses: 3,
+		EndTime: common.GetTimestamp() + 3600,
 	}, 7)
 	require.NoError(t, err)
-	require.Len(t, generated, 2)
+	require.Len(t, generated, 1)
 	require.NotEmpty(t, generated[0].Code)
 	require.Equal(t, 3, generated[0].MaxUses)
+	require.Greater(t, generated[0].EndTime, int64(0))
 
 	stats, err := RegistrationCodeStats()
 	require.NoError(t, err)
-	require.Equal(t, int64(2), stats["total"])
-	require.Equal(t, int64(2), stats["enabled"])
+	require.Equal(t, int64(1), stats["total"])
+	require.Equal(t, int64(1), stats["enabled"])
 	require.Equal(t, int64(0), stats["disabled"])
 	require.Equal(t, int64(0), stats["used_count"])
 
@@ -73,6 +74,18 @@ func TestGenerateRegistrationCodesAndStats(t *testing.T) {
 	require.NoError(t, err)
 	stats, err = RegistrationCodeStats()
 	require.NoError(t, err)
-	require.Equal(t, int64(1), stats["enabled"])
+	require.Equal(t, int64(0), stats["enabled"])
 	require.Equal(t, int64(1), stats["disabled"])
+}
+
+func TestGenerateRegistrationCodesRejectsBatchCount(t *testing.T) {
+	setupRegistrationCodeServiceTestDB(t)
+
+	_, err := GenerateRegistrationCodes(GenerateRegistrationCodesRequest{
+		Count:   2,
+		Name:    "batch",
+		MaxUses: 10,
+	}, 7)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "only one")
 }

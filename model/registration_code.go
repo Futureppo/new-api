@@ -17,6 +17,7 @@ type RegistrationCode struct {
 	MaxUses      int            `json:"max_uses" gorm:"default:1"`
 	UsedCount    int            `json:"used_count" gorm:"default:0"`
 	OpenTime     int64          `json:"open_time" gorm:"bigint"`
+	EndTime      int64          `json:"end_time" gorm:"bigint"`
 	CreatedTime  int64          `json:"created_time" gorm:"bigint"`
 	LastUsedTime int64          `json:"last_used_time" gorm:"bigint"`
 	DeletedAt    gorm.DeletedAt `gorm:"index"`
@@ -59,12 +60,15 @@ func ConsumeRegistrationCodeTx(tx *gorm.DB, code string, userId int, username st
 	if registrationCode.OpenTime > now {
 		return errors.New("注册码尚未到可用时间")
 	}
+	if registrationCode.EndTime != 0 && registrationCode.EndTime < now {
+		return errors.New("注册码已过期")
+	}
 	if registrationCode.MaxUses <= 0 || registrationCode.UsedCount >= registrationCode.MaxUses {
 		return errors.New("注册码使用次数已达上限")
 	}
 
 	result := tx.Model(&RegistrationCode{}).
-		Where("id = ? AND status = ? AND open_time <= ? AND used_count < max_uses", registrationCode.Id, common.RegistrationCodeStatusEnabled, now).
+		Where("id = ? AND status = ? AND open_time <= ? AND (end_time = 0 OR end_time >= ?) AND used_count < max_uses", registrationCode.Id, common.RegistrationCodeStatusEnabled, now, now).
 		Updates(map[string]interface{}{
 			"used_count":     gorm.Expr("used_count + ?", 1),
 			"last_used_time": now,

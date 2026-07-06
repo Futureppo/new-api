@@ -67,14 +67,19 @@ func createRegistrationCodeTestUser(t *testing.T, db *gorm.DB, username string) 
 	return user
 }
 
-func createRegistrationCodeTestCode(t *testing.T, db *gorm.DB, code string, maxUses int, openTime int64) RegistrationCode {
+func createRegistrationCodeTestCode(t *testing.T, db *gorm.DB, code string, maxUses int, openTime int64, endTime ...int64) RegistrationCode {
 	t.Helper()
+	codeEndTime := int64(0)
+	if len(endTime) > 0 {
+		codeEndTime = endTime[0]
+	}
 	registrationCode := RegistrationCode{
 		Code:        code,
 		Status:      common.RegistrationCodeStatusEnabled,
 		Name:        "test",
 		MaxUses:     maxUses,
 		OpenTime:    openTime,
+		EndTime:     codeEndTime,
 		CreatedTime: common.GetTimestamp(),
 	}
 	require.NoError(t, db.Create(&registrationCode).Error)
@@ -115,6 +120,13 @@ func TestConsumeRegistrationCodeOpenTimeAndMaxUses(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "尚未")
+
+	expiredCode := createRegistrationCodeTestCode(t, db, "EXPIRED", 1, 0, now-1)
+	err = DB.Transaction(func(tx *gorm.DB) error {
+		return ConsumeRegistrationCodeTx(tx, expiredCode.Code, user.Id, user.Username, "password", true)
+	})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "过期")
 
 	require.NoError(t, db.Model(&RegistrationCode{}).Where("id = ?", futureCode.Id).Update("open_time", now-1).Error)
 	require.NoError(t, DB.Transaction(func(tx *gorm.DB) error {

@@ -205,15 +205,17 @@ const FIELD_LABELS = {
   tokens: '令牌数',
   redemptions: '兑换码数',
   registration_codes: '注册码数',
-  max_uses: '可注册次数',
-  used_count: '已注册次数',
-  open_time: '可用开始时间',
+  max_uses: '总成功注册上限',
+  used_count: '成功注册人数',
+  open_time: '开启时间',
+  end_time: '结束时间',
   last_used_time: '最后使用时间',
   registration_code_required: '强制注册码注册',
   registration_code_force_active: '强制已生效',
   registration_code_force_start_time: '强制生效时间',
   force_active: '强制已生效',
-  not_open: '未到可用时间',
+  not_open: '未开启',
+  expired: '已结束',
   exhausted: '已用尽',
   users: '用户',
   last_24h: '最近 24 小时',
@@ -998,6 +1000,14 @@ function isRegistrationCodeNotOpen(record) {
   );
 }
 
+function isRegistrationCodeEnded(record) {
+  return (
+    record?.status === REGISTRATION_CODE_STATUS.ENABLED &&
+    Number(record.end_time || 0) > 0 &&
+    Number(record.end_time || 0) < Math.floor(Date.now() / 1000)
+  );
+}
+
 function isRegistrationCodeExhausted(record) {
   return (
     Number(record?.max_uses || 0) > 0 &&
@@ -1007,8 +1017,11 @@ function isRegistrationCodeExhausted(record) {
 
 function renderRegistrationCodeStatus(record, t) {
   if (record?.status === REGISTRATION_CODE_STATUS.ENABLED) {
+    if (isRegistrationCodeEnded(record)) {
+      return <Tag color='orange'>{t('已结束')}</Tag>;
+    }
     if (isRegistrationCodeNotOpen(record)) {
-      return <Tag color='orange'>{t('未到可用时间')}</Tag>;
+      return <Tag color='orange'>{t('未开启')}</Tag>;
     }
     if (isRegistrationCodeExhausted(record)) {
       return <Tag color='grey'>{t('已用尽')}</Tag>;
@@ -1023,7 +1036,8 @@ function renderRegistrationCodeStatus(record, t) {
 
 function registrationCodeStatusText(record, t) {
   if (record?.status === REGISTRATION_CODE_STATUS.ENABLED) {
-    if (isRegistrationCodeNotOpen(record)) return t('未到可用时间');
+    if (isRegistrationCodeEnded(record)) return t('已结束');
+    if (isRegistrationCodeNotOpen(record)) return t('未开启');
     if (isRegistrationCodeExhausted(record)) return t('已用尽');
   }
   const meta = REGISTRATION_CODE_STATUS_META[record?.status] || {
@@ -1470,10 +1484,10 @@ function RegistrationCodesPanel({ data }) {
   const [config, setConfig] = useState(data?.config || defaultConfig);
   const [configForm, setConfigForm] = useState(data?.config || defaultConfig);
   const [form, setForm] = useState({
-    count: 1,
     name: '增强管理',
     max_uses: 1,
     open_time: 0,
+    end_time: 0,
     code: '',
   });
   const [statistics, setStatistics] = useState(data?.statistics || {});
@@ -1570,6 +1584,19 @@ function RegistrationCodesPanel({ data }) {
   };
 
   const generate = () => {
+    if (Number(form.end_time || 0) > 0) {
+      if (Number(form.end_time || 0) < Math.floor(Date.now() / 1000)) {
+        showError(t('结束时间必须晚于当前时间'));
+        return;
+      }
+      if (
+        Number(form.open_time || 0) > 0 &&
+        Number(form.end_time || 0) < Number(form.open_time || 0)
+      ) {
+        showError(t('结束时间必须晚于开启时间'));
+        return;
+      }
+    }
     Modal.confirm({
       title: t('生成注册码'),
       content: t('确认生成注册码？'),
@@ -1582,10 +1609,10 @@ function RegistrationCodesPanel({ data }) {
             '/api/enhancements/registration-codes/generate',
             {
               ...form,
-              count: Number(form.count || 1),
-              code: Number(form.count || 1) === 1 ? form.code.trim() : '',
+              code: form.code.trim(),
               max_uses: Number(form.max_uses || 1),
               open_time: Number(form.open_time || 0),
+              end_time: Number(form.end_time || 0),
             },
           );
           const rows = unwrap(res);
@@ -1704,7 +1731,7 @@ function RegistrationCodesPanel({ data }) {
         ),
     },
     {
-      title: t('可注册次数'),
+      title: t('总成功注册上限'),
       dataIndex: 'max_uses',
       width: 120,
       render: (value) => copyableCell(value, value, t),
@@ -1716,10 +1743,16 @@ function RegistrationCodesPanel({ data }) {
       render: (value) => copyableCell(value, value, t),
     },
     {
-      title: t('可用开始时间'),
+      title: t('开启时间'),
       dataIndex: 'open_time',
       width: 180,
       render: (value) => renderTimeCell(value),
+    },
+    {
+      title: t('结束时间'),
+      dataIndex: 'end_time',
+      width: 180,
+      render: (value) => renderTimeCell(value, t('永不结束')),
     },
     {
       title: t('创建时间'),
@@ -1825,8 +1858,8 @@ function RegistrationCodesPanel({ data }) {
         </div>
       </Card>
 
-      <Card title={t('批量生成')} className='!rounded-lg'>
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6 xl:items-end'>
+      <Card title={t('生成注册码')} className='!rounded-lg'>
+        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end'>
           <label className='space-y-1'>
             <Text type='secondary'>{t('名称')}</Text>
             <Input
@@ -1837,18 +1870,7 @@ function RegistrationCodesPanel({ data }) {
             />
           </label>
           <label className='space-y-1'>
-            <Text type='secondary'>{t('数量')}</Text>
-            <InputNumber
-              min={1}
-              max={100}
-              value={form.count}
-              onChange={(value) =>
-                setForm((prev) => ({ ...prev, count: value || 1 }))
-              }
-            />
-          </label>
-          <label className='space-y-1'>
-            <Text type='secondary'>{t('可注册次数')}</Text>
+            <Text type='secondary'>{t('总成功注册上限')}</Text>
             <InputNumber
               min={1}
               value={form.max_uses}
@@ -1858,18 +1880,17 @@ function RegistrationCodesPanel({ data }) {
             />
           </label>
           <label className='space-y-1'>
-            <Text type='secondary'>{t('手动指定')}</Text>
+            <Text type='secondary'>{t('注册码')}</Text>
             <Input
               value={form.code}
-              disabled={Number(form.count || 1) !== 1}
-              placeholder={t('仅数量为 1 时可用')}
+              placeholder={t('留空自动生成')}
               onChange={(value) =>
                 setForm((prev) => ({ ...prev, code: value }))
               }
             />
           </label>
           <label className='space-y-1'>
-            <Text type='secondary'>{t('可用开始时间')}</Text>
+            <Text type='secondary'>{t('开启时间')}</Text>
             <DatePicker
               type='dateTime'
               className='w-full'
@@ -1881,6 +1902,23 @@ function RegistrationCodesPanel({ data }) {
                 setForm((prev) => ({
                   ...prev,
                   open_time: dateValueToTimestamp(value),
+                }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('结束时间')}</Text>
+            <DatePicker
+              type='dateTime'
+              className='w-full'
+              inputReadOnly
+              showClear
+              value={timestampToDateValue(form.end_time)}
+              placeholder={t('永不结束')}
+              onChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  end_time: dateValueToTimestamp(value),
                 }))
               }
             />
