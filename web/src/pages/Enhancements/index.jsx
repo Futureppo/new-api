@@ -82,6 +82,10 @@ import {
   displayAmountToQuota,
   quotaToDisplayAmount,
 } from '../../helpers/quota';
+import {
+  GroupBalanceCard,
+  GroupTransferCard,
+} from './components/SiteGroupTools';
 
 const { Title, Text } = Typography;
 
@@ -2364,6 +2368,7 @@ function UsersPanel({ data }) {
   return (
     <div className='space-y-4'>
       <SummaryGrid data={data?.summary || {}} />
+      {canUseRootTools && <GroupBalanceCard />}
       <Card title='数据预览' className='!rounded-lg'>
         <div className='flex flex-col md:flex-row gap-3 mb-4'>
           <Input
@@ -2422,6 +2427,29 @@ function UsersPanel({ data }) {
           onApplied={() => loadUsers(list?.page || 1, pageSize)}
         />
       )}
+    </div>
+  );
+}
+
+function AutoGroupPanel({ data }) {
+  const canUseRootTools = isRoot();
+  const summary =
+    data?.summary || data?.statistics || data?.config || data?.overview || data;
+  const list =
+    data?.list ||
+    data?.ranking ||
+    data?.models ||
+    data?.statuses ||
+    data?.preview ||
+    data;
+
+  return (
+    <div className='space-y-4'>
+      <SummaryGrid data={summary || {}} />
+      {canUseRootTools && <GroupTransferCard />}
+      <Card title='数据预览' className='!rounded-lg'>
+        <DataPreview data={list} />
+      </Card>
     </div>
   );
 }
@@ -4983,6 +5011,9 @@ function GenericSection({ section, data, onRefresh }) {
   }
   if (section === 'model-status') {
     return <ModelStatusPanel data={data} />;
+  }
+  if (section === 'auto-group') {
+    return <AutoGroupPanel data={data} />;
   }
 
   const summary =

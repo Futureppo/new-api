@@ -479,7 +479,6 @@ func calculateUserPermissions(userRole int) map[string]interface{} {
 		permissions["sidebar_modules"] = map[string]interface{}{
 			"admin": map[string]interface{}{
 				"setting": false, // 管理员不能访问系统设置
-				"site":    false,
 			},
 		}
 	} else {
@@ -535,7 +534,6 @@ func generateDefaultSidebarConfig(userRole int) string {
 			"user":         true,
 			"enhancements": true,
 			"setting":      false, // 管理员不能访问系统设置
-			"site":         false,
 		}
 	} else if userRole == common.RoleRootUser {
 		// 超级管理员可以访问所有功能
@@ -550,7 +548,6 @@ func generateDefaultSidebarConfig(userRole int) string {
 			"user":         true,
 			"enhancements": true,
 			"setting":      true,
-			"site":         true,
 		}
 	}
 	// 普通用户不包含admin区域

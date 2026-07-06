@@ -56,7 +56,6 @@ export const DEFAULT_ADMIN_CONFIG = {
     enhancements: true,
     subscription: true,
     setting: true,
-    site: true,
   },
 };
 
@@ -69,12 +68,13 @@ export const mergeAdminConfig = (savedConfig) => {
   for (const [sectionKey, sectionConfig] of Object.entries(savedConfig)) {
     if (!sectionConfig || typeof sectionConfig !== 'object') continue;
 
-    if (!merged[sectionKey]) {
-      merged[sectionKey] = { ...sectionConfig };
-      continue;
-    }
+    if (!merged[sectionKey]) continue;
 
-    merged[sectionKey] = { ...merged[sectionKey], ...sectionConfig };
+    for (const [moduleKey, moduleValue] of Object.entries(sectionConfig)) {
+      if (Object.prototype.hasOwnProperty.call(merged[sectionKey], moduleKey)) {
+        merged[sectionKey][moduleKey] = moduleValue;
+      }
+    }
   }
 
   return merged;

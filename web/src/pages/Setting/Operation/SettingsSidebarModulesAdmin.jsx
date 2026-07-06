@@ -212,11 +212,6 @@ export default function SettingsSidebarModulesAdmin(props) {
           title: t('系统设置'),
           description: t('系统参数配置'),
         },
-        {
-          key: 'site',
-          title: t('站点管理'),
-          description: t('站点级管理工具'),
-        },
       ],
     },
   ];
