@@ -41,6 +41,133 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
+	rateLimit   *openAIRateLimitInfo
+}
+
+type openAIRateLimitInfo struct {
+	Provider               string `json:"provider"`
+	Model                  string `json:"model"`
+	Tier                   string `json:"tier,omitempty"`
+	LimitRequests          string `json:"limit_requests,omitempty"`
+	LimitTokens            string `json:"limit_tokens,omitempty"`
+	RemainingRequests      string `json:"remaining_requests,omitempty"`
+	RemainingTokens        string `json:"remaining_tokens,omitempty"`
+	ResetRequests          string `json:"reset_requests,omitempty"`
+	ResetTokens            string `json:"reset_tokens,omitempty"`
+	LimitProjectTokens     string `json:"limit_project_tokens,omitempty"`
+	RemainingProjectTokens string `json:"remaining_project_tokens,omitempty"`
+	ResetProjectTokens     string `json:"reset_project_tokens,omitempty"`
+}
+
+type openAIRateLimitTierRule struct {
+	Model              string
+	LimitRequests      string
+	LimitTokens        string
+	LimitProjectTokens string
+	Tier               string
+}
+
+// Keep this table conservative: only add model-specific entries when OpenAI
+// exposes a stable public mapping from limits to usage tiers.
+var openAIRateLimitTierRules = []openAIRateLimitTierRule{}
+
+func isOfficialOpenAIChannel(channel *model.Channel) bool {
+	if channel == nil || channel.Type != constant.ChannelTypeOpenAI {
+		return false
+	}
+	baseURL := strings.TrimSpace(channel.GetBaseURL())
+	if baseURL == "" && channel.Type >= 0 && channel.Type < len(constant.ChannelBaseURLs) {
+		baseURL = strings.TrimSpace(constant.ChannelBaseURLs[channel.Type])
+	}
+	if baseURL == "" {
+		return false
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Hostname(), "api.openai.com")
+}
+
+func openAIRateLimitHeaderValue(headers http.Header, name string) string {
+	return strings.TrimSpace(headers.Get(name))
+}
+
+func normalizeOpenAIRateLimitValue(value string) string {
+	return strings.ReplaceAll(strings.TrimSpace(value), ",", "")
+}
+
+func inferOpenAIRateLimitTier(modelName string, info *openAIRateLimitInfo) string {
+	if info == nil {
+		return ""
+	}
+	modelName = strings.TrimSpace(modelName)
+	if modelName == "" {
+		modelName = strings.TrimSpace(info.Model)
+	}
+	for _, rule := range openAIRateLimitTierRules {
+		if !strings.EqualFold(strings.TrimSpace(rule.Model), modelName) {
+			continue
+		}
+		matched := false
+		if rule.LimitRequests != "" {
+			matched = true
+			if normalizeOpenAIRateLimitValue(rule.LimitRequests) != normalizeOpenAIRateLimitValue(info.LimitRequests) {
+				continue
+			}
+		}
+		if rule.LimitTokens != "" {
+			matched = true
+			if normalizeOpenAIRateLimitValue(rule.LimitTokens) != normalizeOpenAIRateLimitValue(info.LimitTokens) {
+				continue
+			}
+		}
+		if rule.LimitProjectTokens != "" {
+			matched = true
+			if normalizeOpenAIRateLimitValue(rule.LimitProjectTokens) != normalizeOpenAIRateLimitValue(info.LimitProjectTokens) {
+				continue
+			}
+		}
+		if matched {
+			return strings.TrimSpace(rule.Tier)
+		}
+	}
+	return ""
+}
+
+func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *openAIRateLimitInfo {
+	if !isOfficialOpenAIChannel(channel) || headers == nil {
+		return nil
+	}
+
+	info := &openAIRateLimitInfo{
+		Provider:               "openai",
+		Model:                  strings.TrimSpace(modelName),
+		LimitRequests:          openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-requests"),
+		LimitTokens:            openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-tokens"),
+		RemainingRequests:      openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-requests"),
+		RemainingTokens:        openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-tokens"),
+		ResetRequests:          openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-requests"),
+		ResetTokens:            openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-tokens"),
+		LimitProjectTokens:     openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-project-tokens"),
+		RemainingProjectTokens: openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-project-tokens"),
+		ResetProjectTokens:     openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-project-tokens"),
+	}
+
+	hasRateLimitInfo := info.LimitRequests != "" ||
+		info.LimitTokens != "" ||
+		info.RemainingRequests != "" ||
+		info.RemainingTokens != "" ||
+		info.ResetRequests != "" ||
+		info.ResetTokens != "" ||
+		info.LimitProjectTokens != "" ||
+		info.RemainingProjectTokens != "" ||
+		info.ResetProjectTokens != ""
+	if !hasRateLimitInfo {
+		return nil
+	}
+	info.Tier = inferOpenAIRateLimitTier(modelName, info)
+	return info
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
@@ -530,6 +657,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	}
+	var rateLimit *openAIRateLimitInfo
+	if httpResp != nil {
+		rateLimit = extractOpenAIRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
+	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
 		return testResult{
@@ -588,6 +719,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		context:     c,
 		localErr:    nil,
 		newAPIError: nil,
+		rateLimit:   rateLimit,
 	}
 }
 
@@ -802,6 +934,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 		}
 	}
 
+	rateLimit := extractOpenAIRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
 	taskID, _, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return taskErrorToTestResult(c, taskErr)
@@ -832,6 +965,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 		context:     c,
 		localErr:    nil,
 		newAPIError: nil,
+		rateLimit:   rateLimit,
 	}
 }
 
@@ -1235,11 +1369,15 @@ func TestChannel(c *gin.Context) {
 		})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"success": true,
 		"message": "",
 		"time":    consumedTime,
-	})
+	}
+	if result.rateLimit != nil {
+		resp["rate_limit"] = result.rateLimit
+	}
+	c.JSON(http.StatusOK, resp)
 }
 
 var testAllChannelsLock sync.Mutex

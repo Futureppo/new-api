@@ -156,6 +156,24 @@ const ModelTestModal = ({
     setSelectedModelKeys(successKeys);
   };
 
+  const formatRateLimitSummary = (rateLimit) => {
+    if (!rateLimit) return '';
+    const rpm = rateLimit.limit_requests;
+    const tpm = rateLimit.limit_tokens || rateLimit.limit_project_tokens;
+    if (rpm && tpm) {
+      return t('限速: ${rpm} RPM / ${tpm} TPM')
+        .replace('${rpm}', rpm)
+        .replace('${tpm}', tpm);
+    }
+    if (rpm) {
+      return t('限速: ${rpm} RPM').replace('${rpm}', rpm);
+    }
+    if (tpm) {
+      return t('限速: ${tpm} TPM').replace('${tpm}', tpm);
+    }
+    return '';
+  };
+
   const columns = [
     {
       title: t('模型名称'),
@@ -190,6 +208,9 @@ const ModelTestModal = ({
           );
         }
 
+        const rateLimitTier = testResult.rateLimit?.tier;
+        const rateLimitSummary = formatRateLimitSummary(testResult.rateLimit);
+
         return (
           <div className='flex flex-col gap-1'>
             <div className='flex items-center gap-2'>
@@ -205,6 +226,16 @@ const ModelTestModal = ({
                 </Typography.Text>
               )}
             </div>
+            {testResult.success && rateLimitTier && (
+              <Typography.Text type='tertiary' size='small'>
+                {t('付费层级: ${tier}').replace('${tier}', rateLimitTier)}
+              </Typography.Text>
+            )}
+            {testResult.success && !rateLimitTier && rateLimitSummary && (
+              <Typography.Text type='tertiary' size='small'>
+                {rateLimitSummary}
+              </Typography.Text>
+            )}
             {!testResult.success && testResult.message && (
               <div className='flex flex-col gap-1'>
                 <Typography.Text

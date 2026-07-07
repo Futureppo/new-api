@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -147,4 +148,94 @@ func TestBuildTestRequestCohereEmbeddingIncludesInputType(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "search_document", autoEmbeddingRequest.InputType)
 	require.Equal(t, []string{"float"}, autoEmbeddingRequest.EmbeddingTypes)
+}
+
+func TestExtractOpenAIRateLimitInfoOfficialHeaders(t *testing.T) {
+	baseURL := "https://api.openai.com"
+	channel := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &baseURL}
+	headers := http.Header{}
+	headers.Set("x-ratelimit-limit-requests", "500")
+	headers.Set("x-ratelimit-limit-tokens", "30,000")
+	headers.Set("x-ratelimit-remaining-requests", "499")
+	headers.Set("x-ratelimit-remaining-tokens", "29900")
+	headers.Set("x-ratelimit-reset-requests", "120ms")
+	headers.Set("x-ratelimit-reset-tokens", "1s")
+	headers.Set("x-ratelimit-limit-project-tokens", "100000")
+	headers.Set("x-ratelimit-remaining-project-tokens", "99000")
+	headers.Set("x-ratelimit-reset-project-tokens", "1m")
+
+	originalRules := openAIRateLimitTierRules
+	openAIRateLimitTierRules = []openAIRateLimitTierRule{
+		{
+			Model:         "gpt-test",
+			LimitRequests: "500",
+			LimitTokens:   "30000",
+			Tier:          "T2",
+		},
+	}
+	defer func() {
+		openAIRateLimitTierRules = originalRules
+	}()
+
+	info := extractOpenAIRateLimitInfo(channel, "gpt-test", headers)
+	require.NotNil(t, info)
+	require.Equal(t, "openai", info.Provider)
+	require.Equal(t, "gpt-test", info.Model)
+	require.Equal(t, "T2", info.Tier)
+	require.Equal(t, "500", info.LimitRequests)
+	require.Equal(t, "30,000", info.LimitTokens)
+	require.Equal(t, "499", info.RemainingRequests)
+	require.Equal(t, "29900", info.RemainingTokens)
+	require.Equal(t, "120ms", info.ResetRequests)
+	require.Equal(t, "1s", info.ResetTokens)
+	require.Equal(t, "100000", info.LimitProjectTokens)
+	require.Equal(t, "99000", info.RemainingProjectTokens)
+	require.Equal(t, "1m", info.ResetProjectTokens)
+}
+
+func TestExtractOpenAIRateLimitInfoMissingHeaders(t *testing.T) {
+	baseURL := "https://api.openai.com"
+	channel := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &baseURL}
+
+	require.Nil(t, extractOpenAIRateLimitInfo(channel, "gpt-test", http.Header{}))
+}
+
+func TestExtractOpenAIRateLimitInfoOnlyOfficialOpenAIChannel(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("x-ratelimit-limit-requests", "500")
+
+	defaultBaseChannel := &model.Channel{Type: constant.ChannelTypeOpenAI}
+	require.NotNil(t, extractOpenAIRateLimitInfo(defaultBaseChannel, "gpt-test", headers))
+
+	customBaseURL := "https://example.com"
+	customBaseChannel := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &customBaseURL}
+	require.Nil(t, extractOpenAIRateLimitInfo(customBaseChannel, "gpt-test", headers))
+
+	openAIBaseURL := "https://api.openai.com"
+	openAILocalChannel := &model.Channel{Type: constant.ChannelTypeOpenAILocal, BaseURL: &openAIBaseURL}
+	require.Nil(t, extractOpenAIRateLimitInfo(openAILocalChannel, "gpt-test", headers))
+}
+
+func TestExtractOpenAIRateLimitInfoInvalidValuesDoNotInferTier(t *testing.T) {
+	baseURL := "https://api.openai.com"
+	channel := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &baseURL}
+	headers := http.Header{}
+	headers.Set("x-ratelimit-limit-requests", "not-a-number")
+
+	originalRules := openAIRateLimitTierRules
+	openAIRateLimitTierRules = []openAIRateLimitTierRule{
+		{
+			Model:         "gpt-test",
+			LimitRequests: "500",
+			Tier:          "T1",
+		},
+	}
+	defer func() {
+		openAIRateLimitTierRules = originalRules
+	}()
+
+	info := extractOpenAIRateLimitInfo(channel, "gpt-test", headers)
+	require.NotNil(t, info)
+	require.Equal(t, "not-a-number", info.LimitRequests)
+	require.Empty(t, info.Tier)
 }
