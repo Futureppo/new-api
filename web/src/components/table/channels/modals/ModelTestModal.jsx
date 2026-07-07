@@ -158,20 +158,32 @@ const ModelTestModal = ({
 
   const formatRateLimitSummary = (rateLimit) => {
     if (!rateLimit) return '';
-    const rpm = rateLimit.limit_requests;
-    const tpm = rateLimit.limit_tokens || rateLimit.limit_project_tokens;
-    if (rpm && tpm) {
-      return t('限速: ${rpm} RPM / ${tpm} TPM')
-        .replace('${rpm}', rpm)
-        .replace('${tpm}', tpm);
-    }
-    if (rpm) {
-      return t('限速: ${rpm} RPM').replace('${rpm}', rpm);
-    }
-    if (tpm) {
-      return t('限速: ${tpm} TPM').replace('${tpm}', tpm);
-    }
-    return '';
+    const limits = [];
+    const appendLimit = (value, unit) => {
+      if (value) {
+        limits.push(`${value} ${unit}`);
+      }
+    };
+
+    appendLimit(rateLimit.limit_requests, 'RPM');
+    appendLimit(
+      rateLimit.limit_tokens || rateLimit.limit_project_tokens,
+      'TPM',
+    );
+    appendLimit(rateLimit.limit_input_tokens, 'ITPM');
+    appendLimit(rateLimit.limit_output_tokens, 'OTPM');
+    appendLimit(
+      rateLimit.limit_priority_input_tokens,
+      t('优先级 ${unit}').replace('${unit}', 'ITPM'),
+    );
+    appendLimit(
+      rateLimit.limit_priority_output_tokens,
+      t('优先级 ${unit}').replace('${unit}', 'OTPM'),
+    );
+
+    return limits.length
+      ? t('限速: ${limits}').replace('${limits}', limits.join(' / '))
+      : '';
   };
 
   const columns = [

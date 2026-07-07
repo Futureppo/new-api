@@ -41,22 +41,34 @@ type testResult struct {
 	context     *gin.Context
 	localErr    error
 	newAPIError *types.NewAPIError
-	rateLimit   *openAIRateLimitInfo
+	rateLimit   *channelRateLimitInfo
 }
 
-type openAIRateLimitInfo struct {
-	Provider               string `json:"provider"`
-	Model                  string `json:"model"`
-	Tier                   string `json:"tier,omitempty"`
-	LimitRequests          string `json:"limit_requests,omitempty"`
-	LimitTokens            string `json:"limit_tokens,omitempty"`
-	RemainingRequests      string `json:"remaining_requests,omitempty"`
-	RemainingTokens        string `json:"remaining_tokens,omitempty"`
-	ResetRequests          string `json:"reset_requests,omitempty"`
-	ResetTokens            string `json:"reset_tokens,omitempty"`
-	LimitProjectTokens     string `json:"limit_project_tokens,omitempty"`
-	RemainingProjectTokens string `json:"remaining_project_tokens,omitempty"`
-	ResetProjectTokens     string `json:"reset_project_tokens,omitempty"`
+type channelRateLimitInfo struct {
+	Provider                      string `json:"provider"`
+	Model                         string `json:"model"`
+	Tier                          string `json:"tier,omitempty"`
+	LimitRequests                 string `json:"limit_requests,omitempty"`
+	LimitTokens                   string `json:"limit_tokens,omitempty"`
+	RemainingRequests             string `json:"remaining_requests,omitempty"`
+	RemainingTokens               string `json:"remaining_tokens,omitempty"`
+	ResetRequests                 string `json:"reset_requests,omitempty"`
+	ResetTokens                   string `json:"reset_tokens,omitempty"`
+	LimitProjectTokens            string `json:"limit_project_tokens,omitempty"`
+	RemainingProjectTokens        string `json:"remaining_project_tokens,omitempty"`
+	ResetProjectTokens            string `json:"reset_project_tokens,omitempty"`
+	LimitInputTokens              string `json:"limit_input_tokens,omitempty"`
+	RemainingInputTokens          string `json:"remaining_input_tokens,omitempty"`
+	ResetInputTokens              string `json:"reset_input_tokens,omitempty"`
+	LimitOutputTokens             string `json:"limit_output_tokens,omitempty"`
+	RemainingOutputTokens         string `json:"remaining_output_tokens,omitempty"`
+	ResetOutputTokens             string `json:"reset_output_tokens,omitempty"`
+	LimitPriorityInputTokens      string `json:"limit_priority_input_tokens,omitempty"`
+	RemainingPriorityInputTokens  string `json:"remaining_priority_input_tokens,omitempty"`
+	ResetPriorityInputTokens      string `json:"reset_priority_input_tokens,omitempty"`
+	LimitPriorityOutputTokens     string `json:"limit_priority_output_tokens,omitempty"`
+	RemainingPriorityOutputTokens string `json:"remaining_priority_output_tokens,omitempty"`
+	ResetPriorityOutputTokens     string `json:"reset_priority_output_tokens,omitempty"`
 }
 
 type openAIRateLimitTierRule struct {
@@ -71,8 +83,8 @@ type openAIRateLimitTierRule struct {
 // exposes a stable public mapping from limits to usage tiers.
 var openAIRateLimitTierRules = []openAIRateLimitTierRule{}
 
-func isOfficialOpenAIChannel(channel *model.Channel) bool {
-	if channel == nil || channel.Type != constant.ChannelTypeOpenAI {
+func isOfficialProviderChannel(channel *model.Channel, channelType int, host string) bool {
+	if channel == nil || channel.Type != channelType {
 		return false
 	}
 	baseURL := strings.TrimSpace(channel.GetBaseURL())
@@ -86,10 +98,18 @@ func isOfficialOpenAIChannel(channel *model.Channel) bool {
 	if err != nil {
 		return false
 	}
-	return strings.EqualFold(parsed.Hostname(), "api.openai.com")
+	return strings.EqualFold(parsed.Hostname(), host)
 }
 
-func openAIRateLimitHeaderValue(headers http.Header, name string) string {
+func isOfficialOpenAIChannel(channel *model.Channel) bool {
+	return isOfficialProviderChannel(channel, constant.ChannelTypeOpenAI, "api.openai.com")
+}
+
+func isOfficialAnthropicChannel(channel *model.Channel) bool {
+	return isOfficialProviderChannel(channel, constant.ChannelTypeAnthropic, "api.anthropic.com")
+}
+
+func rateLimitHeaderValue(headers http.Header, name string) string {
 	return strings.TrimSpace(headers.Get(name))
 }
 
@@ -97,7 +117,7 @@ func normalizeOpenAIRateLimitValue(value string) string {
 	return strings.ReplaceAll(strings.TrimSpace(value), ",", "")
 }
 
-func inferOpenAIRateLimitTier(modelName string, info *openAIRateLimitInfo) string {
+func inferOpenAIRateLimitTier(modelName string, info *channelRateLimitInfo) string {
 	if info == nil {
 		return ""
 	}
@@ -135,26 +155,11 @@ func inferOpenAIRateLimitTier(modelName string, info *openAIRateLimitInfo) strin
 	return ""
 }
 
-func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *openAIRateLimitInfo {
-	if !isOfficialOpenAIChannel(channel) || headers == nil {
-		return nil
+func hasChannelRateLimitInfo(info *channelRateLimitInfo) bool {
+	if info == nil {
+		return false
 	}
-
-	info := &openAIRateLimitInfo{
-		Provider:               "openai",
-		Model:                  strings.TrimSpace(modelName),
-		LimitRequests:          openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-requests"),
-		LimitTokens:            openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-tokens"),
-		RemainingRequests:      openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-requests"),
-		RemainingTokens:        openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-tokens"),
-		ResetRequests:          openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-requests"),
-		ResetTokens:            openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-tokens"),
-		LimitProjectTokens:     openAIRateLimitHeaderValue(headers, "x-ratelimit-limit-project-tokens"),
-		RemainingProjectTokens: openAIRateLimitHeaderValue(headers, "x-ratelimit-remaining-project-tokens"),
-		ResetProjectTokens:     openAIRateLimitHeaderValue(headers, "x-ratelimit-reset-project-tokens"),
-	}
-
-	hasRateLimitInfo := info.LimitRequests != "" ||
+	return info.LimitRequests != "" ||
 		info.LimitTokens != "" ||
 		info.RemainingRequests != "" ||
 		info.RemainingTokens != "" ||
@@ -162,12 +167,89 @@ func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, header
 		info.ResetTokens != "" ||
 		info.LimitProjectTokens != "" ||
 		info.RemainingProjectTokens != "" ||
-		info.ResetProjectTokens != ""
-	if !hasRateLimitInfo {
+		info.ResetProjectTokens != "" ||
+		info.LimitInputTokens != "" ||
+		info.RemainingInputTokens != "" ||
+		info.ResetInputTokens != "" ||
+		info.LimitOutputTokens != "" ||
+		info.RemainingOutputTokens != "" ||
+		info.ResetOutputTokens != "" ||
+		info.LimitPriorityInputTokens != "" ||
+		info.RemainingPriorityInputTokens != "" ||
+		info.ResetPriorityInputTokens != "" ||
+		info.LimitPriorityOutputTokens != "" ||
+		info.RemainingPriorityOutputTokens != "" ||
+		info.ResetPriorityOutputTokens != ""
+}
+
+func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *channelRateLimitInfo {
+	if !isOfficialOpenAIChannel(channel) || headers == nil {
+		return nil
+	}
+
+	info := &channelRateLimitInfo{
+		Provider:               "openai",
+		Model:                  strings.TrimSpace(modelName),
+		LimitRequests:          rateLimitHeaderValue(headers, "x-ratelimit-limit-requests"),
+		LimitTokens:            rateLimitHeaderValue(headers, "x-ratelimit-limit-tokens"),
+		RemainingRequests:      rateLimitHeaderValue(headers, "x-ratelimit-remaining-requests"),
+		RemainingTokens:        rateLimitHeaderValue(headers, "x-ratelimit-remaining-tokens"),
+		ResetRequests:          rateLimitHeaderValue(headers, "x-ratelimit-reset-requests"),
+		ResetTokens:            rateLimitHeaderValue(headers, "x-ratelimit-reset-tokens"),
+		LimitProjectTokens:     rateLimitHeaderValue(headers, "x-ratelimit-limit-project-tokens"),
+		RemainingProjectTokens: rateLimitHeaderValue(headers, "x-ratelimit-remaining-project-tokens"),
+		ResetProjectTokens:     rateLimitHeaderValue(headers, "x-ratelimit-reset-project-tokens"),
+	}
+
+	if !hasChannelRateLimitInfo(info) {
 		return nil
 	}
 	info.Tier = inferOpenAIRateLimitTier(modelName, info)
 	return info
+}
+
+func extractAnthropicRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *channelRateLimitInfo {
+	if !isOfficialAnthropicChannel(channel) || headers == nil {
+		return nil
+	}
+
+	info := &channelRateLimitInfo{
+		Provider:                      "anthropic",
+		Model:                         strings.TrimSpace(modelName),
+		LimitRequests:                 rateLimitHeaderValue(headers, "anthropic-ratelimit-requests-limit"),
+		RemainingRequests:             rateLimitHeaderValue(headers, "anthropic-ratelimit-requests-remaining"),
+		ResetRequests:                 rateLimitHeaderValue(headers, "anthropic-ratelimit-requests-reset"),
+		LimitTokens:                   rateLimitHeaderValue(headers, "anthropic-ratelimit-tokens-limit"),
+		RemainingTokens:               rateLimitHeaderValue(headers, "anthropic-ratelimit-tokens-remaining"),
+		ResetTokens:                   rateLimitHeaderValue(headers, "anthropic-ratelimit-tokens-reset"),
+		LimitInputTokens:              rateLimitHeaderValue(headers, "anthropic-ratelimit-input-tokens-limit"),
+		RemainingInputTokens:          rateLimitHeaderValue(headers, "anthropic-ratelimit-input-tokens-remaining"),
+		ResetInputTokens:              rateLimitHeaderValue(headers, "anthropic-ratelimit-input-tokens-reset"),
+		LimitOutputTokens:             rateLimitHeaderValue(headers, "anthropic-ratelimit-output-tokens-limit"),
+		RemainingOutputTokens:         rateLimitHeaderValue(headers, "anthropic-ratelimit-output-tokens-remaining"),
+		ResetOutputTokens:             rateLimitHeaderValue(headers, "anthropic-ratelimit-output-tokens-reset"),
+		LimitPriorityInputTokens:      rateLimitHeaderValue(headers, "anthropic-priority-input-tokens-limit"),
+		RemainingPriorityInputTokens:  rateLimitHeaderValue(headers, "anthropic-priority-input-tokens-remaining"),
+		ResetPriorityInputTokens:      rateLimitHeaderValue(headers, "anthropic-priority-input-tokens-reset"),
+		LimitPriorityOutputTokens:     rateLimitHeaderValue(headers, "anthropic-priority-output-tokens-limit"),
+		RemainingPriorityOutputTokens: rateLimitHeaderValue(headers, "anthropic-priority-output-tokens-remaining"),
+		ResetPriorityOutputTokens:     rateLimitHeaderValue(headers, "anthropic-priority-output-tokens-reset"),
+	}
+
+	if !hasChannelRateLimitInfo(info) {
+		return nil
+	}
+	return info
+}
+
+func extractChannelRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *channelRateLimitInfo {
+	if info := extractOpenAIRateLimitInfo(channel, modelName, headers); info != nil {
+		return info
+	}
+	if info := extractAnthropicRateLimitInfo(channel, modelName, headers); info != nil {
+		return info
+	}
+	return nil
 }
 
 func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointType string) string {
@@ -657,9 +739,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	}
-	var rateLimit *openAIRateLimitInfo
+	var rateLimit *channelRateLimitInfo
 	if httpResp != nil {
-		rateLimit = extractOpenAIRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
+		rateLimit = extractChannelRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
 	}
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
@@ -934,7 +1016,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 		}
 	}
 
-	rateLimit := extractOpenAIRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
+	rateLimit := extractChannelRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
 	taskID, _, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return taskErrorToTestResult(c, taskErr)

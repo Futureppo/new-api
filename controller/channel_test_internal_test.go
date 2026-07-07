@@ -239,3 +239,86 @@ func TestExtractOpenAIRateLimitInfoInvalidValuesDoNotInferTier(t *testing.T) {
 	require.Equal(t, "not-a-number", info.LimitRequests)
 	require.Empty(t, info.Tier)
 }
+
+func TestExtractAnthropicRateLimitInfoOfficialHeaders(t *testing.T) {
+	baseURL := "https://api.anthropic.com"
+	channel := &model.Channel{Type: constant.ChannelTypeAnthropic, BaseURL: &baseURL}
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-requests-limit", "50")
+	headers.Set("anthropic-ratelimit-requests-remaining", "49")
+	headers.Set("anthropic-ratelimit-requests-reset", "2026-07-08T00:00:00Z")
+	headers.Set("anthropic-ratelimit-tokens-limit", "60000")
+	headers.Set("anthropic-ratelimit-tokens-remaining", "59000")
+	headers.Set("anthropic-ratelimit-tokens-reset", "2026-07-08T00:01:00Z")
+	headers.Set("anthropic-ratelimit-input-tokens-limit", "40000")
+	headers.Set("anthropic-ratelimit-input-tokens-remaining", "39900")
+	headers.Set("anthropic-ratelimit-input-tokens-reset", "2026-07-08T00:02:00Z")
+	headers.Set("anthropic-ratelimit-output-tokens-limit", "20000")
+	headers.Set("anthropic-ratelimit-output-tokens-remaining", "19900")
+	headers.Set("anthropic-ratelimit-output-tokens-reset", "2026-07-08T00:03:00Z")
+	headers.Set("anthropic-priority-input-tokens-limit", "10000")
+	headers.Set("anthropic-priority-input-tokens-remaining", "9900")
+	headers.Set("anthropic-priority-input-tokens-reset", "2026-07-08T00:04:00Z")
+	headers.Set("anthropic-priority-output-tokens-limit", "5000")
+	headers.Set("anthropic-priority-output-tokens-remaining", "4900")
+	headers.Set("anthropic-priority-output-tokens-reset", "2026-07-08T00:05:00Z")
+
+	info := extractAnthropicRateLimitInfo(channel, "claude-test", headers)
+	require.NotNil(t, info)
+	require.Equal(t, "anthropic", info.Provider)
+	require.Equal(t, "claude-test", info.Model)
+	require.Empty(t, info.Tier)
+	require.Equal(t, "50", info.LimitRequests)
+	require.Equal(t, "49", info.RemainingRequests)
+	require.Equal(t, "2026-07-08T00:00:00Z", info.ResetRequests)
+	require.Equal(t, "60000", info.LimitTokens)
+	require.Equal(t, "59000", info.RemainingTokens)
+	require.Equal(t, "2026-07-08T00:01:00Z", info.ResetTokens)
+	require.Equal(t, "40000", info.LimitInputTokens)
+	require.Equal(t, "39900", info.RemainingInputTokens)
+	require.Equal(t, "2026-07-08T00:02:00Z", info.ResetInputTokens)
+	require.Equal(t, "20000", info.LimitOutputTokens)
+	require.Equal(t, "19900", info.RemainingOutputTokens)
+	require.Equal(t, "2026-07-08T00:03:00Z", info.ResetOutputTokens)
+	require.Equal(t, "10000", info.LimitPriorityInputTokens)
+	require.Equal(t, "9900", info.RemainingPriorityInputTokens)
+	require.Equal(t, "2026-07-08T00:04:00Z", info.ResetPriorityInputTokens)
+	require.Equal(t, "5000", info.LimitPriorityOutputTokens)
+	require.Equal(t, "4900", info.RemainingPriorityOutputTokens)
+	require.Equal(t, "2026-07-08T00:05:00Z", info.ResetPriorityOutputTokens)
+}
+
+func TestExtractAnthropicRateLimitInfoMissingHeaders(t *testing.T) {
+	baseURL := "https://api.anthropic.com"
+	channel := &model.Channel{Type: constant.ChannelTypeAnthropic, BaseURL: &baseURL}
+
+	require.Nil(t, extractAnthropicRateLimitInfo(channel, "claude-test", http.Header{}))
+}
+
+func TestExtractAnthropicRateLimitInfoOnlyOfficialAnthropicChannel(t *testing.T) {
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-requests-limit", "50")
+
+	defaultBaseChannel := &model.Channel{Type: constant.ChannelTypeAnthropic}
+	require.NotNil(t, extractAnthropicRateLimitInfo(defaultBaseChannel, "claude-test", headers))
+
+	customBaseURL := "https://example.com"
+	customBaseChannel := &model.Channel{Type: constant.ChannelTypeAnthropic, BaseURL: &customBaseURL}
+	require.Nil(t, extractAnthropicRateLimitInfo(customBaseChannel, "claude-test", headers))
+
+	anthropicBaseURL := "https://api.anthropic.com"
+	openAIChannel := &model.Channel{Type: constant.ChannelTypeOpenAI, BaseURL: &anthropicBaseURL}
+	require.Nil(t, extractAnthropicRateLimitInfo(openAIChannel, "claude-test", headers))
+}
+
+func TestExtractAnthropicRateLimitInfoInvalidValuesDoNotSetTier(t *testing.T) {
+	baseURL := "https://api.anthropic.com"
+	channel := &model.Channel{Type: constant.ChannelTypeAnthropic, BaseURL: &baseURL}
+	headers := http.Header{}
+	headers.Set("anthropic-ratelimit-input-tokens-limit", "not-a-number")
+
+	info := extractAnthropicRateLimitInfo(channel, "claude-test", headers)
+	require.NotNil(t, info)
+	require.Equal(t, "not-a-number", info.LimitInputTokens)
+	require.Empty(t, info.Tier)
+}
