@@ -196,6 +196,7 @@ export const useLogsData = ({
   // User info modal state
   const [showUserInfo, setShowUserInfoModal] = useState(false);
   const [userInfoData, setUserInfoData] = useState(null);
+  const [showDisableUserModal, setShowDisableUserModal] = useState(false);
 
   // Channel affinity usage cache stats modal state (admin only)
   const [
@@ -369,6 +370,7 @@ export const useLogsData = ({
     if (!isAdminUser) {
       return;
     }
+    setShowDisableUserModal(false);
     const res = await API.get(`/api/user/${userId}`);
     const { success, message, data } = res.data;
     if (success) {
@@ -376,6 +378,48 @@ export const useLogsData = ({
       setShowUserInfoModal(true);
     } else {
       showError(message);
+    }
+  };
+
+  const openDisableUserModal = () => {
+    if (!isAdminUser || !userInfoData?.id) {
+      return;
+    }
+    setShowDisableUserModal(true);
+  };
+
+  const closeDisableUserModal = () => {
+    setShowDisableUserModal(false);
+  };
+
+  const disableUserFromInfoModal = async (reason) => {
+    if (!isAdminUser || !userInfoData?.id) {
+      return;
+    }
+    try {
+      const res = await API.post('/api/user/manage', {
+        id: userInfoData.id,
+        action: 'disable',
+        reason,
+      });
+      const { success, message, data } = res.data;
+      if (success) {
+        showSuccess(t('操作成功完成！'));
+        setUserInfoData((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: data?.status ?? 2,
+                disable_reason: data?.disable_reason || reason || '',
+              }
+            : prev,
+        );
+        setShowDisableUserModal(false);
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(error.message || t('操作失败，请重试'));
     }
   };
 
@@ -956,6 +1000,10 @@ export const useLogsData = ({
     setShowUserInfoModal,
     userInfoData,
     showUserInfoFunc,
+    showDisableUserModal,
+    openDisableUserModal,
+    closeDisableUserModal,
+    disableUserFromInfoModal,
 
     // Channel affinity usage cache stats modal
     showChannelAffinityUsageCacheModal,

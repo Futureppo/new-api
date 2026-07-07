@@ -18,15 +18,19 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React from 'react';
-import { Modal, Badge } from '@douyinfe/semi-ui';
+import { Modal, Badge, Button, Space, Tag, Tooltip } from '@douyinfe/semi-ui';
 import { renderQuota, renderNumber } from '../../../../helpers';
 
 const UserInfoModal = ({
   showUserInfo,
   setShowUserInfoModal,
   userInfoData,
+  openDisableUserModal,
   t,
 }) => {
+  const USER_STATUS_ENABLED = 1;
+  const USER_STATUS_DISABLED = 2;
+
   const infoItemStyle = {
     marginBottom: '16px',
   };
@@ -64,6 +68,10 @@ const UserInfoModal = ({
     flex: 1,
     minWidth: 0,
   };
+
+  const isEnabled = userInfoData?.status === USER_STATUS_ENABLED;
+  const isDisabled = userInfoData?.status === USER_STATUS_DISABLED;
+  const disableReason = (userInfoData?.disable_reason || '').trim();
 
   return (
     <Modal
@@ -168,6 +176,46 @@ const UserInfoModal = ({
               </div>
             </div>
           )}
+
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: isDisabled ? 'space-between' : 'flex-end',
+              alignItems: 'center',
+              gap: 12,
+              borderTop: '1px solid var(--semi-color-border)',
+              marginTop: 20,
+              paddingTop: 16,
+            }}
+          >
+            {isDisabled ? (
+              <Space spacing={8}>
+                <Tag color='red' shape='circle'>
+                  {t('已禁用')}
+                </Tag>
+                {disableReason ? (
+                  <Tooltip content={disableReason} position='top'>
+                    <span
+                      style={{
+                        maxWidth: 320,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                        color: 'var(--semi-color-text-2)',
+                      }}
+                    >
+                      {disableReason}
+                    </span>
+                  </Tooltip>
+                ) : null}
+              </Space>
+            ) : null}
+            {isEnabled ? (
+              <Button type='danger' onClick={openDisableUserModal}>
+                {t('禁用')}
+              </Button>
+            ) : null}
+          </div>
         </div>
       )}
     </Modal>
