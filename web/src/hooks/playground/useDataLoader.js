@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { API, processModelsData, processGroupsData } from '../../helpers';
 import { API_ENDPOINTS } from '../../constants/playground.constants';
@@ -30,29 +30,47 @@ export const useDataLoader = (
   setGroups,
 ) => {
   const { t } = useTranslation();
+  const modelRequestIdRef = useRef(0);
+  const inputsRef = useRef(inputs);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
 
-  const loadModels = useCallback(async () => {
-    try {
-      const res = await API.get(API_ENDPOINTS.USER_MODELS);
-      const { success, message, data } = res.data;
+  useEffect(() => {
+    inputsRef.current = inputs;
+  }, [inputs]);
 
-      if (success) {
-        const { modelOptions, selectedModel } = processModelsData(
-          data,
-          inputs.model,
-        );
-        setModels(modelOptions);
+  const loadModels = useCallback(
+    async (group = inputsRef.current.group) => {
+      const requestId = ++modelRequestIdRef.current;
+      try {
+        const res = await API.get(API_ENDPOINTS.USER_MODELS, {
+          params: group ? { group } : undefined,
+        });
+        const { success, message, data } = res.data;
 
-        if (selectedModel !== inputs.model) {
-          handleInputChange('model', selectedModel);
+        if (requestId !== modelRequestIdRef.current) return;
+
+        const currentModel = inputsRef.current.model;
+        if (success) {
+          const { modelOptions, selectedModel } = processModelsData(
+            data,
+            currentModel,
+          );
+          setModels(modelOptions);
+
+          if (selectedModel !== currentModel) {
+            handleInputChange('model', selectedModel || '');
+          }
+        } else {
+          showError(t(message));
         }
-      } else {
-        showError(t(message));
+      } catch (error) {
+        if (requestId === modelRequestIdRef.current) {
+          showError(t('加载模型失败'));
+        }
       }
-    } catch (error) {
-      showError(t('加载模型失败'));
-    }
-  }, [inputs.model, handleInputChange, setModels, t]);
+    },
+    [handleInputChange, setModels, t],
+  );
 
   const loadGroups = useCallback(async () => {
     try {
@@ -66,27 +84,40 @@ export const useDataLoader = (
         const groupOptions = processGroupsData(data, userGroup);
         setGroups(groupOptions);
 
+        const currentGroup = inputsRef.current.group;
         const hasCurrentGroup = groupOptions.some(
-          (option) => option.value === inputs.group,
+          (option) => option.value === currentGroup,
         );
-        if (!hasCurrentGroup) {
-          handleInputChange('group', groupOptions[0]?.value || '');
+        const selectedGroup = hasCurrentGroup
+          ? currentGroup
+          : groupOptions[0]?.value || '';
+        if (selectedGroup !== currentGroup) {
+          handleInputChange('group', selectedGroup);
         }
+        setGroupsLoaded(true);
+        return selectedGroup;
       } else {
         showError(t(message));
       }
     } catch (error) {
       showError(t('加载分组失败'));
     }
-  }, [userState, inputs.group, handleInputChange, setGroups, t]);
+  }, [userState, handleInputChange, setGroups, t]);
 
-  // 自动加载数据
+  // 用户加载完成后先确定有效分组
   useEffect(() => {
     if (userState?.user) {
-      loadModels();
+      setGroupsLoaded(false);
       loadGroups();
     }
-  }, [userState?.user, loadModels, loadGroups]);
+  }, [userState?.user, loadGroups]);
+
+  // 分组确定或切换后加载对应模型
+  useEffect(() => {
+    if (userState?.user && groupsLoaded) {
+      loadModels(inputs.group);
+    }
+  }, [userState?.user, groupsLoaded, inputs.group, loadModels]);
 
   return {
     loadModels,
