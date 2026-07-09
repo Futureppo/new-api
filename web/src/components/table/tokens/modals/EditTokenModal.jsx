@@ -65,6 +65,7 @@ const EditTokenModal = (props) => {
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
+  const modelRequestIdRef = useRef(0);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
@@ -104,9 +105,13 @@ const EditTokenModal = (props) => {
     }
   };
 
-  const loadModels = async () => {
-    let res = await API.get(`/api/user/models`);
+  const loadModels = async (group, selectedModels) => {
+    const requestId = ++modelRequestIdRef.current;
+    let res = await API.get(`/api/user/models`, {
+      params: group ? { group } : undefined,
+    });
     const { success, message, data } = res.data;
+    if (requestId !== modelRequestIdRef.current) return;
     if (success) {
       const categories = getModelCategories(t);
       let localModelOptions = data.map((model) => {
@@ -128,6 +133,17 @@ const EditTokenModal = (props) => {
         };
       });
       setModels(localModelOptions);
+
+      const currentModelLimits = Array.isArray(selectedModels)
+        ? selectedModels
+        : formApiRef.current?.getValue('model_limits') || [];
+      const allowedModels = new Set(data);
+      const filteredModelLimits = currentModelLimits.filter((model) =>
+        allowedModels.has(model),
+      );
+      if (filteredModelLimits.length !== currentModelLimits.length) {
+        formApiRef.current?.setValue('model_limits', filteredModelLimits);
+      }
     } else {
       showError(t(message));
     }
@@ -175,6 +191,7 @@ const EditTokenModal = (props) => {
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
+      await loadModels(data.group, data.model_limits);
     } else {
       showError(message);
     }
@@ -187,7 +204,9 @@ const EditTokenModal = (props) => {
         formApiRef.current.setValues(getInitValues());
       }
     }
-    loadModels();
+    if (!isEdit) {
+      loadModels();
+    }
     loadGroups();
   }, [props.editingToken.id]);
 
@@ -398,6 +417,7 @@ const EditTokenModal = (props) => {
                               option.label.toLowerCase().includes(q))
                           );
                         }}
+                        onChange={(value) => loadModels(value)}
                         showClear
                         style={{ width: '100%' }}
                       />
@@ -552,7 +572,10 @@ const EditTokenModal = (props) => {
                         ? `▾ ${t('收起原生额度输入')}`
                         : `▸ ${t('使用原生额度输入')}`}
                     </div>
-                    <div style={{ display: showQuotaInput ? 'block' : 'none' }} className='mt-2'>
+                    <div
+                      style={{ display: showQuotaInput ? 'block' : 'none' }}
+                      className='mt-2'
+                    >
                       <Form.InputNumber
                         field='remain_quota'
                         label={t('额度')}
