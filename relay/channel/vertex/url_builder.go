@@ -99,7 +99,7 @@ func BuildGoogleModelsListURL(baseURL, region, pageToken string) (string, error)
 		return "", err
 	}
 	query := u.Query()
-	query.Set("pageSize", "1000")
+	query.Set("pageSize", "300")
 	query.Set("listAllVersions", "false")
 	query.Set("view", "PUBLISHER_MODEL_VIEW_BASIC")
 	if pageToken != "" {

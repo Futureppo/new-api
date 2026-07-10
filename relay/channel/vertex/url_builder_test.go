@@ -61,7 +61,7 @@ func TestBuildGoogleModelsListURL(t *testing.T) {
 	parsed, err := url.Parse(rawURL)
 	require.NoError(t, err)
 	require.Equal(t, "/prefix/v1beta1/publishers/google/models", parsed.Path)
-	require.Equal(t, "1000", parsed.Query().Get("pageSize"))
+	require.Equal(t, "300", parsed.Query().Get("pageSize"))
 	require.Equal(t, "false", parsed.Query().Get("listAllVersions"))
 	require.Equal(t, "PUBLISHER_MODEL_VIEW_BASIC", parsed.Query().Get("view"))
 	require.Equal(t, "next-token", parsed.Query().Get("pageToken"))
