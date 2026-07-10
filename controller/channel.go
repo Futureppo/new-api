@@ -20,6 +20,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
+	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -339,7 +340,7 @@ func fetchCohereModelIDs(channel *model.Channel, baseURL string, key string) ([]
 	return models, nil
 }
 
-func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
+func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
 	}
@@ -366,6 +367,17 @@ func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key str
 		return normalizeModelNames(models), nil
 	}
 
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeVertexAi {
+		if channel.GetOtherSettings().VertexKeyType == dto.VertexKeyTypeAPIKey {
+			return nil, fmt.Errorf("Vertex 官方模型列表不支持 API Key，请使用服务账号 JSON 或配置自定义模型列表 API")
+		}
+		models, err := vertex.FetchGoogleModels(ctx, baseURL, key, channel.Other, channel.GetSetting().Proxy)
+		if err != nil {
+			return nil, fmt.Errorf("获取 Vertex 模型失败: %w", err)
+		}
+		return normalizeModelNames(models), nil
+	}
+
 	if customModelListURL == "" && channel.Type == constant.ChannelTypeCohere {
 		models, err := fetchCohereModelIDs(channel, baseURL, key)
 		if err != nil {
@@ -376,6 +388,10 @@ func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key str
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
 	return fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
+}
+
+func fetchChannelModelIDsWithKey(channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
+	return fetchChannelModelIDsWithKeyContext(context.Background(), channel, baseURL, key, customModelListURL)
 }
 
 func FetchUpstreamModels(c *gin.Context) {
@@ -641,17 +657,8 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// VertexAI 特殊校验
 	if channel.Type == constant.ChannelTypeVertexAi {
-		if channel.Other == "" {
-			return fmt.Errorf("部署地区不能为空")
-		}
-
-		regionMap, err := common.StrToMap(channel.Other)
-		if err != nil {
-			return fmt.Errorf("部署地区必须是标准的Json格式，例如{\"default\": \"us-central1\", \"region2\": \"us-east1\"}")
-		}
-
-		if regionMap["default"] == nil {
-			return fmt.Errorf("部署地区必须包含default字段")
+		if err := vertex.ValidateRegionConfig(channel.Other); err != nil {
+			return err
 		}
 	}
 
@@ -733,7 +740,7 @@ func getVertexArrayKeys(keys string) ([]string, error) {
 		case string:
 			keyStr = strings.TrimSpace(v)
 		default:
-			bytes, err := json.Marshal(v)
+			bytes, err := common.Marshal(v)
 			if err != nil {
 				return nil, fmt.Errorf("Vertex AI key JSON 编码失败: %w", err)
 			}
@@ -1101,7 +1108,7 @@ func UpdateChannel(c *gin.Context) {
 				if strings.HasPrefix(strings.TrimSpace(originChannel.Key), "[") {
 					// JSON数组格式
 					var arr []json.RawMessage
-					if err := json.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
+					if err := common.Unmarshal([]byte(strings.TrimSpace(originChannel.Key)), &arr); err == nil {
 						existingKeys = make([]string, len(arr))
 						for i, v := range arr {
 							existingKeys[i] = string(v)
@@ -1201,11 +1208,14 @@ func UpdateChannel(c *gin.Context) {
 
 func FetchModels(c *gin.Context) {
 	var req struct {
-		BaseURL            string `json:"base_url"`
-		Type               int    `json:"type"`
-		Key                string `json:"key"`
-		HeaderOverride     string `json:"header_override"`
-		CustomModelListURL string `json:"custom_model_list_url"`
+		BaseURL            string            `json:"base_url"`
+		Type               int               `json:"type"`
+		Key                string            `json:"key"`
+		HeaderOverride     string            `json:"header_override"`
+		CustomModelListURL string            `json:"custom_model_list_url"`
+		VertexKeyType      dto.VertexKeyType `json:"vertex_key_type"`
+		Other              string            `json:"other"`
+		Proxy              string            `json:"proxy"`
 	}
 
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -1218,22 +1228,32 @@ func FetchModels(c *gin.Context) {
 
 	baseURL := req.BaseURL
 	if baseURL == "" {
+		if req.Type < 0 || req.Type >= len(constant.ChannelBaseURLs) {
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Invalid channel type"})
+			return
+		}
 		baseURL = constant.ChannelBaseURLs[req.Type]
 	}
 
-	// remove line breaks and extra spaces.
-	key := strings.TrimSpace(req.Key)
-	key = strings.Split(key, "\n")[0]
+	// Service account JSON may contain formatted newlines. Other channel keys
+	// retain the existing first-line behavior used by the creation form.
+	key := normalizeFetchModelsKey(req.Type, req.VertexKeyType, req.Key)
 
 	channel := &model.Channel{
-		Type: req.Type,
-		Key:  key,
+		Type:  req.Type,
+		Key:   key,
+		Other: req.Other,
 	}
+	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
+	channel.SetOtherSettings(dto.ChannelOtherSettings{
+		VertexKeyType:      req.VertexKeyType,
+		CustomModelListURL: req.CustomModelListURL,
+	})
 	if req.HeaderOverride != "" {
 		channel.HeaderOverride = common.GetPointer(req.HeaderOverride)
 	}
 
-	models, err := fetchChannelModelIDsWithKey(channel, baseURL, key, req.CustomModelListURL)
+	models, err := fetchChannelModelIDsWithKeyContext(c.Request.Context(), channel, baseURL, key, req.CustomModelListURL)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
@@ -1246,6 +1266,14 @@ func FetchModels(c *gin.Context) {
 		"success": true,
 		"data":    models,
 	})
+}
+
+func normalizeFetchModelsKey(channelType int, vertexKeyType dto.VertexKeyType, rawKey string) string {
+	key := strings.TrimSpace(rawKey)
+	if channelType != constant.ChannelTypeVertexAi || vertexKeyType == dto.VertexKeyTypeAPIKey {
+		return strings.Split(key, "\n")[0]
+	}
+	return key
 }
 
 func BatchSetChannelTag(c *gin.Context) {
@@ -1977,7 +2005,7 @@ func OllamaPullModelStream(c *gin.Context) {
 
 	// 创建进度回调函数
 	progressCallback := func(progress ollama.OllamaPullResponse) {
-		data, _ := json.Marshal(progress)
+		data, _ := common.Marshal(progress)
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(data))
 		c.Writer.Flush()
 	}
@@ -1986,12 +2014,12 @@ func OllamaPullModelStream(c *gin.Context) {
 	err = ollama.PullOllamaModelStream(baseURL, key, req.ModelName, progressCallback)
 
 	if err != nil {
-		errorData, _ := json.Marshal(gin.H{
+		errorData, _ := common.Marshal(gin.H{
 			"error": err.Error(),
 		})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(errorData))
 	} else {
-		successData, _ := json.Marshal(gin.H{
+		successData, _ := common.Marshal(gin.H{
 			"message": fmt.Sprintf("Model %s pulled successfully", req.ModelName),
 		})
 		fmt.Fprintf(c.Writer, "data: %s\n\n", string(successData))

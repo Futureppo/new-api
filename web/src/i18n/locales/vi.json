@@ -4672,6 +4672,7 @@
     "User-Agent include（每行一个，可不写）": "User-Agent include (mỗi dòng một mục, tùy chọn)",
     "Value 正则": "Regex giá trị",
     "Vertex AI 不支持 functionResponse.id 字段，开启后将自动移除该字段": "Vertex AI không hỗ trợ trường functionResponse.id. Khi bật, trường này sẽ tự động bị xóa",
+    "Vertex API Key 模式不支持官方模型列表，请使用服务账号 JSON 或配置自定义模型列表 API": "Chế độ API Key của Vertex không hỗ trợ danh sách mô hình chính thức. Hãy dùng JSON tài khoản dịch vụ hoặc cấu hình API danh sách mô hình tùy chỉnh",
     "Waffo 充值": "",
     "Waffo 充值的最低数量，默认 1": "",
     "Waffo 当前使用 USD 结算": "",

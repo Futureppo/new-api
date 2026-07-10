@@ -28,7 +28,7 @@ import {
   verifyJSON,
 } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
-import { CHANNEL_OPTIONS, MODEL_FETCHABLE_CHANNEL_TYPES } from '../../../../constants';
+import { CHANNEL_OPTIONS, MODEL_FETCHABLE_CHANNEL_TYPES, isManualModelFetchSupported } from '../../../../constants';
 import {
   SideSheet,
   Space,
@@ -134,12 +134,6 @@ const isServiceAccountChannel = (type) =>
   isVertexChannel(type) || Number(type) === GCP_CHANNEL_TYPE;
 const getServiceAccountKeyType = (type, keyType) =>
   isVertexChannel(type) ? keyType || 'json' : 'json';
-
-// 支持并且已适配通过接口获取模型列表的渠道类型
-const MODEL_FETCHABLE_TYPES = new Set([
-  1, 4, 14, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
-  61,
-]);
 
 function type2secretPrompt(type) {
   // inputs.type === 15 ? '按照如下格式输入：APIKey|SecretKey' : (inputs.type === 18 ? '按照如下格式输入：APPID|APISecret|APIKey' : '请输入渠道对应的鉴权密钥')
@@ -1030,28 +1024,58 @@ const EditChannelModal = (props) => {
 
   const fetchUpstreamModelList = async (name, options = {}) => {
     const silent = !!options.silent;
-    // if (inputs['type'] !== 1) {
-    //   showError(t('仅支持 OpenAI 接口格式'));
-    //   return;
-    // }
     setLoading(true);
     const models = [];
     let err = false;
+    let errorMessage = '';
 
     if (isEdit) {
       // 如果是编辑模式，使用已有的 channelId 获取模型列表
-      const res = await API.get('/api/channel/fetch_models/' + channelId, {
-        skipErrorHandler: true,
-      });
-      if (res && res.data && res.data.success) {
-        models.push(...res.data.data);
-      } else {
+      try {
+        const res = await API.get('/api/channel/fetch_models/' + channelId, {
+          skipErrorHandler: true,
+        });
+        if (res && res.data && res.data.success) {
+          models.push(...res.data.data);
+        } else {
+          err = true;
+          errorMessage = res?.data?.message || '';
+        }
+      } catch (error) {
         err = true;
+        errorMessage = error?.response?.data?.message || error?.message || '';
       }
     } else {
       // 如果是新建模式，通过后端代理获取模型列表
-      if (!inputs?.['key']) {
-        showError(t('请填写密钥'));
+      let fetchKey = inputs?.['key'] || '';
+      if (
+        isVertexChannel(inputs.type) &&
+        getServiceAccountKeyType(inputs.type, inputs.vertex_key_type) === 'json'
+      ) {
+        if (useManualInput) {
+          try {
+            fetchKey = JSON.stringify(JSON.parse(fetchKey));
+          } catch {
+            fetchKey = '';
+            errorMessage = t('密钥格式无效，请输入有效的 JSON 格式密钥');
+          }
+        } else {
+          let parsedKey = vertexKeys[0];
+          if (!parsedKey && vertexFileList[0]?.fileInstance) {
+            try {
+              parsedKey = JSON.parse(await vertexFileList[0].fileInstance.text());
+            } catch (error) {
+              errorMessage = t('解析密钥文件失败: {{msg}}', {
+                msg: error?.message || t('未知错误'),
+              });
+            }
+          }
+          fetchKey = parsedKey ? JSON.stringify(parsedKey) : '';
+        }
+      }
+
+      if (!fetchKey) {
+        errorMessage = errorMessage || t('请填写密钥');
         err = true;
       } else {
         try {
@@ -1060,9 +1084,12 @@ const EditChannelModal = (props) => {
             {
               base_url: inputs['base_url'],
               type: inputs['type'],
-              key: inputs['key'],
+              key: fetchKey,
               header_override: inputs['header_override'],
               custom_model_list_url: inputs['custom_model_list_url'],
+              vertex_key_type: inputs['vertex_key_type'],
+              other: inputs['other'],
+              proxy: inputs['proxy'],
             },
             { skipErrorHandler: true },
           );
@@ -1071,10 +1098,11 @@ const EditChannelModal = (props) => {
             models.push(...res.data.data);
           } else {
             err = true;
+            errorMessage = res?.data?.message || '';
           }
         } catch (error) {
-          console.error('Error fetching models:', error);
           err = true;
+          errorMessage = error?.response?.data?.message || error?.message || '';
         }
       }
     }
@@ -1088,7 +1116,11 @@ const EditChannelModal = (props) => {
       setLoading(false);
       return uniqueModels;
     } else {
-      showError(t('获取模型列表失败'));
+      showError(
+        errorMessage
+          ? `${t('获取模型列表失败')}: ${errorMessage}`
+          : t('获取模型列表失败'),
+      );
     }
     setLoading(false);
     return null;
@@ -1098,7 +1130,7 @@ const EditChannelModal = (props) => {
     const mappingKey = String(pairKey ?? '').trim();
     if (!mappingKey) return;
 
-    if (!MODEL_FETCHABLE_CHANNEL_TYPES.has(inputs.type)) {
+    if (!isManualModelFetchSupported(inputs.type, inputs.vertex_key_type, inputs.custom_model_list_url)) {
       return;
     }
 
@@ -3590,14 +3622,27 @@ const EditChannelModal = (props) => {
                           >
                             {t('填入相关模型')}
                           </Button>
-                          {MODEL_FETCHABLE_CHANNEL_TYPES.has(inputs.type) && (
+                          {isManualModelFetchSupported(inputs.type, inputs.vertex_key_type, inputs.custom_model_list_url) && (
                             <Button
                               size='small'
                               type='tertiary'
+                              disabled={
+                                !isEdit &&
+                                isVertexChannel(inputs.type) &&
+                                getServiceAccountKeyType(inputs.type, inputs.vertex_key_type) === 'json' &&
+                                !useManualInput &&
+                                vertexKeys.length === 0 &&
+                                vertexFileList.length === 0
+                              }
                               onClick={() => fetchUpstreamModelList('models')}
                             >
                               {t('获取模型列表')}
                             </Button>
+                          )}
+                          {isVertexChannel(inputs.type) && inputs.vertex_key_type === 'api_key' && !String(inputs.custom_model_list_url || '').trim() && (
+                            <Text type='tertiary' size='small'>
+                              {t('Vertex API Key 模式不支持官方模型列表，请使用服务账号 JSON 或配置自定义模型列表 API')}
+                            </Text>
                           )}
                           <Dropdown
                             trigger='click'
@@ -3695,7 +3740,7 @@ const EditChannelModal = (props) => {
                     editorType='keyValue'
                     formApi={formApiRef.current}
                     renderStringValueSuffix={({ pairKey, value }) => {
-                      if (!MODEL_FETCHABLE_CHANNEL_TYPES.has(inputs.type)) {
+                      if (!isManualModelFetchSupported(inputs.type, inputs.vertex_key_type, inputs.custom_model_list_url)) {
                         return null;
                       }
                       const disabled = !String(pairKey ?? '').trim();

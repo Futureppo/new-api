@@ -82,32 +82,26 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 
 // BuildRequestURL constructs the upstream URL.
 func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
-		return "", fmt.Errorf("failed to decode credentials: %w", err)
+	adc, err := vertexcore.ParseCredentials(a.apiKey)
+	if err != nil {
+		return "", err
 	}
 	modelName := info.UpstreamModelName
 	if modelName == "" {
 		modelName = "veo-3.0-generate-001"
 	}
 
-	region := vertexcore.GetModelRegion(info.ApiVersion, modelName)
-	if strings.TrimSpace(region) == "" {
-		region = "global"
+	region, err := vertexcore.ResolveModelRegion(info.ApiVersion, modelName)
+	if err != nil {
+		return "", err
 	}
-	if region == "global" {
-		return fmt.Sprintf(
-			"https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/%s:predictLongRunning",
-			adc.ProjectID,
-			modelName,
-		), nil
-	}
-	return fmt.Sprintf(
-		"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:predictLongRunning",
-		region,
+	return vertexcore.BuildGoogleModelURL(
+		a.baseURL,
+		vertexcore.DefaultAPIVersion,
 		adc.ProjectID,
 		region,
 		modelName,
+		"predictLongRunning",
 	), nil
 }
 
@@ -116,21 +110,20 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(a.apiKey), adc); err != nil {
-		return fmt.Errorf("failed to decode credentials: %w", err)
+	adc, err := vertexcore.ParseCredentials(a.apiKey)
+	if err != nil {
+		return err
 	}
 
 	proxy := ""
 	if info != nil {
 		proxy = info.ChannelSetting.Proxy
 	}
-	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
+	token, err := vertexcore.AcquireAccessTokenForRelayContext(c.Request.Context(), adc, proxy, info)
 	if err != nil {
 		return fmt.Errorf("failed to acquire access token: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-goog-user-project", adc.ProjectID)
 	return nil
 }
 
@@ -257,33 +250,27 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	if project == "" || modelName == "" {
 		return nil, fmt.Errorf("cannot extract project/model from operation name")
 	}
-	var url string
-	if region == "global" {
-		url = fmt.Sprintf("https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/%s:fetchPredictOperation", project, modelName)
-	} else {
-		url = fmt.Sprintf("https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:fetchPredictOperation", region, project, region, modelName)
-	}
+	requestURL := vertexcore.BuildGoogleModelURL(baseUrl, vertexcore.DefaultAPIVersion, project, region, modelName, "fetchPredictOperation")
 	payload := fetchOperationPayload{OperationName: upstreamName}
 	data, err := common.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	adc := &vertexcore.Credentials{}
-	if err := common.Unmarshal([]byte(key), adc); err != nil {
-		return nil, fmt.Errorf("failed to decode credentials: %w", err)
+	adc, err := vertexcore.ParseCredentials(key)
+	if err != nil {
+		return nil, err
 	}
-	token, err := vertexcore.AcquireAccessToken(*adc, proxy)
+	token, err := vertexcore.AcquireAccessToken(adc, proxy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire access token: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-goog-user-project", adc.ProjectID)
 	client, err := service.GetHttpClientWithProxy(proxy)
 	if err != nil {
 		return nil, fmt.Errorf("new proxy http client failed: %w", err)

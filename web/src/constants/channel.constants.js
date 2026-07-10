@@ -210,4 +210,21 @@ export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
   61, 62,
 ]);
 
+export const isManualModelFetchSupported = (
+  type,
+  vertexKeyType = 'json',
+  customModelListUrl = '',
+) => {
+  if (MODEL_FETCHABLE_CHANNEL_TYPES.has(Number(type))) {
+    return true;
+  }
+  if (Number(type) !== 41) {
+    return false;
+  }
+  return (
+    String(customModelListUrl || '').trim() !== '' ||
+    String(vertexKeyType || 'json') !== 'api_key'
+  );
+};
+
 export const MODEL_TABLE_PAGE_SIZE = 10;

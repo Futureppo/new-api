@@ -1,9 +1,7 @@
 package vertex
 
 import (
-	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -125,82 +123,30 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) getRequestUrl(info *relaycommon.RelayInfo, modelName, suffix string) (string, error) {
-	region := GetModelRegion(info.ApiVersion, info.OriginModelName)
+	region, err := ResolveModelRegion(info.ApiVersion, info.OriginModelName)
+	if err != nil {
+		return "", err
+	}
 	if info.ChannelOtherSettings.VertexKeyType != dto.VertexKeyTypeAPIKey {
-		adc := &Credentials{}
-		if err := common.Unmarshal([]byte(info.ApiKey), adc); err != nil {
-			return "", fmt.Errorf("failed to decode credentials file: %w", err)
+		adc, err := ParseCredentials(info.ApiKey)
+		if err != nil {
+			return "", err
 		}
-		a.AccountCredentials = *adc
+		a.AccountCredentials = adc
 
 		if a.RequestMode == RequestModeGemini {
-			if region == "global" {
-				return fmt.Sprintf(
-					"https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/google/models/%s:%s",
-					adc.ProjectID,
-					modelName,
-					suffix,
-				), nil
-			} else {
-				return fmt.Sprintf(
-					"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
-					region,
-					adc.ProjectID,
-					region,
-					modelName,
-					suffix,
-				), nil
-			}
+			return BuildGoogleModelURL(info.ChannelBaseUrl, DefaultAPIVersion, adc.ProjectID, region, modelName, suffix), nil
 		} else if a.RequestMode == RequestModeClaude {
-			if region == "global" {
-				return fmt.Sprintf(
-					"https://aiplatform.googleapis.com/v1/projects/%s/locations/global/publishers/anthropic/models/%s:%s",
-					adc.ProjectID,
-					modelName,
-					suffix,
-				), nil
-			} else {
-				return fmt.Sprintf(
-					"https://%s-aiplatform.googleapis.com/v1/projects/%s/locations/%s/publishers/anthropic/models/%s:%s",
-					region,
-					adc.ProjectID,
-					region,
-					modelName,
-					suffix,
-				), nil
-			}
+			return BuildAnthropicModelURL(info.ChannelBaseUrl, DefaultAPIVersion, adc.ProjectID, region, modelName, suffix), nil
 		} else if a.RequestMode == RequestModeOpenSource {
-			return fmt.Sprintf(
-				"https://aiplatform.googleapis.com/v1beta1/projects/%s/locations/%s/endpoints/openapi/chat/completions",
-				adc.ProjectID,
-				region,
-			), nil
+			return BuildOpenSourceChatCompletionsURL(info.ChannelBaseUrl, adc.ProjectID, region), nil
 		}
 	} else {
-		var keyPrefix string
-		if strings.HasSuffix(suffix, "?alt=sse") {
-			keyPrefix = "&"
-		} else {
-			keyPrefix = "?"
+		if a.RequestMode != RequestModeGemini {
+			return "", errors.New("Vertex API key mode only supports Google publisher models")
 		}
-		if region == "global" {
-			return fmt.Sprintf(
-				"https://aiplatform.googleapis.com/v1/publishers/google/models/%s:%s%skey=%s",
-				modelName,
-				suffix,
-				keyPrefix,
-				info.ApiKey,
-			), nil
-		} else {
-			return fmt.Sprintf(
-				"https://%s-aiplatform.googleapis.com/v1/publishers/google/models/%s:%s%skey=%s",
-				region,
-				modelName,
-				suffix,
-				keyPrefix,
-				info.ApiKey,
-			), nil
-		}
+		requestURL := BuildGoogleModelURL(info.ChannelBaseUrl, DefaultAPIVersion, "", region, modelName, suffix)
+		return AppendAPIKey(requestURL, info.ApiKey)
 	}
 	return "", errors.New("unsupported request mode")
 }
@@ -253,14 +199,18 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	if info.ChannelOtherSettings.VertexKeyType != dto.VertexKeyTypeAPIKey {
-		accessToken, err := getAccessToken(a, info)
+		if strings.TrimSpace(a.AccountCredentials.ClientEmail) == "" {
+			creds, err := ParseCredentials(info.ApiKey)
+			if err != nil {
+				return err
+			}
+			a.AccountCredentials = creds
+		}
+		accessToken, err := getAccessToken(c.Request.Context(), a, info)
 		if err != nil {
 			return err
 		}
 		req.Set("Authorization", "Bearer "+accessToken)
-	}
-	if a.AccountCredentials.ProjectID != "" {
-		req.Set("x-goog-user-project", a.AccountCredentials.ProjectID)
 	}
 	if strings.Contains(info.UpstreamModelName, "claude") {
 		claude.CommonClaudeHeadersOperation(c, req, info)
@@ -305,7 +255,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 		if len(request.ExtraBody) > 0 {
 			var extra map[string]any
-			if err := json.Unmarshal(request.ExtraBody, &extra); err == nil {
+			if err := common.Unmarshal(request.ExtraBody, &extra); err == nil {
 				if n, ok := extra["n"].(float64); ok && n > 0 {
 					imgReq.N = lo.ToPtr(uint(n))
 				}
@@ -402,19 +352,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 }
 
 func (a *Adaptor) GetModelList() []string {
-	var modelList []string
-	for i, s := range ModelList {
-		modelList = append(modelList, s)
-		ModelList[i] = s
-	}
-	for i, s := range claude.ModelList {
-		modelList = append(modelList, s)
-		claude.ModelList[i] = s
-	}
-	for i, s := range gemini.ModelList {
-		modelList = append(modelList, s)
-		gemini.ModelList[i] = s
-	}
+	modelList := make([]string, 0, len(ModelList)+len(claude.ModelList)+len(gemini.ModelList))
+	modelList = append(modelList, ModelList...)
+	modelList = append(modelList, claude.ModelList...)
+	modelList = append(modelList, gemini.ModelList...)
 	return modelList
 }
 
