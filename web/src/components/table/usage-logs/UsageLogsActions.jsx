@@ -42,11 +42,18 @@ const LogsActions = ({
     fixedLogType !== null && fixedLogType !== undefined
       ? fixedLogType
       : logType;
+  const rpmSuccess = stat.rpm ?? 0;
+  const rpmTotal = stat.rpm_total ?? rpmSuccess;
+  const rpmSuccessRate = Number(
+    stat.rpm_success_rate ?? (rpmTotal > 0 ? (rpmSuccess / rpmTotal) * 100 : 0),
+  ).toLocaleString(undefined, {
+    maximumFractionDigits: 2,
+  });
 
   const placeholder = (
     <Space>
       <Skeleton.Title style={{ width: 108, height: 21, borderRadius: 6 }} />
-      <Skeleton.Title style={{ width: 65, height: 21, borderRadius: 6 }} />
+      <Skeleton.Title style={{ width: 240, height: 21, borderRadius: 6 }} />
       <Skeleton.Title style={{ width: 64, height: 21, borderRadius: 6 }} />
     </Space>
   );
@@ -107,7 +114,8 @@ const LogsActions = ({
             }}
             className='!rounded-lg'
           >
-            RPM: {stat.rpm}
+            RPM: {t('成功')} {rpmSuccess} / {t('总')} {rpmTotal} / {t('成功率')}{' '}
+            {rpmSuccessRate}%
           </Tag>
           <Tag
             color='white'

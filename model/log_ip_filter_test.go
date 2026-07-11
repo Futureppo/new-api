@@ -114,5 +114,43 @@ func TestSumUsedQuotaFiltersByIP(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 10, stat.Quota)
 	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 1, stat.RpmTotal)
+	require.Equal(t, float64(100), stat.RpmSuccessRate)
+	require.Equal(t, 7, stat.Tpm)
+}
+
+func TestSumUsedQuotaIncludesErrorsInRpmTotal(t *testing.T) {
+	truncateTables(t)
+
+	now := common.GetTimestamp()
+	require.NoError(t, LOG_DB.Create(&[]Log{
+		{
+			Username:         "alice",
+			CreatedAt:        now,
+			Type:             LogTypeConsume,
+			PromptTokens:     3,
+			CompletionTokens: 4,
+			Ip:               "203.0.113.10",
+		},
+		{
+			Username:  "alice",
+			CreatedAt: now,
+			Type:      LogTypeError,
+			Ip:        "203.0.113.10",
+		},
+		{
+			Username:  "alice",
+			CreatedAt: now,
+			Type:      LogTypeError,
+			Ip:        "203.0.113.20",
+		},
+	}).Error)
+
+	stat, err := SumUsedQuota(LogTypeConsume, now-10, now+10, "", "alice", "", 0, "", "203.0.113.10", "")
+
+	require.NoError(t, err)
+	require.Equal(t, 1, stat.Rpm)
+	require.Equal(t, 2, stat.RpmTotal)
+	require.Equal(t, float64(50), stat.RpmSuccessRate)
 	require.Equal(t, 7, stat.Tpm)
 }

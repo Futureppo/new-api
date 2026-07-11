@@ -105,6 +105,8 @@ export const useLogsData = ({
     quota: 0,
     token: 0,
     rpm: 0,
+    rpm_total: 0,
+    rpm_success_rate: 0,
     tpm: 0,
   });
 
@@ -351,7 +353,14 @@ export const useLogsData = ({
     }
     setLoadingStat(true);
     if (getFormValues().logType === 7) {
-      setStat({ quota: 0, token: 0, rpm: 0, tpm: 0 });
+      setStat({
+        quota: 0,
+        token: 0,
+        rpm: 0,
+        rpm_total: 0,
+        rpm_success_rate: 0,
+        tpm: 0,
+      });
       setShowStat(true);
       setLoadingStat(false);
       return;
