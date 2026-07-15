@@ -1088,6 +1088,7 @@ const EditChannelModal = (props) => {
               header_override: inputs['header_override'],
               custom_model_list_url: inputs['custom_model_list_url'],
               vertex_key_type: inputs['vertex_key_type'],
+              aws_key_type: inputs['aws_key_type'],
               other: inputs['other'],
               proxy: inputs['proxy'],
             },

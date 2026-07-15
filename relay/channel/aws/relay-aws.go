@@ -2,7 +2,6 @@ package aws
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
-	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -23,10 +21,8 @@ import (
 
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
 	bedrockruntimeTypes "github.com/aws/aws-sdk-go-v2/service/bedrockruntime/types"
-	"github.com/aws/smithy-go/auth/bearer"
 )
 
 // getAwsErrorStatusCode extracts HTTP status code from AWS SDK error
@@ -47,45 +43,16 @@ func newAwsInvokeContext() (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.Background(), time.Duration(common.RelayTimeout)*time.Second)
 }
 
-func newAwsClient(c *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
-	var (
-		httpClient *http.Client
-		err        error
-	)
-	if info.ChannelSetting.Proxy != "" {
-		httpClient, err = service.NewProxyHttpClient(info.ChannelSetting.Proxy)
-		if err != nil {
-			return nil, fmt.Errorf("new proxy http client failed: %w", err)
-		}
-	} else {
-		httpClient = service.GetHttpClient()
+func newAwsClient(_ *gin.Context, info *relaycommon.RelayInfo) (*bedrockruntime.Client, error) {
+	credential, err := parseAwsCredential(info.ApiKey, info.ChannelOtherSettings.AwsKeyType)
+	if err != nil {
+		return nil, err
 	}
-
-	awsSecret := strings.Split(info.ApiKey, "|")
-	var client *bedrockruntime.Client
-	switch len(awsSecret) {
-	case 2:
-		apiKey := awsSecret[0]
-		region := awsSecret[1]
-		client = bedrockruntime.New(bedrockruntime.Options{
-			Region:                  region,
-			BearerAuthTokenProvider: bearer.StaticTokenProvider{Token: bearer.Token{Value: apiKey}},
-			HTTPClient:              httpClient,
-		})
-	case 3:
-		ak := awsSecret[0]
-		sk := awsSecret[1]
-		region := awsSecret[2]
-		client = bedrockruntime.New(bedrockruntime.Options{
-			Region:      region,
-			Credentials: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(ak, sk, "")),
-			HTTPClient:  httpClient,
-		})
-	default:
-		return nil, errors.New("invalid aws secret key")
+	httpClient, err := newAwsHTTPClient(info.ChannelSetting.Proxy)
+	if err != nil {
+		return nil, err
 	}
-
-	return client, nil
+	return newAwsRuntimeClient(credential, httpClient), nil
 }
 
 func doAwsClientRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor, requestBody io.Reader) (any, error) {
@@ -202,6 +169,9 @@ func getAwsRegionPrefix(awsRegionId string) string {
 }
 
 func awsModelCanCrossRegion(awsModelId, awsRegionPrefix string) bool {
+	if isAwsInferenceProfileID(awsModelId) {
+		return false
+	}
 	regionSet, exists := awsModelCanCrossRegionMap[awsModelId]
 	return exists && regionSet[awsRegionPrefix]
 }
@@ -321,7 +291,7 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 		} `json:"usage"`
 	}
 
-	if err := json.Unmarshal(awsResp.Body, &novaResp); err != nil {
+	if err := common.Unmarshal(awsResp.Body, &novaResp); err != nil {
 		return types.NewError(errors.Wrap(err, "unmarshal nova response"), types.ErrorCodeBadResponseBody), nil
 	}
 

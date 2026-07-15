@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
+	awsChannel "github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
@@ -374,6 +375,19 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 		models, err := vertex.FetchGoogleModels(ctx, baseURL, key, channel.Other, channel.GetSetting().Proxy)
 		if err != nil {
 			return nil, fmt.Errorf("获取 Vertex 模型失败: %w", err)
+		}
+		return normalizeModelNames(models), nil
+	}
+
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeAws {
+		models, err := awsChannel.FetchClaudeModels(
+			ctx,
+			key,
+			channel.GetOtherSettings().AwsKeyType,
+			channel.GetSetting().Proxy,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("获取 AWS Claude 模型失败: %w", err)
 		}
 		return normalizeModelNames(models), nil
 	}
@@ -1214,6 +1228,7 @@ func FetchModels(c *gin.Context) {
 		HeaderOverride     string            `json:"header_override"`
 		CustomModelListURL string            `json:"custom_model_list_url"`
 		VertexKeyType      dto.VertexKeyType `json:"vertex_key_type"`
+		AwsKeyType         dto.AwsKeyType    `json:"aws_key_type"`
 		Other              string            `json:"other"`
 		Proxy              string            `json:"proxy"`
 	}
@@ -1247,6 +1262,7 @@ func FetchModels(c *gin.Context) {
 	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
 	channel.SetOtherSettings(dto.ChannelOtherSettings{
 		VertexKeyType:      req.VertexKeyType,
+		AwsKeyType:         req.AwsKeyType,
 		CustomModelListURL: req.CustomModelListURL,
 	})
 	if req.HeaderOverride != "" {
