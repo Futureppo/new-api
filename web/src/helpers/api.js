@@ -240,8 +240,12 @@ export const processGroupsData = (data, userGroup) => {
 
 export async function getOAuthState(options = {}) {
   const params = new URLSearchParams();
-  let affCode = localStorage.getItem('aff');
-  if (affCode && affCode.length > 0) {
+  const affCodeSource =
+    typeof options.affCode === 'undefined'
+      ? localStorage.getItem('aff')
+      : options.affCode;
+  const affCode = (affCodeSource || '').trim();
+  if (affCode) {
     params.set('aff', affCode);
   }
   const registrationCode = (options.registrationCode || '').trim();
@@ -261,7 +265,7 @@ export async function getOAuthState(options = {}) {
 }
 
 async function prepareOAuthState(options = {}) {
-  const { shouldLogout = false, registrationCode = '' } = options;
+  const { shouldLogout = false, registrationCode = '', affCode } = options;
   if (shouldLogout) {
     try {
       await API.get('/api/user/logout', { skipErrorHandler: true });
@@ -269,7 +273,7 @@ async function prepareOAuthState(options = {}) {
     localStorage.removeItem('user');
     updateAPI();
   }
-  return await getOAuthState({ registrationCode });
+  return await getOAuthState({ registrationCode, affCode });
 }
 
 export async function onDiscordOAuthClicked(client_id, options = {}) {
@@ -328,6 +332,7 @@ export async function onLinuxDOOAuthClicked(
  * @param {string} provider.scopes - OAuth scopes (space-separated)
  * @param {Object} options - Options
  * @param {boolean} options.shouldLogout - Whether to logout first
+ * @param {string} options.affCode - Invitation code for new-user registration
  */
 export async function onCustomOAuthClicked(provider, options = {}) {
   const state = await prepareOAuthState(options);

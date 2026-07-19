@@ -36,13 +36,15 @@ type GenerateRegistrationCodesRequest struct {
 }
 
 type RegistrationCodeConfigRequest struct {
-	RegistrationCodeRequired bool `json:"registration_code_required"`
+	RegistrationCodeRequired bool  `json:"registration_code_required"`
+	InviteCodeRequired       *bool `json:"invite_code_required"`
 }
 
 func RegistrationCodeConfig() map[string]interface{} {
 	cfg := setting.GetEnhancementSetting()
 	return map[string]interface{}{
 		"registration_code_required": cfg.RegistrationCodeRequired,
+		"invite_code_required":       cfg.InviteCodeRequired,
 	}
 }
 
@@ -50,8 +52,16 @@ func SaveRegistrationCodeConfig(req RegistrationCodeConfigRequest, operatorId in
 	if err := model.UpdateOption("enhancement_setting.registration_code_required", strconv.FormatBool(req.RegistrationCodeRequired)); err != nil {
 		return err
 	}
+	inviteCodeRequired := setting.IsInviteCodeRequired()
+	if req.InviteCodeRequired != nil {
+		inviteCodeRequired = *req.InviteCodeRequired
+		if err := model.UpdateOption("enhancement_setting.invite_code_required", strconv.FormatBool(inviteCodeRequired)); err != nil {
+			return err
+		}
+	}
 	audit(operatorId, "enhancements.registration_codes", "save_config", map[string]interface{}{
-		"required": req.RegistrationCodeRequired,
+		"registration_code_required": req.RegistrationCodeRequired,
+		"invite_code_required":       inviteCodeRequired,
 	})
 	return nil
 }

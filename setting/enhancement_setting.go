@@ -22,6 +22,7 @@ type EnhancementSetting struct {
 	AIBanBaseURL                          string   `json:"ai_ban_base_url"`
 	AIBanAPIKey                           string   `json:"ai_ban_api_key"`
 	RegistrationCodeRequired              bool     `json:"registration_code_required"`
+	InviteCodeRequired                    bool     `json:"invite_code_required"`
 }
 
 var enhancementSetting = EnhancementSetting{
@@ -41,6 +42,7 @@ var enhancementSetting = EnhancementSetting{
 	AIBanEnabled:                          false,
 	AIBanDryRun:                           true,
 	RegistrationCodeRequired:              false,
+	InviteCodeRequired:                    false,
 }
 
 func init() {
@@ -53,4 +55,8 @@ func GetEnhancementSetting() *EnhancementSetting {
 
 func IsRegistrationCodeRequired() bool {
 	return GetEnhancementSetting().RegistrationCodeRequired
+}
+
+func IsInviteCodeRequired() bool {
+	return GetEnhancementSetting().InviteCodeRequired
 }

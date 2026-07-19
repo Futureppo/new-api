@@ -89,6 +89,7 @@ func GetStatus(c *gin.Context) {
 		"self_use_mode_enabled":         operation_setting.SelfUseModeEnabled,
 		"default_use_auto_group":        setting.DefaultUseAutoGroup,
 		"registration_code_required":    setting.IsRegistrationCodeRequired(),
+		"invite_code_required":          setting.IsInviteCodeRequired(),
 
 		"usd_exchange_rate": operation_setting.USDExchangeRate,
 		"price":             operation_setting.Price,

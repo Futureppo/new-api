@@ -109,6 +109,33 @@ func TestConsumeRegistrationCodeRequiredAndOptional(t *testing.T) {
 	require.Contains(t, err.Error(), "请输入注册码")
 }
 
+func TestResolveInviterIdByAffCodeRequiredAndOptional(t *testing.T) {
+	db := setupRegistrationCodeTestDB(t)
+	inviter := createRegistrationCodeTestUser(t, db, "inviter")
+
+	inviterId, err := ResolveInviterIdByAffCode("  "+inviter.AffCode+"  ", true)
+	require.NoError(t, err)
+	require.Equal(t, inviter.Id, inviterId)
+
+	inviterId, err = ResolveInviterIdByAffCode("", false)
+	require.NoError(t, err)
+	require.Zero(t, inviterId)
+
+	inviterId, err = ResolveInviterIdByAffCode("UNKNOWN", false)
+	require.NoError(t, err)
+	require.Zero(t, inviterId)
+
+	_, err = ResolveInviterIdByAffCode("", true)
+	require.EqualError(t, err, "请输入邀请码")
+
+	_, err = ResolveInviterIdByAffCode("UNKNOWN", true)
+	require.EqualError(t, err, "邀请码无效")
+
+	require.NoError(t, db.Delete(&inviter).Error)
+	_, err = ResolveInviterIdByAffCode(inviter.AffCode, true)
+	require.EqualError(t, err, "邀请码无效")
+}
+
 func TestConsumeRegistrationCodeOpenTimeAndMaxUses(t *testing.T) {
 	db := setupRegistrationCodeTestDB(t)
 	now := common.GetTimestamp()

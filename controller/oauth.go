@@ -28,6 +28,8 @@ func GenerateOAuthCode(c *gin.Context) {
 	affCode := c.Query("aff")
 	if affCode != "" {
 		session.Set("aff", affCode)
+	} else {
+		session.Delete("aff")
 	}
 	registrationCode := c.Query("registration_code")
 	if registrationCode != "" {
@@ -281,9 +283,13 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 	// Handle affiliate code
 	affCode := session.Get("aff")
-	inviterId := 0
-	if affCode != nil {
-		inviterId, _ = model.GetUserIdByAffCode(affCode.(string))
+	affCodeValue := ""
+	if value, ok := affCode.(string); ok {
+		affCodeValue = value
+	}
+	inviterId, err := model.ResolveInviterIdByAffCode(affCodeValue, setting.IsInviteCodeRequired())
+	if err != nil {
+		return nil, err
 	}
 	registrationCode, _ := session.Get("registration_code").(string)
 	registrationCodeRequired := setting.IsRegistrationCodeRequired()

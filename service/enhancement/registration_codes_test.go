@@ -7,6 +7,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -33,7 +34,7 @@ func setupRegistrationCodeServiceTestDB(t *testing.T) {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.RegistrationCode{}, &model.RegistrationCodeUsage{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.RegistrationCode{}, &model.RegistrationCodeUsage{}, &model.Log{}, &model.Option{}))
 
 	t.Cleanup(func() {
 		sqlDB, err := db.DB()
@@ -111,4 +112,41 @@ func TestGenerateRegistrationCodesRejectsCustomCodeForBatch(t *testing.T) {
 	}, 7)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "custom code")
+}
+
+func TestSaveRegistrationCodeConfigIncludesInviteCodeRequirement(t *testing.T) {
+	setupRegistrationCodeServiceTestDB(t)
+
+	originalOptionMap := common.OptionMap
+	common.OptionMap = map[string]string{}
+	cfg := setting.GetEnhancementSetting()
+	originalRegistrationCodeRequired := cfg.RegistrationCodeRequired
+	originalInviteCodeRequired := cfg.InviteCodeRequired
+	t.Cleanup(func() {
+		common.OptionMap = originalOptionMap
+		cfg.RegistrationCodeRequired = originalRegistrationCodeRequired
+		cfg.InviteCodeRequired = originalInviteCodeRequired
+	})
+
+	inviteCodeRequired := true
+	err := SaveRegistrationCodeConfig(RegistrationCodeConfigRequest{
+		RegistrationCodeRequired: true,
+		InviteCodeRequired:       &inviteCodeRequired,
+	}, 7)
+	require.NoError(t, err)
+	require.True(t, setting.IsRegistrationCodeRequired())
+	require.True(t, setting.IsInviteCodeRequired())
+
+	config := RegistrationCodeConfig()
+	require.Equal(t, true, config["registration_code_required"])
+	require.Equal(t, true, config["invite_code_required"])
+
+	var option model.Option
+	require.NoError(t, model.DB.Where("key = ?", "enhancement_setting.invite_code_required").First(&option).Error)
+	require.Equal(t, "true", option.Value)
+
+	require.NoError(t, SaveRegistrationCodeConfig(RegistrationCodeConfigRequest{
+		RegistrationCodeRequired: false,
+	}, 7))
+	require.True(t, setting.IsInviteCodeRequired())
 }

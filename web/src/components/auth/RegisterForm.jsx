@@ -65,6 +65,15 @@ import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
 
+const getInitialInviteCode = () => {
+  const queryCode = new URLSearchParams(window.location.search).get('aff');
+  if (queryCode) {
+    localStorage.setItem('aff', queryCode);
+    return queryCode;
+  }
+  return localStorage.getItem('aff') || '';
+};
+
 const RegisterForm = () => {
   let navigate = useNavigate();
   const { t } = useTranslation();
@@ -73,7 +82,7 @@ const RegisterForm = () => {
     redirecting: '正在跳转 GitHub...',
     timeout: '请求超时，请刷新页面后重新发起 GitHub 登录',
   };
-  const [inputs, setInputs] = useState({
+  const [inputs, setInputs] = useState(() => ({
     username: '',
     password: '',
     password2: '',
@@ -81,7 +90,8 @@ const RegisterForm = () => {
     verification_code: '',
     wechat_verification_code: '',
     registration_code: '',
-  });
+    aff_code: getInitialInviteCode(),
+  }));
   const { username, password, password2 } = inputs;
   const [userState, userDispatch] = useContext(UserContext);
   const [statusState] = useContext(StatusContext);
@@ -115,11 +125,6 @@ const RegisterForm = () => {
   const logo = getLogo();
   const systemName = getSystemName();
 
-  let affCode = new URLSearchParams(window.location.search).get('aff');
-  if (affCode) {
-    localStorage.setItem('aff', affCode);
-  }
-
   const status = useMemo(() => {
     if (statusState?.status) return statusState.status;
     const savedStatus = localStorage.getItem('status');
@@ -142,12 +147,18 @@ const RegisterForm = () => {
       hasCustomOAuthProviders,
   );
   const registrationCodeRequired = Boolean(status.registration_code_required);
+  const inviteCodeRequired = Boolean(status.invite_code_required);
   const registrationOAuthOptions = {
     shouldLogout: true,
     registrationCode: inputs.registration_code,
+    affCode: inputs.aff_code,
   };
 
-  const ensureRegistrationCode = () => {
+  const ensureRequiredRegistrationCodes = () => {
+    if (inviteCodeRequired && !inputs.aff_code.trim()) {
+      showInfo(t('请输入邀请码'));
+      return false;
+    }
     if (registrationCodeRequired && !inputs.registration_code.trim()) {
       showInfo(t('请输入注册码'));
       return false;
@@ -191,7 +202,7 @@ const RegisterForm = () => {
   }, []);
 
   const onWeChatLoginClicked = () => {
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setWechatLoading(true);
@@ -211,6 +222,9 @@ const RegisterForm = () => {
       });
       if (inputs.registration_code.trim()) {
         params.set('registration_code', inputs.registration_code.trim());
+      }
+      if (inputs.aff_code.trim()) {
+        params.set('aff', inputs.aff_code.trim());
       }
       const res = await API.get(`/api/oauth/wechat?${params.toString()}`);
       const { success, message, data } = res.data;
@@ -233,6 +247,13 @@ const RegisterForm = () => {
   };
 
   function handleChange(name, value) {
+    if (name === 'aff_code') {
+      if (value) {
+        localStorage.setItem('aff', value);
+      } else {
+        localStorage.removeItem('aff');
+      }
+    }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
 
@@ -246,7 +267,7 @@ const RegisterForm = () => {
       return;
     }
     if (username && password) {
-      if (!ensureRegistrationCode()) {
+      if (!ensureRequiredRegistrationCodes()) {
         return;
       }
       if (turnstileEnabled && turnstileToken === '') {
@@ -255,10 +276,6 @@ const RegisterForm = () => {
       }
       setRegisterLoading(true);
       try {
-        if (!affCode) {
-          affCode = localStorage.getItem('aff');
-        }
-        inputs.aff_code = affCode;
         const res = await API.post(
           `/api/user/register?turnstile=${turnstileToken}`,
           inputs,
@@ -307,7 +324,7 @@ const RegisterForm = () => {
     if (githubButtonDisabled) {
       return;
     }
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setGithubLoading(true);
@@ -329,7 +346,7 @@ const RegisterForm = () => {
   };
 
   const handleDiscordClick = () => {
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setDiscordLoading(true);
@@ -341,7 +358,7 @@ const RegisterForm = () => {
   };
 
   const handleOIDCClick = () => {
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setOidcLoading(true);
@@ -358,7 +375,7 @@ const RegisterForm = () => {
   };
 
   const handleLinuxDOClick = () => {
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setLinuxdoLoading(true);
@@ -370,7 +387,7 @@ const RegisterForm = () => {
   };
 
   const handleCustomOAuthClick = (provider) => {
-    if (!ensureRegistrationCode()) {
+    if (!ensureRequiredRegistrationCodes()) {
       return;
     }
     setCustomOAuthLoading((prev) => ({ ...prev, [provider.slug]: true }));
@@ -449,6 +466,17 @@ const RegisterForm = () => {
             </div>
             <div className='px-2 py-8'>
               <Form className='mb-4'>
+                <Form.Input
+                  field='aff_code'
+                  label={t('邀请码')}
+                  placeholder={
+                    inviteCodeRequired ? t('请输入邀请码') : t('邀请码（选填）')
+                  }
+                  name='aff_code'
+                  value={inputs.aff_code}
+                  onChange={(value) => handleChange('aff_code', value)}
+                  prefix={<IconKey />}
+                />
                 <Form.Input
                   field='registration_code'
                   label={t('注册码')}
@@ -691,6 +719,18 @@ const RegisterForm = () => {
                     />
                   </>
                 )}
+
+                <Form.Input
+                  field='aff_code'
+                  label={t('邀请码')}
+                  placeholder={
+                    inviteCodeRequired ? t('请输入邀请码') : t('邀请码（选填）')
+                  }
+                  name='aff_code'
+                  value={inputs.aff_code}
+                  onChange={(value) => handleChange('aff_code', value)}
+                  prefix={<IconKey />}
+                />
 
                 <Form.Input
                   field='registration_code'

@@ -350,6 +350,28 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 	return user.Id, err
 }
 
+func ResolveInviterIdByAffCode(affCode string, required bool) (int, error) {
+	affCode = strings.TrimSpace(affCode)
+	if affCode == "" {
+		if required {
+			return 0, errors.New("请输入邀请码")
+		}
+		return 0, nil
+	}
+
+	inviterId, err := GetUserIdByAffCode(affCode)
+	if err == nil {
+		return inviterId, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if required {
+			return 0, errors.New("邀请码无效")
+		}
+		return 0, nil
+	}
+	return 0, err
+}
+
 func DeleteUserById(id int) (err error) {
 	if id == 0 {
 		return errors.New("id 为空！")
@@ -500,6 +522,7 @@ func (user *User) Insert(inviterId int) error {
 // Post-creation tasks (sidebar config, logs, inviter rewards) are handled after the transaction commits.
 func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 	var err error
+	user.InviterId = inviterId
 	if user.Password != "" {
 		user.Password, err = common.Password2Hash(user.Password)
 		if err != nil {

@@ -97,9 +97,17 @@ func WeChatAuth(c *gin.Context) {
 			user.Role = common.RoleCommonUser
 			user.Status = common.UserStatusEnabled
 
+			inviterId, err := model.ResolveInviterIdByAffCode(c.Query("aff"), setting.IsInviteCodeRequired())
+			if err != nil {
+				c.JSON(http.StatusOK, gin.H{
+					"success": false,
+					"message": err.Error(),
+				})
+				return
+			}
 			registrationCode := c.Query("registration_code")
 			if err := model.DB.Transaction(func(tx *gorm.DB) error {
-				if err := user.InsertWithTx(tx, 0); err != nil {
+				if err := user.InsertWithTx(tx, inviterId); err != nil {
 					return err
 				}
 				return model.ConsumeRegistrationCodeTx(tx, registrationCode, user.Id, user.Username, "wechat", setting.IsRegistrationCodeRequired())
@@ -110,7 +118,7 @@ func WeChatAuth(c *gin.Context) {
 				})
 				return
 			}
-			user.FinalizeOAuthUserCreation(0)
+			user.FinalizeOAuthUserCreation(inviterId)
 		} else {
 			c.JSON(http.StatusOK, gin.H{
 				"success": false,
