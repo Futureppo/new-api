@@ -1485,6 +1485,7 @@ function RegistrationCodesPanel({ data }) {
   const [configForm, setConfigForm] = useState(data?.config || defaultConfig);
   const [form, setForm] = useState({
     name: '薄荷鸡鸡大',
+    count: 2,
     max_uses: 1,
     open_time: 0,
     end_time: 0,
@@ -1607,6 +1608,7 @@ function RegistrationCodesPanel({ data }) {
             {
               ...form,
               code: form.code.trim(),
+              count: Number(form.count || 1),
               max_uses: Number(form.max_uses || 1),
               open_time: Number(form.open_time || 0),
               end_time: Number(form.end_time || 0),
@@ -1836,13 +1838,28 @@ function RegistrationCodesPanel({ data }) {
       </Card>
 
       <Card title={t('生成注册码')} className='!rounded-lg'>
-        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5 xl:items-end'>
+        <div className='grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7 xl:items-end'>
           <label className='space-y-1'>
             <Text type='secondary'>{t('名称')}</Text>
             <Input
               value={form.name}
               onChange={(value) =>
                 setForm((prev) => ({ ...prev, name: value }))
+              }
+            />
+          </label>
+          <label className='space-y-1'>
+            <Text type='secondary'>{t('生成数量')}</Text>
+            <InputNumber
+              min={1}
+              max={100}
+              value={form.count}
+              onChange={(value) =>
+                setForm((prev) => ({
+                  ...prev,
+                  count: value || 1,
+                  code: Number(value || 1) > 1 ? '' : prev.code,
+                }))
               }
             />
           </label>
@@ -1861,6 +1878,7 @@ function RegistrationCodesPanel({ data }) {
             <Input
               value={form.code}
               placeholder={t('留空自动生成')}
+              disabled={Number(form.count || 1) > 1}
               onChange={(value) =>
                 setForm((prev) => ({ ...prev, code: value }))
               }

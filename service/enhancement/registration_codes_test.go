@@ -78,14 +78,37 @@ func TestGenerateRegistrationCodesAndStats(t *testing.T) {
 	require.Equal(t, int64(1), stats["disabled"])
 }
 
-func TestGenerateRegistrationCodesRejectsBatchCount(t *testing.T) {
+func TestGenerateRegistrationCodesSupportsBatchCount(t *testing.T) {
+	setupRegistrationCodeServiceTestDB(t)
+
+	generated, err := GenerateRegistrationCodes(GenerateRegistrationCodesRequest{
+		Count:   2,
+		Name:    "batch",
+		MaxUses: 10,
+	}, 7)
+	require.NoError(t, err)
+	require.Len(t, generated, 2)
+	require.NotEqual(t, generated[0].Code, generated[1].Code)
+	for _, code := range generated {
+		require.NotEmpty(t, code.Code)
+		require.Equal(t, "batch", code.Name)
+		require.Equal(t, 10, code.MaxUses)
+	}
+
+	var count int64
+	require.NoError(t, model.DB.Model(&model.RegistrationCode{}).Count(&count).Error)
+	require.Equal(t, int64(2), count)
+}
+
+func TestGenerateRegistrationCodesRejectsCustomCodeForBatch(t *testing.T) {
 	setupRegistrationCodeServiceTestDB(t)
 
 	_, err := GenerateRegistrationCodes(GenerateRegistrationCodesRequest{
 		Count:   2,
 		Name:    "batch",
 		MaxUses: 10,
+		Code:    "CUSTOM",
 	}, 7)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "only one")
+	require.Contains(t, err.Error(), "custom code")
 }

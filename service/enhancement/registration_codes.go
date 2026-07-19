@@ -2,6 +2,7 @@ package enhancement
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
@@ -56,11 +57,12 @@ func SaveRegistrationCodeConfig(req RegistrationCodeConfigRequest, operatorId in
 }
 
 func GenerateRegistrationCodes(req GenerateRegistrationCodesRequest, operatorId int) ([]RegistrationCodeSummary, error) {
-	if req.Count > 1 {
-		return nil, errors.New("only one registration code can be generated at a time")
+	count := req.Count
+	if count == 0 {
+		count = 1
 	}
-	if req.Count < 0 {
-		return nil, errors.New("count is invalid")
+	if count < 1 || count > MaxGenerateRegistrationCodes {
+		return nil, fmt.Errorf("count must be between 1 and %d", MaxGenerateRegistrationCodes)
 	}
 	now := common.GetTimestamp()
 	if req.MaxUses <= 0 {
@@ -90,31 +92,42 @@ func GenerateRegistrationCodes(req GenerateRegistrationCodesRequest, operatorId 
 		if len([]rune(manualCode)) > 64 {
 			return nil, errors.New("code is too long")
 		}
+		if count > 1 {
+			return nil, errors.New("custom code can only be used when generating one registration code")
+		}
 	}
 
-	codeValue := common.GetUUID()
-	if manualCode != "" {
-		codeValue = manualCode
+	codes := make([]model.RegistrationCode, 0, count)
+	for i := 0; i < count; i++ {
+		codeValue := common.GetUUID()
+		if manualCode != "" {
+			codeValue = manualCode
+		}
+		codes = append(codes, model.RegistrationCode{
+			UserId:      operatorId,
+			Code:        codeValue,
+			Status:      common.RegistrationCodeStatusEnabled,
+			Name:        name,
+			MaxUses:     req.MaxUses,
+			OpenTime:    req.OpenTime,
+			EndTime:     req.EndTime,
+			CreatedTime: now,
+		})
 	}
-	code := model.RegistrationCode{
-		UserId:      operatorId,
-		Code:        codeValue,
-		Status:      common.RegistrationCodeStatusEnabled,
-		Name:        name,
-		MaxUses:     req.MaxUses,
-		OpenTime:    req.OpenTime,
-		EndTime:     req.EndTime,
-		CreatedTime: now,
-	}
-	if err := model.DB.Create(&code).Error; err != nil {
+	if err := model.DB.Create(&codes).Error; err != nil {
 		return nil, err
 	}
 	audit(operatorId, "enhancements.registration_codes", "generate", map[string]interface{}{
+		"count":     count,
 		"max_uses":  req.MaxUses,
 		"open_time": req.OpenTime,
 		"end_time":  req.EndTime,
 	})
-	return []RegistrationCodeSummary{registrationCodeToSummary(code)}, nil
+	out := make([]RegistrationCodeSummary, 0, len(codes))
+	for _, code := range codes {
+		out = append(out, registrationCodeToSummary(code))
+	}
+	return out, nil
 }
 
 func DeleteRegistrationCode(id int, operatorId int, force bool) error {

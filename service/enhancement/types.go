@@ -14,6 +14,8 @@ const (
 	MaxBatchOperation     = 100
 )
 
+const MaxGenerateRegistrationCodes = 100
+
 type PageResult[T any] struct {
 	Items    []T   `json:"items"`
 	Total    int64 `json:"total"`
