@@ -325,6 +325,20 @@ func GetUser(c *gin.Context) {
 	return
 }
 
+func GetUserInviteRelations(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	relations, err := service.GetUserInviteRelations(id, c.GetInt("id"), c.GetInt("role"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, relations)
+}
+
 func GenerateAccessToken(c *gin.Context) {
 	id := c.GetInt("id")
 	user, err := model.GetUserById(id, true)
@@ -937,6 +951,32 @@ type ManageRequest struct {
 	Value  int    `json:"value"`
 	Mode   string `json:"mode"`
 	Reason string `json:"reason,omitempty"`
+}
+
+type BatchDisableRelatedUsersRequest struct {
+	Id             int    `json:"id"`
+	RelatedUserIds []int  `json:"related_user_ids"`
+	Reason         string `json:"reason"`
+}
+
+func BatchDisableRelatedUsers(c *gin.Context) {
+	var req BatchDisableRelatedUsersRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	result, err := service.BatchDisableRelatedUsers(
+		req.Id,
+		req.RelatedUserIds,
+		req.Reason,
+		c.GetInt("id"),
+		c.GetInt("role"),
+	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
 }
 
 // ManageUser Only admin user can do this

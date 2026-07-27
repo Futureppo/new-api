@@ -220,6 +220,43 @@ export const useUsersData = () => {
     setLoading(false);
   };
 
+  const batchDisableUsers = async (userId, relatedUserIds, reason) => {
+    setLoading(true);
+    try {
+      const res = await API.post('/api/user/batch-disable', {
+        id: userId,
+        related_user_ids: relatedUserIds,
+        reason,
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return false;
+      }
+
+      const disabledCount = data?.disabled_ids?.length || 0;
+      const skippedCount = data?.already_disabled_ids?.length || 0;
+      showSuccess(
+        t('已禁用 {{disabled}} 个用户，跳过 {{skipped}} 个已禁用用户', {
+          disabled: disabledCount,
+          skipped: skippedCount,
+        }),
+      );
+      try {
+        await refresh();
+      } catch (error) {
+        // The batch operation already succeeded. The global API interceptor
+        // reports refresh errors, so keep the modal success flow intact.
+      }
+      return true;
+    } catch (error) {
+      showError(error?.response?.data?.message || error.message || error);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const resetUserPasskey = async (user) => {
     if (!user) {
       return;
@@ -423,6 +460,7 @@ export const useUsersData = () => {
     loadUsers,
     searchUsers,
     manageUser,
+    batchDisableUsers,
     purgeSoftDeletedUsers,
     resetUserPasskey,
     resetUserTwoFA,
