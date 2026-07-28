@@ -13,7 +13,7 @@ on:
       platforms:
         description: "Target platforms"
         required: false
-        default: "linux/amd64"
+        default: "linux/amd64,linux/arm64"
 
 jobs:
   build:
@@ -38,7 +38,7 @@ jobs:
           repo="${GITHUB_REPOSITORY,,}"
           image="ghcr.io/${repo}"
           version="custom-$(date +'%Y%m%d')-${GITHUB_SHA::7}"
-          platforms="${REQUESTED_PLATFORMS:-linux/amd64}"
+          platforms="${REQUESTED_PLATFORMS:-linux/amd64,linux/arm64}"
 
           echo "$version" > VERSION
 
@@ -83,6 +83,7 @@ jobs:
       - name: Output image tags
         run: |
           echo "### Published image" >> "$GITHUB_STEP_SUMMARY"
+          echo "Platforms: \`${{ steps.vars.outputs.platforms }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           echo "${{ steps.vars.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
