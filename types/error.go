@@ -52,6 +52,7 @@ const (
 	ErrorCodeGetChannelFailed                 ErrorCode = "get_channel_failed"
 	ErrorCodeGenRelayInfoFailed               ErrorCode = "gen_relay_info_failed"
 	ErrorCodeChannelDailySuccessLimitExceeded ErrorCode = "channel_daily_success_limit_exceeded"
+	ErrorCodeChannelRPMLimitExceeded          ErrorCode = "channel_rpm_limit_exceeded"
 
 	// channel error
 	ErrorCodeChannelNoAvailableKey        ErrorCode = "channel:no_available_key"

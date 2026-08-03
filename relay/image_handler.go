@@ -89,7 +89,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 
 	statusCodeMappingStr := c.GetString("status_code_mapping")
 
-	resp, err := adaptor.DoRequest(c, info, requestBody)
+	resp, err := doChannelRPMGuardedRequest(c, info, func() (any, error) {
+		return adaptor.DoRequest(c, info, requestBody)
+	})
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}

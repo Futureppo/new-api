@@ -12,6 +12,7 @@ import (
 )
 
 const channelDailySuccessLimitSkippedIDsKey = "channel_daily_success_limit_skipped_ids"
+const channelRPMLimitSkippedIDsKey = "channel_rpm_limit_skipped_ids"
 
 type RetryParam struct {
 	Ctx                 *gin.Context
@@ -44,10 +45,45 @@ func HasChannelDailySuccessLimitSkipped(c *gin.Context) bool {
 }
 
 func GetChannelDailySuccessLimitSkippedIDs(c *gin.Context) map[int]bool {
+	return getChannelSkippedIDs(c, channelDailySuccessLimitSkippedIDsKey)
+}
+
+func MarkChannelRPMLimitSkipped(c *gin.Context, channelId int) {
+	if c == nil || channelId <= 0 {
+		return
+	}
+	skipped := GetChannelRPMLimitSkippedIDs(c)
+	skipped[channelId] = true
+	c.Set(channelRPMLimitSkippedIDsKey, skipped)
+}
+
+func IsChannelRPMLimitSkipped(c *gin.Context, channelId int) bool {
+	return GetChannelRPMLimitSkippedIDs(c)[channelId]
+}
+
+func HasChannelRPMLimitSkipped(c *gin.Context) bool {
+	return len(GetChannelRPMLimitSkippedIDs(c)) > 0
+}
+
+func GetChannelRPMLimitSkippedIDs(c *gin.Context) map[int]bool {
+	return getChannelSkippedIDs(c, channelRPMLimitSkippedIDsKey)
+}
+
+func GetChannelSelectionExcludedIDs(c *gin.Context) map[int]bool {
+	excluded := GetChannelDailySuccessLimitSkippedIDs(c)
+	for id, skipped := range GetChannelRPMLimitSkippedIDs(c) {
+		if skipped {
+			excluded[id] = true
+		}
+	}
+	return excluded
+}
+
+func getChannelSkippedIDs(c *gin.Context, key string) map[int]bool {
 	if c == nil {
 		return map[int]bool{}
 	}
-	value, ok := c.Get(channelDailySuccessLimitSkippedIDsKey)
+	value, ok := c.Get(key)
 	if !ok {
 		return map[int]bool{}
 	}
@@ -156,7 +192,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	var err error
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
-	excludedChannelIDs := GetChannelDailySuccessLimitSkippedIDs(param.Ctx)
+	excludedChannelIDs := GetChannelSelectionExcludedIDs(param.Ctx)
 
 	if param.TokenGroup == "auto" {
 		if len(setting.GetAutoGroups()) == 0 {

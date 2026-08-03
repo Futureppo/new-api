@@ -90,7 +90,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
-			if !isChannelDailySuccessLimitError(newAPIError) {
+			if !isChannelDailySuccessLimitError(newAPIError) && !service.IsChannelRPMLimitError(newAPIError) {
 				newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			}
 			switch relayFormat {
@@ -242,6 +242,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 		model.ReleaseChannelDailySuccess(reservation)
+		if service.IsChannelRPMLimitError(newAPIError) {
+			relayInfo.LastError = newAPIError
+			if shouldSkipRPMLimitedChannel(c, channel) {
+				continue
+			}
+			break
+		}
 
 		newAPIError = service.NormalizeViolationFeeErrorForRelay(relayInfo, newAPIError)
 		relayInfo.LastError = newAPIError
@@ -316,6 +323,15 @@ func shouldSkipDailyLimitedChannel(c *gin.Context, channel *model.Channel) bool 
 	return true
 }
 
+func shouldSkipRPMLimitedChannel(c *gin.Context, channel *model.Channel) bool {
+	if channel == nil || channel.Id <= 0 || isSpecificChannelRequest(c) {
+		return false
+	}
+	service.MarkChannelRPMLimitSkipped(c, channel.Id)
+	logger.LogInfo(c, fmt.Sprintf("channel #%d reached RPM protection limit, trying another channel", channel.Id))
+	return true
+}
+
 func fastTokenCountMetaForPricing(request dto.Request) *types.TokenCountMeta {
 	if request == nil {
 		return &types.TokenCountMeta{}
@@ -355,7 +371,7 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 			autoBanInt = 0
 		}
 		channelId := c.GetInt("channel_id")
-		if !service.IsChannelDailySuccessLimitSkipped(c, channelId) || isSpecificChannelRequest(c) {
+		if (!service.IsChannelDailySuccessLimitSkipped(c, channelId) && !service.IsChannelRPMLimitSkipped(c, channelId)) || isSpecificChannelRequest(c) {
 			if channel, err := model.CacheGetChannel(channelId); err == nil && channel != nil {
 				return channel, nil
 			}
@@ -378,6 +394,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 		return nil, types.NewError(fmt.Errorf("获取分组 %s 下模型 %s 的可用渠道失败（retry）: %s", selectGroup, info.OriginModelName, err.Error()), types.ErrorCodeGetChannelFailed, types.ErrOptionWithSkipRetry())
 	}
 	if channel == nil {
+		if service.HasChannelRPMLimitSkipped(c) {
+			return nil, service.NewChannelRPMLimitError(service.ChannelRPMGroupLimitExceededMessage)
+		}
 		if service.HasChannelDailySuccessLimitSkipped(c) {
 			return nil, newChannelDailySuccessLimitError()
 		}
@@ -491,13 +510,26 @@ func RelayMidjourney(c *gin.Context) {
 	case relayconstant.RelayModeMidjourneyTaskImageSeed:
 		mjErr = relay.RelayMidjourneyTaskImageSeed(c)
 	case relayconstant.RelayModeSwapFace:
-		mjErr = relay.RelaySwapFace(c, relayInfo)
+		mjErr = relayMidjourneyWithRPMFallback(c, relayInfo, func() *dto.MidjourneyResponse {
+			return relay.RelaySwapFace(c, relayInfo)
+		})
 	default:
-		mjErr = relay.RelayMidjourneySubmit(c, relayInfo)
+		mjErr = relayMidjourneyWithRPMFallback(c, relayInfo, func() *dto.MidjourneyResponse {
+			return relay.RelayMidjourneySubmit(c, relayInfo)
+		})
 	}
 	//err = relayMidjourneySubmit(c, relayMode)
 	log.Println(mjErr)
 	if mjErr != nil {
+		if mjErr.Description == service.ChannelRPMLimitExceededMessage || mjErr.Description == service.ChannelRPMGroupLimitExceededMessage {
+			c.JSON(http.StatusTooManyRequests, gin.H{
+				"description": mjErr.Description,
+				"type":        "new_api_error",
+				"code":        string(types.ErrorCodeChannelRPMLimitExceeded),
+			})
+			logger.LogInfo(c, fmt.Sprintf("relay RPM limited (channel #%d): %s", c.GetInt("channel_id"), mjErr.Description))
+			return
+		}
 		if mjErr.Description == model.ChannelDailySuccessLimitExceededMessage {
 			c.JSON(http.StatusTooManyRequests, gin.H{
 				"description": model.ChannelDailySuccessLimitExceededMessage,
@@ -519,6 +551,31 @@ func RelayMidjourney(c *gin.Context) {
 		})
 		channelId := c.GetInt("channel_id")
 		logger.LogError(c, fmt.Sprintf("relay error (channel #%d, status code %d): %s", channelId, statusCode, fmt.Sprintf("%s %s", mjErr.Description, mjErr.Result)))
+	}
+}
+
+func relayMidjourneyWithRPMFallback(c *gin.Context, relayInfo *relaycommon.RelayInfo, attempt func() *dto.MidjourneyResponse) *dto.MidjourneyResponse {
+	retryParam := &service.RetryParam{
+		Ctx:        c,
+		TokenGroup: relayInfo.TokenGroup,
+		ModelName:  relayInfo.OriginModelName,
+		Retry:      common.GetPointer(0),
+	}
+	for {
+		mjErr := attempt()
+		if mjErr == nil || mjErr.Description != service.ChannelRPMLimitExceededMessage {
+			return mjErr
+		}
+		if isSpecificChannelRequest(c) || c.GetBool("channel_rpm_locked") {
+			return mjErr
+		}
+		channelID := c.GetInt("channel_id")
+		service.MarkChannelRPMLimitSkipped(c, channelID)
+		channel, channelErr := getChannel(c, relayInfo, retryParam)
+		if channelErr != nil || channel == nil {
+			return service.MidjourneyErrorWrapper(constant.MjRequestError, service.ChannelRPMGroupLimitExceededMessage)
+		}
+		addUsedChannel(c, channel.Id)
 	}
 }
 
@@ -612,7 +669,10 @@ func RelayTask(c *gin.Context) {
 			channel, channelErr = getChannel(c, relayInfo, retryParam)
 			if channelErr != nil {
 				logger.LogError(c, channelErr.Error())
-				if isChannelDailySuccessLimitError(channelErr) {
+				if service.IsChannelRPMLimitError(channelErr) {
+					taskErr = service.TaskErrorFromAPIError(channelErr)
+					taskErr.LocalError = true
+				} else if isChannelDailySuccessLimitError(channelErr) {
 					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, string(types.ErrorCodeChannelDailySuccessLimitExceeded), http.StatusTooManyRequests)
 				} else {
 					taskErr = service.TaskErrorWrapperLocal(channelErr.Err, "get_channel_failed", http.StatusInternalServerError)
@@ -648,8 +708,16 @@ func RelayTask(c *gin.Context) {
 		if taskErr == nil {
 			break
 		}
-		taskErr = service.NormalizeViolationFeeTaskError(relayInfo, taskErr)
 		model.ReleaseChannelDailySuccess(reservation)
+		apiErr := service.TaskErrorToAPIError(taskErr)
+		if service.IsChannelRPMLimitError(apiErr) {
+			taskErr.LocalError = true
+			if !lockedChannel && shouldSkipRPMLimitedChannel(c, channel) {
+				continue
+			}
+			break
+		}
+		taskErr = service.NormalizeViolationFeeTaskError(relayInfo, taskErr)
 
 		if !taskErr.LocalError {
 			processChannelError(c,
@@ -706,7 +774,9 @@ func RelayTask(c *gin.Context) {
 
 // respondTaskError 统一输出 Task 错误响应（含 429 限流提示改写）
 func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
-	if taskErr.StatusCode == http.StatusTooManyRequests && taskErr.Code != string(types.ErrorCodeChannelDailySuccessLimitExceeded) {
+	if taskErr.StatusCode == http.StatusTooManyRequests &&
+		taskErr.Code != string(types.ErrorCodeChannelDailySuccessLimitExceeded) &&
+		taskErr.Code != string(types.ErrorCodeChannelRPMLimitExceeded) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
 	}
 	c.JSON(taskErr.StatusCode, taskErr)

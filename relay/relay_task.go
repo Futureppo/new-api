@@ -19,6 +19,7 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
 
@@ -217,8 +218,14 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 
 	// 9. 发送请求
-	resp, err := adaptor.DoRequest(c, info, requestBody)
+	resp, err := doChannelRPMGuardedTaskRequest(c, info, func() (*http.Response, error) {
+		return adaptor.DoRequest(c, info, requestBody)
+	})
 	if err != nil {
+		var apiErr *types.NewAPIError
+		if errors.As(err, &apiErr) && service.IsChannelRPMLimitError(apiErr) {
+			return nil, service.TaskErrorFromAPIError(apiErr)
+		}
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
 	if resp != nil && resp.StatusCode != http.StatusOK {

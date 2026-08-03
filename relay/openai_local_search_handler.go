@@ -37,7 +37,9 @@ func OpenAILocalSearchHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAP
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 
-	resp, err := adaptor.DoRequest(c, info, common.ReaderOnly(storage))
+	resp, err := doChannelRPMGuardedRequest(c, info, func() (any, error) {
+		return adaptor.DoRequest(c, info, common.ReaderOnly(storage))
+	})
 	if err != nil {
 		return types.NewOpenAIError(err, types.ErrorCodeDoRequestFailed, http.StatusInternalServerError)
 	}

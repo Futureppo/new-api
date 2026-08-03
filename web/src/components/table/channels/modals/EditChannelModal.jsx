@@ -189,6 +189,10 @@ const EditChannelModal = (props) => {
     weight: 0,
     retry_times: null,
     daily_success_limit: 0,
+    rpm_protection_enabled: false,
+    rpm_limit: 1000,
+    rpm_protection_threshold_percent: 60,
+    rpm_ramp_minutes: 5,
     tag: '',
     multi_key_mode: 'random',
     // 渠道额外设置的默认值
@@ -854,6 +858,20 @@ const EditChannelModal = (props) => {
           data.system_prompt = parsedSettings.system_prompt || '';
           data.system_prompt_override =
             parsedSettings.system_prompt_override || false;
+          const rpmProtection = parsedSettings.rpm_protection;
+          data.rpm_protection_enabled = rpmProtection?.enabled === true;
+          data.rpm_limit =
+            typeof rpmProtection?.rpm_limit === 'number'
+              ? rpmProtection.rpm_limit
+              : 1000;
+          data.rpm_protection_threshold_percent =
+            typeof rpmProtection?.protection_threshold_percent === 'number'
+              ? rpmProtection.protection_threshold_percent
+              : 60;
+          data.rpm_ramp_minutes =
+            typeof rpmProtection?.ramp_minutes === 'number'
+              ? rpmProtection.ramp_minutes
+              : 5;
         } catch (error) {
           console.error('解析渠道设置失败:', error);
           data.force_format = false;
@@ -862,6 +880,10 @@ const EditChannelModal = (props) => {
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
           data.system_prompt_override = false;
+          data.rpm_protection_enabled = false;
+          data.rpm_limit = 1000;
+          data.rpm_protection_threshold_percent = 60;
+          data.rpm_ramp_minutes = 5;
         }
       } else {
         data.force_format = false;
@@ -870,6 +892,10 @@ const EditChannelModal = (props) => {
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
         data.system_prompt_override = false;
+        data.rpm_protection_enabled = false;
+        data.rpm_limit = 1000;
+        data.rpm_protection_threshold_percent = 60;
+        data.rpm_ramp_minutes = 5;
       }
 
       if (data.settings) {
@@ -1759,6 +1785,12 @@ const EditChannelModal = (props) => {
       localInputs.other = 'v2.1';
     }
 
+    const parsedRPMLimit = Number(localInputs.rpm_limit);
+    const parsedRPMThreshold = Number(
+      localInputs.rpm_protection_threshold_percent,
+    );
+    const parsedRPMRampMinutes = Number(localInputs.rpm_ramp_minutes);
+
     // 生成渠道额外设置JSON
     const channelExtraSettings = {
       force_format: localInputs.force_format || false,
@@ -1767,6 +1799,18 @@ const EditChannelModal = (props) => {
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
       system_prompt_override: localInputs.system_prompt_override || false,
+      rpm_protection: {
+        enabled: localInputs.rpm_protection_enabled === true,
+        rpm_limit: Number.isFinite(parsedRPMLimit)
+          ? Math.max(0, Math.trunc(parsedRPMLimit))
+          : 1000,
+        protection_threshold_percent: Number.isFinite(parsedRPMThreshold)
+          ? Math.trunc(parsedRPMThreshold)
+          : 60,
+        ramp_minutes: Number.isFinite(parsedRPMRampMinutes)
+          ? Math.trunc(parsedRPMRampMinutes)
+          : 5,
+      },
     };
     localInputs.setting = JSON.stringify(channelExtraSettings);
 
@@ -1870,6 +1914,10 @@ const EditChannelModal = (props) => {
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
     delete localInputs.system_prompt_override;
+    delete localInputs.rpm_protection_enabled;
+    delete localInputs.rpm_limit;
+    delete localInputs.rpm_protection_threshold_percent;
+    delete localInputs.rpm_ramp_minutes;
     delete localInputs.is_enterprise_account;
     // 顶层的 vertex_key_type 不应发送给后端
     delete localInputs.vertex_key_type;
@@ -2581,6 +2629,88 @@ const EditChannelModal = (props) => {
                         }
                         style={{ width: '100%' }}
                         extraText={t('填 0 或留空表示无限额')}
+                      />
+                    </Col>
+                  </Row>
+
+                  <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                    {t('RPM 动态保护')}
+                  </div>
+                  <Form.Switch
+                    field='rpm_protection_enabled'
+                    label={t('启用 RPM 保护')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleInputChange('rpm_protection_enabled', value)
+                    }
+                    extraText={t(
+                      '限制渠道最近 60 秒内的真实上游调用次数，并在上游返回 429 时动态降载',
+                    )}
+                  />
+                  <Row gutter={12}>
+                    <Col xs={24} sm={8}>
+                      <Form.InputNumber
+                        field='rpm_limit'
+                        label={t('RPM 上限')}
+                        min={0}
+                        precision={0}
+                        disabled={!inputs.rpm_protection_enabled}
+                        onNumberChange={(value) =>
+                          handleInputChange(
+                            'rpm_limit',
+                            value === undefined ||
+                              value === null ||
+                              value === ''
+                              ? 0
+                              : Math.max(0, Math.trunc(value)),
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        extraText={t('填 0 表示不限制')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <Form.InputNumber
+                        field='rpm_protection_threshold_percent'
+                        label={t('保护阈值（%）')}
+                        min={1}
+                        max={100}
+                        precision={0}
+                        disabled={!inputs.rpm_protection_enabled}
+                        onNumberChange={(value) =>
+                          handleInputChange(
+                            'rpm_protection_threshold_percent',
+                            value === undefined ||
+                              value === null ||
+                              value === ''
+                              ? 60
+                              : Math.min(100, Math.max(1, Math.trunc(value))),
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        extraText={t('收到上游 429 时的起始限额比例')}
+                      />
+                    </Col>
+                    <Col xs={24} sm={8}>
+                      <Form.InputNumber
+                        field='rpm_ramp_minutes'
+                        label={t('爬坡时间（分钟）')}
+                        min={1}
+                        precision={0}
+                        disabled={!inputs.rpm_protection_enabled}
+                        onNumberChange={(value) =>
+                          handleInputChange(
+                            'rpm_ramp_minutes',
+                            value === undefined ||
+                              value === null ||
+                              value === ''
+                              ? 5
+                              : Math.max(1, Math.trunc(value)),
+                          )
+                        }
+                        style={{ width: '100%' }}
+                        extraText={t('动态降载后恢复到 RPM 上限所需时间')}
                       />
                     </Col>
                   </Row>

@@ -857,9 +857,19 @@ func DeleteChannelByStatus(status int64) (int64, error) {
 	return result.RowsAffected, result.Error
 }
 
-func DeleteDisabledChannel() (int64, error) {
-	result := DB.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled).Delete(&Channel{})
-	return result.RowsAffected, result.Error
+func DeleteDisabledChannel() (int64, []int, error) {
+	var channelIds []int
+	var rowsAffected int64
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		condition := tx.Where("status = ? or status = ?", common.ChannelStatusAutoDisabled, common.ChannelStatusManuallyDisabled)
+		if err := condition.Model(&Channel{}).Pluck("id", &channelIds).Error; err != nil {
+			return err
+		}
+		result := condition.Delete(&Channel{})
+		rowsAffected = result.RowsAffected
+		return result.Error
+	})
+	return rowsAffected, channelIds, err
 }
 
 func GetPaginatedTags(offset int, limit int) ([]*string, error) {
@@ -933,7 +943,7 @@ func (channel *Channel) ValidateSettings() error {
 			return err
 		}
 	}
-	return nil
+	return channelParams.Validate()
 }
 
 func (channel *Channel) GetSetting() dto.ChannelSettings {

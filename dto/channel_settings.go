@@ -1,12 +1,42 @@
 package dto
 
+import "fmt"
+
+type ChannelRPMProtectionSettings struct {
+	Enabled                    bool `json:"enabled"`
+	RPMLimit                   int  `json:"rpm_limit"`
+	ProtectionThresholdPercent int  `json:"protection_threshold_percent"`
+	RampMinutes                int  `json:"ramp_minutes"`
+}
+
+func (s *ChannelRPMProtectionSettings) Validate() error {
+	if s == nil {
+		return nil
+	}
+	if s.RPMLimit < 0 {
+		return fmt.Errorf("RPM 上限不能小于 0")
+	}
+	if s.ProtectionThresholdPercent < 1 || s.ProtectionThresholdPercent > 100 {
+		return fmt.Errorf("RPM 保护阈值必须在 1 到 100 之间")
+	}
+	if s.RampMinutes <= 0 {
+		return fmt.Errorf("RPM 爬坡时间必须大于 0")
+	}
+	return nil
+}
+
 type ChannelSettings struct {
-	ForceFormat            bool   `json:"force_format,omitempty"`
-	ThinkingToContent      bool   `json:"thinking_to_content,omitempty"`
-	Proxy                  string `json:"proxy"`
-	PassThroughBodyEnabled bool   `json:"pass_through_body_enabled,omitempty"`
-	SystemPrompt           string `json:"system_prompt,omitempty"`
-	SystemPromptOverride   bool   `json:"system_prompt_override,omitempty"`
+	ForceFormat            bool                          `json:"force_format,omitempty"`
+	ThinkingToContent      bool                          `json:"thinking_to_content,omitempty"`
+	Proxy                  string                        `json:"proxy"`
+	PassThroughBodyEnabled bool                          `json:"pass_through_body_enabled,omitempty"`
+	SystemPrompt           string                        `json:"system_prompt,omitempty"`
+	SystemPromptOverride   bool                          `json:"system_prompt_override,omitempty"`
+	RPMProtection          *ChannelRPMProtectionSettings `json:"rpm_protection,omitempty"`
+}
+
+func (s ChannelSettings) Validate() error {
+	return s.RPMProtection.Validate()
 }
 
 type VertexKeyType string
