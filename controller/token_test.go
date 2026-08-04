@@ -559,6 +559,20 @@ func TestUpdateTokenPersistsOrderedGroups(t *testing.T) {
 	if stored.Group != "vip" || fmt.Sprint(stored.GetGroups()) != fmt.Sprint(expected) {
 		t.Fatalf("expected stored groups %v with primary vip, got primary %q groups %v", expected, stored.Group, stored.GetGroups())
 	}
+
+	body["groups"] = []string{}
+	ctx, recorder = newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+	response = decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected clearing groups to succeed, got message: %s", response.Message)
+	}
+	if err := db.First(&stored, token.Id).Error; err != nil {
+		t.Fatalf("failed to reload cleared token: %v", err)
+	}
+	if stored.Group != "" || len(stored.GetGroups()) != 0 {
+		t.Fatalf("expected explicit empty groups to restore user default, got primary %q groups %v", stored.Group, stored.GetGroups())
+	}
 }
 
 func TestLegacyTokenUpdatePreservesExistingMultiGroups(t *testing.T) {
