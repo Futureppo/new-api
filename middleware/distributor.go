@@ -110,11 +110,12 @@ func Distribute() func(c *gin.Context) {
 							}
 						} else if usingGroup == "auto" {
 							userGroup := common.GetContextKeyString(c, constant.ContextKeyUserGroup)
-							autoGroups := service.GetUserAutoGroup(userGroup)
-							for _, g := range autoGroups {
+							candidateGroups := service.GetRequestGroupCandidates(c, userGroup, usingGroup)
+							for i, g := range candidateGroups {
 								if model.IsChannelEnabledForGroupModel(g, modelRequest.Model, preferred.Id) {
 									selectGroup = g
 									common.SetContextKey(c, constant.ContextKeyAutoGroup, g)
+									common.SetContextKey(c, constant.ContextKeyAutoGroupIndex, i)
 									channel = preferred
 									service.MarkChannelAffinityUsed(c, g, preferred.Id)
 									break
@@ -153,6 +154,10 @@ func Distribute() func(c *gin.Context) {
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
+				}
+				if usingGroup == "auto" && selectGroup != "" {
+					common.SetContextKey(c, constant.ContextKeyAutoGroup, selectGroup)
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, selectGroup)
 				}
 			}
 		}

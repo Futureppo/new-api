@@ -89,31 +89,43 @@ const renderStatus = (text, record, t) => {
 
 // Render group column
 const renderGroupColumn = (text, record, t, groupRatios = {}) => {
-  if (text === 'auto') {
-    return (
-      <Tooltip
-        content={t(
-          '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
-        )}
-        position='top'
-      >
-        <Tag color='white' shape='circle'>
-          {t('智能熔断')}
-          {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
-        </Tag>
-      </Tooltip>
-    );
+  const groups =
+    Array.isArray(record?.groups) && record.groups.length > 0
+      ? record.groups
+      : text
+        ? [text]
+        : [];
+  if (groups.length === 0) {
+    return renderGroup(text);
   }
-  const ratio = groupRatios[text];
   return (
-    <span className='flex items-center gap-1'>
-      {renderGroup(text)}
-      {ratio !== undefined && (
-        <Tag size='small' color='green' shape='circle'>
-          {ratio}x
-        </Tag>
+    <Space wrap spacing={4}>
+      {groups.map((group) =>
+        group === 'auto' ? (
+          <Tooltip
+            key={group}
+            content={t(
+              '当前分组为 auto，会自动选择最优分组，当一个组不可用时自动降级到下一个组（熔断机制）',
+            )}
+            position='top'
+          >
+            <Tag color='white' shape='circle'>
+              {t('智能熔断')}
+              {record && record.cross_group_retry ? `(${t('跨分组')})` : ''}
+            </Tag>
+          </Tooltip>
+        ) : (
+          <span key={group} className='flex items-center gap-1'>
+            {renderGroup(group)}
+            {groupRatios[group] !== undefined && (
+              <Tag size='small' color='green' shape='circle'>
+                {groupRatios[group]}x
+              </Tag>
+            )}
+          </span>
+        ),
       )}
-    </span>
+    </Space>
   );
 };
 

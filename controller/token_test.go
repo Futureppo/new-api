@@ -32,10 +32,11 @@ type tokenPageResponse struct {
 }
 
 type tokenResponseItem struct {
-	ID     int    `json:"id"`
-	Name   string `json:"name"`
-	Key    string `json:"key"`
-	Status int    `json:"status"`
+	ID     int      `json:"id"`
+	Name   string   `json:"name"`
+	Key    string   `json:"key"`
+	Status int      `json:"status"`
+	Groups []string `json:"groups"`
 }
 
 type tokenKeyResponse struct {
@@ -48,21 +49,21 @@ type sqliteColumnInfo struct {
 }
 
 type legacyToken struct {
-	Id                 int            `gorm:"primaryKey"`
-	UserId             int            `gorm:"index"`
-	Key                string         `gorm:"column:key;type:char(48);uniqueIndex"`
-	Status             int            `gorm:"default:1"`
-	Name               string         `gorm:"index"`
-	CreatedTime        int64          `gorm:"bigint"`
-	AccessedTime       int64          `gorm:"bigint"`
-	ExpiredTime        int64          `gorm:"bigint;default:-1"`
-	RemainQuota        int            `gorm:"default:0"`
+	Id                 int    `gorm:"primaryKey"`
+	UserId             int    `gorm:"index"`
+	Key                string `gorm:"column:key;type:char(48);uniqueIndex"`
+	Status             int    `gorm:"default:1"`
+	Name               string `gorm:"index"`
+	CreatedTime        int64  `gorm:"bigint"`
+	AccessedTime       int64  `gorm:"bigint"`
+	ExpiredTime        int64  `gorm:"bigint;default:-1"`
+	RemainQuota        int    `gorm:"default:0"`
 	UnlimitedQuota     bool
 	ModelLimitsEnabled bool
-	ModelLimits        string         `gorm:"type:text"`
-	AllowIps           *string        `gorm:"default:''"`
-	UsedQuota          int            `gorm:"default:0"`
-	Group              string         `gorm:"column:group;default:''"`
+	ModelLimits        string  `gorm:"type:text"`
+	AllowIps           *string `gorm:"default:''"`
+	UsedQuota          int     `gorm:"default:0"`
+	Group              string  `gorm:"column:group;default:''"`
 	CrossGroupRetry    bool
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
@@ -326,6 +327,9 @@ func runTokenMigrationCompatibilityTest(t *testing.T, db *gorm.DB, dialect strin
 	if migratedToken.Name != "legacy-token" {
 		t.Fatalf("expected migrated token name to be preserved, got %q", migratedToken.Name)
 	}
+	if got := fmt.Sprint(migratedToken.GetGroups()); got != fmt.Sprint([]string{"default"}) {
+		t.Fatalf("expected legacy token group fallback to be preserved, got %v", migratedToken.GetGroups())
+	}
 
 	inserted := model.Token{
 		UserId:             8,
@@ -362,6 +366,9 @@ func TestTokenAutoMigrateUsesVarchar128KeyColumn(t *testing.T) {
 
 	if got := getTokenKeyColumnType(t, db, "sqlite"); got != "varchar(128)" {
 		t.Fatalf("expected key column type varchar(128), got %q", got)
+	}
+	if !db.Migrator().HasColumn(&model.Token{}, "groups") {
+		t.Fatal("expected token groups column to be created")
 	}
 }
 
@@ -503,6 +510,91 @@ func TestUpdateTokenMasksKeyInResponse(t *testing.T) {
 	}
 	if strings.Contains(recorder.Body.String(), token.Key) {
 		t.Fatalf("update response leaked raw token key: %s", recorder.Body.String())
+	}
+}
+
+func TestUpdateTokenPersistsOrderedGroups(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	if err := db.AutoMigrate(&model.User{}); err != nil {
+		t.Fatalf("failed to migrate users: %v", err)
+	}
+	if err := db.Create(&model.User{Id: 1, Username: "multi-group-user", Group: "default", Status: common.UserStatusEnabled}).Error; err != nil {
+		t.Fatalf("failed to seed user: %v", err)
+	}
+	configureUserModelGroups(t)
+	token := seedToken(t, db, 1, "multi-group-token", "multi1234group5678")
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 token.Name,
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"groups":               []string{"vip", "default", "vip"},
+		"cross_group_retry":    true,
+	}
+
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+	var detail tokenResponseItem
+	if err := common.Unmarshal(response.Data, &detail); err != nil {
+		t.Fatalf("failed to decode token update response: %v", err)
+	}
+	expected := []string{"vip", "default"}
+	if fmt.Sprint(detail.Groups) != fmt.Sprint(expected) {
+		t.Fatalf("expected response groups %v, got %v", expected, detail.Groups)
+	}
+
+	var stored model.Token
+	if err := db.First(&stored, token.Id).Error; err != nil {
+		t.Fatalf("failed to reload token: %v", err)
+	}
+	if stored.Group != "vip" || fmt.Sprint(stored.GetGroups()) != fmt.Sprint(expected) {
+		t.Fatalf("expected stored groups %v with primary vip, got primary %q groups %v", expected, stored.Group, stored.GetGroups())
+	}
+}
+
+func TestLegacyTokenUpdatePreservesExistingMultiGroups(t *testing.T) {
+	db := setupTokenControllerTestDB(t)
+	token := seedToken(t, db, 1, "legacy-edit-token", "legacy1234edit5678")
+	if err := token.SetGroups([]string{"default", "vip"}); err != nil {
+		t.Fatalf("failed to set groups: %v", err)
+	}
+	if err := db.Save(token).Error; err != nil {
+		t.Fatalf("failed to save groups: %v", err)
+	}
+
+	body := map[string]any{
+		"id":                   token.Id,
+		"name":                 "renamed-token",
+		"expired_time":         -1,
+		"remain_quota":         100,
+		"unlimited_quota":      true,
+		"model_limits_enabled": false,
+		"model_limits":         "",
+		"group":                "default",
+		"cross_group_retry":    false,
+	}
+	ctx, recorder := newAuthenticatedContext(t, http.MethodPut, "/api/token/", body, 1)
+	UpdateToken(ctx)
+	response := decodeAPIResponse(t, recorder)
+	if !response.Success {
+		t.Fatalf("expected success response, got message: %s", response.Message)
+	}
+
+	var stored model.Token
+	if err := db.First(&stored, token.Id).Error; err != nil {
+		t.Fatalf("failed to reload token: %v", err)
+	}
+	if got := fmt.Sprint(stored.GetGroups()); got != fmt.Sprint([]string{"default", "vip"}) {
+		t.Fatalf("expected legacy update to preserve groups, got %v", stored.GetGroups())
 	}
 }
 

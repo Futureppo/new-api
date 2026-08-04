@@ -769,27 +769,20 @@ func TokenStats() (map[string]interface{}, error) {
 }
 
 func TokenGroups() (map[string]int64, error) {
-	var groups []struct {
-		GroupName string `gorm:"column:group_name"`
-		Count     int64  `gorm:"column:count"`
-	}
-	groupCol := "`group`"
-	if common.UsingPostgreSQL {
-		groupCol = `"group"`
-	}
-	if err := model.DB.Model(&model.Token{}).
-		Select(groupCol + " AS group_name, COUNT(*) AS count").
-		Group("group_name").
-		Scan(&groups).Error; err != nil {
+	var tokens []model.Token
+	if err := model.DB.Select("group", "groups").Find(&tokens).Error; err != nil {
 		return nil, err
 	}
 	groupMap := map[string]int64{}
-	for _, item := range groups {
-		key := item.GroupName
-		if key == "" {
-			key = "default"
+	for _, token := range tokens {
+		groups := token.GetGroups()
+		if len(groups) == 0 {
+			groupMap["default"]++
+			continue
 		}
-		groupMap[key] = item.Count
+		for _, group := range groups {
+			groupMap[group]++
+		}
 	}
 	return groupMap, nil
 }

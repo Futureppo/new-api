@@ -27,7 +27,8 @@ type Token struct {
 	AllowIps           *string        `json:"allow_ips" gorm:"default:''"`
 	UsedQuota          int            `json:"used_quota" gorm:"default:0"` // used quota
 	Group              string         `json:"group" gorm:"default:''"`
-	CrossGroupRetry    bool           `json:"cross_group_retry"` // 跨分组重试，仅auto分组有效
+	Groups             string         `json:"-" gorm:"type:text"` // ordered multi-group JSON; empty falls back to Group
+	CrossGroupRetry    bool           `json:"cross_group_retry"`  // 跨分组重试，仅auto或多分组有效
 	DeletedAt          gorm.DeletedAt `gorm:"index"`
 }
 
@@ -76,6 +77,83 @@ func (token *Token) GetIpLimits() []string {
 		}
 	}
 	return ipLimits
+}
+
+// NormalizeTokenGroups trims, removes empty values and de-duplicates groups
+// while preserving the user's selection order.
+func NormalizeTokenGroups(groups []string) []string {
+	normalized := make([]string, 0, len(groups))
+	seen := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		group = strings.TrimSpace(group)
+		if group == "" {
+			continue
+		}
+		if _, ok := seen[group]; ok {
+			continue
+		}
+		seen[group] = struct{}{}
+		normalized = append(normalized, group)
+	}
+	return normalized
+}
+
+// GetGroups returns the configured token groups. Legacy tokens only have Group
+// populated, so an empty Groups value intentionally falls back to Group.
+func (token *Token) GetGroups() []string {
+	if token == nil {
+		return []string{}
+	}
+	if token.Groups != "" {
+		var groups []string
+		if err := common.UnmarshalJsonStr(token.Groups, &groups); err == nil {
+			groups = NormalizeTokenGroups(groups)
+			if len(groups) > 0 {
+				return groups
+			}
+		} else {
+			common.SysLog("failed to parse token groups: " + err.Error())
+		}
+	}
+	if group := strings.TrimSpace(token.Group); group != "" {
+		return []string{group}
+	}
+	return []string{}
+}
+
+// SetGroups stores multiple groups as JSON and keeps Group as the legacy
+// primary group. Single-group tokens continue using only the legacy column.
+func (token *Token) SetGroups(groups []string) error {
+	groups = NormalizeTokenGroups(groups)
+	token.Group = ""
+	token.Groups = ""
+	if len(groups) == 0 {
+		return nil
+	}
+	token.Group = groups[0]
+	if len(groups) == 1 {
+		return nil
+	}
+	data, err := common.Marshal(groups)
+	if err != nil {
+		return err
+	}
+	token.Groups = string(data)
+	return nil
+}
+
+// GetRequestGroup returns the single group value consumed by the existing
+// relay pipeline. Explicit multi-group tokens use the existing auto branch,
+// with their candidates supplied separately in request context.
+func (token *Token) GetRequestGroup() string {
+	groups := token.GetGroups()
+	if len(groups) > 1 {
+		return "auto"
+	}
+	if len(groups) == 1 {
+		return groups[0]
+	}
+	return ""
 }
 
 func GetAllUserTokens(userId int, startIdx int, num int) ([]*Token, error) {
@@ -298,7 +376,7 @@ func (token *Token) Update() (err error) {
 		}
 	}()
 	err = DB.Model(token).Select("name", "status", "expired_time", "remain_quota", "unlimited_quota",
-		"model_limits_enabled", "model_limits", "allow_ips", "group", "cross_group_retry").Updates(token).Error
+		"model_limits_enabled", "model_limits", "allow_ips", "group", "groups", "cross_group_retry").Updates(token).Error
 	return err
 }
 

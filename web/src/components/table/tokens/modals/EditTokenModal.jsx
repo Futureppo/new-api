@@ -66,6 +66,7 @@ const EditTokenModal = (props) => {
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
   const modelRequestIdRef = useRef(0);
+  const groupSelectionRef = useRef([]);
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
@@ -80,7 +81,7 @@ const EditTokenModal = (props) => {
     model_limits_enabled: false,
     model_limits: [],
     allow_ips: '',
-    group: '',
+    groups: [],
     cross_group_retry: false,
     tokenCount: 1,
   });
@@ -105,10 +106,10 @@ const EditTokenModal = (props) => {
     }
   };
 
-  const loadModels = async (group, selectedModels) => {
+  const loadModels = async (selectedGroups = [], selectedModels) => {
     const requestId = ++modelRequestIdRef.current;
     let res = await API.get(`/api/user/models`, {
-      params: group ? { group } : undefined,
+      params: { groups: JSON.stringify(selectedGroups || []) },
     });
     const { success, message, data } = res.data;
     if (requestId !== modelRequestIdRef.current) return;
@@ -188,10 +189,16 @@ const EditTokenModal = (props) => {
       data.remain_amount = Number(
         quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
       );
+      data.groups = Array.isArray(data.groups)
+        ? data.groups
+        : data.group
+          ? [data.group]
+          : [];
+      groupSelectionRef.current = data.groups;
       if (formApiRef.current) {
         formApiRef.current.setValues({ ...getInitValues(), ...data });
       }
-      await loadModels(data.group, data.model_limits);
+      await loadModels(data.groups, data.model_limits);
     } else {
       showError(message);
     }
@@ -201,11 +208,12 @@ const EditTokenModal = (props) => {
   useEffect(() => {
     if (formApiRef.current) {
       if (!isEdit) {
+        groupSelectionRef.current = [];
         formApiRef.current.setValues(getInitValues());
       }
     }
     if (!isEdit) {
-      loadModels();
+      loadModels([]);
     }
     loadGroups();
   }, [props.editingToken.id]);
@@ -215,6 +223,7 @@ const EditTokenModal = (props) => {
       if (isEdit) {
         loadToken();
       } else {
+        groupSelectionRef.current = [];
         formApiRef.current?.setValues(getInitValues());
       }
     } else {
@@ -234,10 +243,31 @@ const EditTokenModal = (props) => {
     return result;
   };
 
+  const handleGroupChange = (value) => {
+    const previousGroups = groupSelectionRef.current;
+    const rawGroups = Array.isArray(value) ? [...new Set(value)] : [];
+    let nextGroups = [
+      ...previousGroups.filter((group) => rawGroups.includes(group)),
+      ...rawGroups.filter((group) => !previousGroups.includes(group)),
+    ];
+    if (nextGroups.includes('auto') && nextGroups.length > 1) {
+      nextGroups = previousGroups.includes('auto')
+        ? nextGroups.filter((group) => group !== 'auto')
+        : ['auto'];
+    }
+    groupSelectionRef.current = nextGroups;
+    formApiRef.current?.setValue('groups', nextGroups);
+    loadModels(nextGroups);
+  };
+
   const submit = async (values) => {
     setLoading(true);
     if (isEdit) {
       let { tokenCount: _tc, ...localInputs } = values;
+      localInputs.groups = Array.isArray(localInputs.groups)
+        ? localInputs.groups
+        : [];
+      localInputs.group = localInputs.groups[0] || '';
       localInputs.remain_quota = localInputs.unlimited_quota
         ? 0
         : displayAmountToQuota(localInputs.remain_amount);
@@ -274,6 +304,10 @@ const EditTokenModal = (props) => {
       let successCount = 0;
       for (let i = 0; i < count; i++) {
         let { tokenCount: _tc, ...localInputs } = values;
+        localInputs.groups = Array.isArray(localInputs.groups)
+          ? localInputs.groups
+          : [];
+        localInputs.group = localInputs.groups[0] || '';
         const baseName =
           values.name.trim() === '' ? 'default' : values.name.trim();
         if (i !== 0 || values.name.trim() === '') {
@@ -317,6 +351,7 @@ const EditTokenModal = (props) => {
       }
     }
     setLoading(false);
+    groupSelectionRef.current = [];
     formApiRef.current?.setValues(getInitValues());
   };
 
@@ -404,10 +439,11 @@ const EditTokenModal = (props) => {
                   <Col span={24}>
                     {groups.length > 0 ? (
                       <Form.Select
-                        field='group'
+                        field='groups'
                         label={t('令牌分组')}
                         placeholder={t('令牌分组，默认为用户的分组')}
                         optionList={groups}
+                        multiple
                         renderOptionItem={renderGroupOption}
                         filter={(input, option) => {
                           const q = input.toLowerCase();
@@ -417,7 +453,8 @@ const EditTokenModal = (props) => {
                               option.label.toLowerCase().includes(q))
                           );
                         }}
-                        onChange={(value) => loadModels(value)}
+                        onChange={handleGroupChange}
+                        autoClearSearchValue={false}
                         showClear
                         style={{ width: '100%' }}
                       />
@@ -433,7 +470,11 @@ const EditTokenModal = (props) => {
                   <Col
                     span={24}
                     style={{
-                      display: values.group === 'auto' ? 'block' : 'none',
+                      display:
+                        values.groups?.includes('auto') ||
+                        values.groups?.length > 1
+                          ? 'block'
+                          : 'none',
                     }}
                   >
                     <Form.Switch

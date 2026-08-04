@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-contrib/sessions"
@@ -16,6 +17,18 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )
+
+func TestSetupContextForMultiGroupToken(t *testing.T) {
+	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	token := &model.Token{Id: 1, UserId: 2, Name: "multi", Key: "key"}
+	require.NoError(t, token.SetGroups([]string{"vip", "default"}))
+
+	require.NoError(t, SetupContextForToken(ctx, token))
+	require.Equal(t, "auto", common.GetContextKeyString(ctx, constant.ContextKeyTokenGroup))
+	value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenGroups)
+	require.True(t, ok)
+	require.Equal(t, []string{"vip", "default"}, value)
+}
 
 func TestUserAuthDisabledUserMessageIncludesReason(t *testing.T) {
 	setupAuthMiddlewareTestDB(t)

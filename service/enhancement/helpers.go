@@ -117,6 +117,7 @@ func tokenToSummary(token model.Token) TokenSummary {
 		Key:                token.GetFullKey(),
 		Status:             token.Status,
 		Group:              token.Group,
+		Groups:             token.GetGroups(),
 		CreatedTime:        token.CreatedTime,
 		AccessedTime:       token.AccessedTime,
 		ExpiredTime:        token.ExpiredTime,

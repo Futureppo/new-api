@@ -610,7 +610,30 @@ func UpdateToken(tokenId int, req UpdateTokenRequest, operatorId int) (TokenSumm
 	token.ModelLimits = strings.TrimSpace(req.ModelLimits)
 	allowIps := strings.TrimSpace(req.AllowIps)
 	token.AllowIps = &allowIps
-	token.Group = strings.TrimSpace(req.Group)
+	requestedGroups := token.GetGroups()
+	updateGroups := false
+	if req.Groups != nil {
+		requestedGroups = model.NormalizeTokenGroups(*req.Groups)
+		updateGroups = true
+	} else {
+		legacyGroup := strings.TrimSpace(req.Group)
+		if len(requestedGroups) <= 1 || legacyGroup != token.Group {
+			requestedGroups = model.NormalizeTokenGroups([]string{legacyGroup})
+			updateGroups = true
+		}
+	}
+	if len(requestedGroups) > 1 {
+		for _, group := range requestedGroups {
+			if group == "auto" {
+				return TokenSummary{}, errors.New("auto group cannot be combined with other groups")
+			}
+		}
+	}
+	if updateGroups {
+		if err := token.SetGroups(requestedGroups); err != nil {
+			return TokenSummary{}, err
+		}
+	}
 
 	if token.Status == common.TokenStatusEnabled {
 		if token.ExpiredTime != -1 && token.ExpiredTime <= common.GetTimestamp() {

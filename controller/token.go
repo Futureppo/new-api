@@ -9,26 +9,83 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/gin-gonic/gin"
 )
 
-func buildMaskedTokenResponse(token *model.Token) *model.Token {
+type tokenRequest struct {
+	model.Token
+	Group  *string   `json:"group"`
+	Groups *[]string `json:"groups"`
+}
+
+type tokenResponse struct {
+	*model.Token
+	Groups []string `json:"groups"`
+}
+
+func buildMaskedTokenResponse(token *model.Token) *tokenResponse {
 	if token == nil {
 		return nil
 	}
 	maskedToken := *token
 	maskedToken.Key = token.GetMaskedKey()
-	return &maskedToken
+	return &tokenResponse{
+		Token:  &maskedToken,
+		Groups: token.GetGroups(),
+	}
 }
 
-func buildMaskedTokenResponses(tokens []*model.Token) []*model.Token {
-	maskedTokens := make([]*model.Token, 0, len(tokens))
+func buildMaskedTokenResponses(tokens []*model.Token) []*tokenResponse {
+	maskedTokens := make([]*tokenResponse, 0, len(tokens))
 	for _, token := range tokens {
 		maskedTokens = append(maskedTokens, buildMaskedTokenResponse(token))
 	}
 	return maskedTokens
+}
+
+func requestedTokenGroups(groups *[]string, group *string) []string {
+	if groups != nil {
+		return model.NormalizeTokenGroups(*groups)
+	}
+	if group != nil {
+		return model.NormalizeTokenGroups([]string{*group})
+	}
+	return []string{}
+}
+
+func validateUserTokenGroups(userGroup string, groups []string) error {
+	if len(groups) > 1 {
+		for _, group := range groups {
+			if group == "auto" {
+				return fmt.Errorf("auto 分组不能与其他分组同时选择")
+			}
+		}
+	}
+	for _, group := range groups {
+		if !service.GroupInUserUsableGroups(userGroup, group) {
+			return fmt.Errorf("无权访问 %s 分组", group)
+		}
+		if group != "auto" && !ratio_setting.ContainsGroupRatio(group) {
+			return fmt.Errorf("分组 %s 已被弃用", group)
+		}
+	}
+	return nil
+}
+
+func getValidatedUserTokenGroups(userId int, groups []string) ([]string, error) {
+	userGroup, err := model.GetUserGroup(userId, false)
+	if err != nil {
+		return nil, err
+	}
+	groups = model.NormalizeTokenGroups(groups)
+	if err := validateUserTokenGroups(userGroup, groups); err != nil {
+		return nil, err
+	}
+	return groups, nil
 }
 
 func GetAllTokens(c *gin.Context) {
@@ -165,8 +222,14 @@ func GetTokenUsage(c *gin.Context) {
 }
 
 func AddToken(c *gin.Context) {
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+	request := tokenRequest{}
+	err := c.ShouldBindJSON(&request)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	token := request.Token
+	groups, err := getValidatedUserTokenGroups(c.GetInt("id"), requestedTokenGroups(request.Groups, request.Group))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -219,8 +282,11 @@ func AddToken(c *gin.Context) {
 		ModelLimitsEnabled: token.ModelLimitsEnabled,
 		ModelLimits:        token.ModelLimits,
 		AllowIps:           token.AllowIps,
-		Group:              token.Group,
 		CrossGroupRetry:    token.CrossGroupRetry,
+	}
+	if err := cleanToken.SetGroups(groups); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	err = cleanToken.Insert()
 	if err != nil {
@@ -250,12 +316,13 @@ func DeleteToken(c *gin.Context) {
 func UpdateToken(c *gin.Context) {
 	userId := c.GetInt("id")
 	statusOnly := c.Query("status_only")
-	token := model.Token{}
-	err := c.ShouldBindJSON(&token)
+	request := tokenRequest{}
+	err := c.ShouldBindJSON(&request)
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
+	token := request.Token
 	if len(token.Name) > 50 {
 		common.ApiErrorI18n(c, i18n.MsgTokenNameTooLong)
 		return
@@ -275,6 +342,32 @@ func UpdateToken(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	groups := cleanToken.GetGroups()
+	updateGroups := false
+	if request.Groups != nil {
+		groups = requestedTokenGroups(request.Groups, nil)
+		updateGroups = true
+	} else if request.Group != nil {
+		legacyGroups := requestedTokenGroups(nil, request.Group)
+		legacyGroup := ""
+		if len(legacyGroups) > 0 {
+			legacyGroup = legacyGroups[0]
+		}
+		// Older clients submit the response's legacy primary group on every
+		// update. Preserve an existing multi-group selection unless that
+		// primary value was explicitly changed.
+		if legacyGroup != cleanToken.Group {
+			groups = legacyGroups
+			updateGroups = true
+		}
+	}
+	if statusOnly == "" && updateGroups {
+		groups, err = getValidatedUserTokenGroups(userId, groups)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if token.Status == common.TokenStatusEnabled {
 		if cleanToken.Status == common.TokenStatusExpired && cleanToken.ExpiredTime <= common.GetTimestamp() && cleanToken.ExpiredTime != -1 {
@@ -297,7 +390,12 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
-		cleanToken.Group = token.Group
+		if updateGroups {
+			if err := cleanToken.SetGroups(groups); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+		}
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 	}
 	err = cleanToken.Update()

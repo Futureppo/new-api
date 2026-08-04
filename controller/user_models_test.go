@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sort"
 	"testing"
 
@@ -110,4 +111,38 @@ func TestGetUserModelsRejectsUnavailableGroup(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	require.False(t, payload.Success)
 	require.Empty(t, payload.Data)
+}
+
+func TestGetUserModelsReturnsSelectedGroupUnion(t *testing.T) {
+	configureUserModelGroups(t)
+	userID := seedUserModels(t)
+	groups := url.QueryEscape(`["vip","default","vip"]`)
+
+	recorder, payload := requestUserModels(t, userID, "/api/user/models?groups="+groups)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, payload.Success)
+	require.Equal(t, []string{"default-only", "shared", "vip-only"}, payload.Data)
+}
+
+func TestGetUserModelsExplicitEmptyGroupsUsesUserGroup(t *testing.T) {
+	configureUserModelGroups(t)
+	userID := seedUserModels(t)
+
+	recorder, payload := requestUserModels(t, userID, "/api/user/models?groups=%5B%5D")
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, payload.Success)
+	require.Equal(t, []string{"default-only", "shared"}, payload.Data)
+}
+
+func TestGetUserModelsRejectsAutoMixedWithOtherGroups(t *testing.T) {
+	configureUserModelGroups(t)
+	userID := seedUserModels(t)
+	groups := url.QueryEscape(`["auto","vip"]`)
+
+	recorder, payload := requestUserModels(t, userID, "/api/user/models?groups="+groups)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.False(t, payload.Success)
 }

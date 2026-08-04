@@ -177,8 +177,8 @@ func ListModels(c *gin.Context, modelType int) {
 		}
 		var models []string
 		if tokenGroup == "auto" {
-			for _, autoGroup := range service.GetUserAutoGroup(userGroup) {
-				groupModels := model.GetGroupEnabledModels(autoGroup)
+			for _, candidateGroup := range service.GetRequestGroupCandidates(c, userGroup, tokenGroup) {
+				groupModels := model.GetGroupEnabledModels(candidateGroup)
 				for _, g := range groupModels {
 					if !common.StringsContains(models, g) {
 						models = append(models, g)

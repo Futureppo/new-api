@@ -75,21 +75,22 @@ type ChannelSummary struct {
 }
 
 type TokenSummary struct {
-	Id                 int    `json:"id"`
-	UserId             int    `json:"user_id"`
-	Name               string `json:"name"`
-	Key                string `json:"key"`
-	Status             int    `json:"status"`
-	Group              string `json:"group"`
-	CreatedTime        int64  `json:"created_time"`
-	AccessedTime       int64  `json:"accessed_time"`
-	ExpiredTime        int64  `json:"expired_time"`
-	RemainQuota        int    `json:"remain_quota"`
-	UsedQuota          int    `json:"used_quota"`
-	UnlimitedQuota     bool   `json:"unlimited_quota"`
-	ModelLimitsEnabled bool   `json:"model_limits_enabled"`
-	ModelLimits        string `json:"model_limits"`
-	AllowIps           string `json:"allow_ips"`
+	Id                 int      `json:"id"`
+	UserId             int      `json:"user_id"`
+	Name               string   `json:"name"`
+	Key                string   `json:"key"`
+	Status             int      `json:"status"`
+	Group              string   `json:"group"`
+	Groups             []string `json:"groups"`
+	CreatedTime        int64    `json:"created_time"`
+	AccessedTime       int64    `json:"accessed_time"`
+	ExpiredTime        int64    `json:"expired_time"`
+	RemainQuota        int      `json:"remain_quota"`
+	UsedQuota          int      `json:"used_quota"`
+	UnlimitedQuota     bool     `json:"unlimited_quota"`
+	ModelLimitsEnabled bool     `json:"model_limits_enabled"`
+	ModelLimits        string   `json:"model_limits"`
+	AllowIps           string   `json:"allow_ips"`
 }
 
 type UserSummary struct {
@@ -302,13 +303,14 @@ type RiskIPBanRequest struct {
 }
 
 type UpdateTokenRequest struct {
-	Name               string `json:"name"`
-	Status             int    `json:"status"`
-	ExpiredTime        int64  `json:"expired_time"`
-	RemainQuota        int    `json:"remain_quota"`
-	UnlimitedQuota     bool   `json:"unlimited_quota"`
-	ModelLimitsEnabled bool   `json:"model_limits_enabled"`
-	ModelLimits        string `json:"model_limits"`
-	AllowIps           string `json:"allow_ips"`
-	Group              string `json:"group"`
+	Name               string    `json:"name"`
+	Status             int       `json:"status"`
+	ExpiredTime        int64     `json:"expired_time"`
+	RemainQuota        int       `json:"remain_quota"`
+	UnlimitedQuota     bool      `json:"unlimited_quota"`
+	ModelLimitsEnabled bool      `json:"model_limits_enabled"`
+	ModelLimits        string    `json:"model_limits"`
+	AllowIps           string    `json:"allow_ips"`
+	Group              string    `json:"group"`
+	Groups             *[]string `json:"groups"`
 }

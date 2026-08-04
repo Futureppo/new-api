@@ -3,8 +3,11 @@ package service
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
+	"github.com/gin-gonic/gin"
 )
 
 func GetUserUsableGroups(userGroup string) map[string]string {
@@ -51,6 +54,29 @@ func GetUserAutoGroup(userGroup string) []string {
 		}
 	}
 	return autoGroups
+}
+
+// GetRequestGroupCandidates resolves the ordered groups available to an auto
+// selection. Explicit multi-group tokens override the globally configured auto
+// list, while a normal auto token keeps the existing global behavior.
+func GetRequestGroupCandidates(ctx *gin.Context, userGroup, tokenGroup string) []string {
+	if ctx != nil {
+		if value, ok := common.GetContextKey(ctx, constant.ContextKeyTokenGroups); ok {
+			if groups, ok := value.([]string); ok && len(groups) > 1 {
+				return append([]string(nil), groups...)
+			}
+		}
+	}
+	if tokenGroup == "auto" {
+		return GetUserAutoGroup(userGroup)
+	}
+	if tokenGroup != "" {
+		return []string{tokenGroup}
+	}
+	if userGroup != "" {
+		return []string{userGroup}
+	}
+	return []string{}
 }
 
 // GetUserGroupRatio 获取用户使用某个分组的倍率

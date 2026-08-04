@@ -591,24 +591,58 @@ func GetUserModels(c *gin.Context) {
 		return
 	}
 	requestedGroup := c.Query("group")
-	if requestedGroup != "" && !service.GroupInUserUsableGroups(user.Group, requestedGroup) {
-		c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgDistributorGroupAccessDenied)})
-		return
+	groupsParam, groupsProvided := c.Request.URL.Query()["groups"]
+	var requestedGroups []string
+	if groupsProvided {
+		groupsJSON := ""
+		if len(groupsParam) > 0 {
+			groupsJSON = groupsParam[0]
+		}
+		if groupsJSON != "" {
+			if err := common.UnmarshalJsonStr(groupsJSON, &requestedGroups); err != nil {
+				common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+				return
+			}
+		}
+		requestedGroups = model.NormalizeTokenGroups(requestedGroups)
+		if err := validateUserTokenGroups(user.Group, requestedGroups); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgDistributorGroupAccessDenied)})
+			return
+		}
+	} else if requestedGroup != "" {
+		requestedGroups = []string{requestedGroup}
+		if err := validateUserTokenGroups(user.Group, requestedGroups); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"success": false, "message": i18n.T(c, i18n.MsgDistributorGroupAccessDenied)})
+			return
+		}
 	}
 
-	groups := service.GetUserUsableGroups(user.Group)
-	if requestedGroup != "" {
-		groups = map[string]string{requestedGroup: ""}
+	groups := make([]string, 0)
+	if groupsProvided {
+		switch {
+		case len(requestedGroups) == 0:
+			groups = append(groups, user.Group)
+		case len(requestedGroups) == 1 && requestedGroups[0] == "auto":
+			groups = append(groups, service.GetUserAutoGroup(user.Group)...)
+		default:
+			groups = append(groups, requestedGroups...)
+		}
+	} else if requestedGroup != "" {
 		if requestedGroup == "auto" {
-			groups = make(map[string]string)
-			for _, group := range service.GetUserAutoGroup(user.Group) {
-				groups[group] = ""
+			groups = append(groups, service.GetUserAutoGroup(user.Group)...)
+		} else {
+			groups = append(groups, requestedGroup)
+		}
+	} else {
+		for group := range service.GetUserUsableGroups(user.Group) {
+			if group != "auto" {
+				groups = append(groups, group)
 			}
 		}
 	}
 	var models []string
 	for group := range groups {
-		for _, g := range model.GetGroupEnabledModels(group) {
+		for _, g := range model.GetGroupEnabledModels(groups[group]) {
 			if !common.StringsContains(models, g) {
 				models = append(models, g)
 			}
