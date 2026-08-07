@@ -285,6 +285,18 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 			return string(constant.EndpointTypeAudioTranscription)
 		}
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeOpenCode {
+		switch constant.GetOpenCodeEndpoint(modelName) {
+		case constant.OpenCodeEndpointResponses:
+			return string(constant.EndpointTypeOpenAIResponse)
+		case constant.OpenCodeEndpointMessages:
+			return string(constant.EndpointTypeAnthropic)
+		case constant.OpenCodeEndpointGemini:
+			return string(constant.EndpointTypeGemini)
+		default:
+			return string(constant.EndpointTypeOpenAI)
+		}
+	}
 	if (channel == nil || channel.Type != constant.ChannelTypePoe) && common.IsVideoGenerationModel(modelName) {
 		return string(constant.EndpointTypeOpenAIVideo)
 	}

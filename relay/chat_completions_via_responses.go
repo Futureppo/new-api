@@ -70,6 +70,26 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 	}
 }
 
+func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
+	if info == nil {
+		return false
+	}
+	model := info.OriginModelName
+	if info.ChannelType == constant.ChannelTypeOpenCode {
+		model = info.UpstreamModelName
+	}
+	return service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, model)
+}
+
+func shouldPassThroughTextRequest(info *relaycommon.RelayInfo, globalEnabled bool) bool {
+	// Zen selects a different upstream wire protocol for each model. The client
+	// body therefore has to pass through the selected adaptor conversion.
+	if info != nil && info.ChannelType == constant.ChannelTypeOpenCode {
+		return false
+	}
+	return globalEnabled || (info != nil && info.ChannelSetting.PassThroughBodyEnabled)
+}
+
 func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, request *dto.GeneralOpenAIRequest) (*dto.Usage, *types.NewAPIError) {
 	chatJSON, err := common.Marshal(request)
 	if err != nil {

@@ -14,3 +14,7 @@ func TestOpenAILocalSupportsStreamOptions(t *testing.T) {
 func TestCerebrasSupportsStreamOptions(t *testing.T) {
 	require.True(t, streamSupportedChannels[constant.ChannelTypeCerebras])
 }
+
+func TestOpenCodeSupportsStreamOptions(t *testing.T) {
+	require.True(t, streamSupportedChannels[constant.ChannelTypeOpenCode])
+}

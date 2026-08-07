@@ -333,6 +333,7 @@ var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypePoe:         true,
 	constant.ChannelTypeOpenAILocal: true,
 	constant.ChannelTypeCerebras:    true,
+	constant.ChannelTypeOpenCode:    true,
 }
 
 func GenRelayInfoWs(c *gin.Context, ws *websocket.Conn) *RelayInfo {
