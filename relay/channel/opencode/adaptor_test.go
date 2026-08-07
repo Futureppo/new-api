@@ -21,6 +21,16 @@ func newRelayInfo(model string) *relaycommon.RelayInfo {
 	}
 }
 
+func newGoRelayInfo(model string) *relaycommon.RelayInfo {
+	return &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelBaseUrl:    constant.ChannelBaseURLs[constant.ChannelTypeOpenCodeGo],
+			ChannelType:       constant.ChannelTypeOpenCodeGo,
+			UpstreamModelName: model,
+		},
+	}
+}
+
 func TestGetRequestURLRoutesModelsToRequiredEndpoints(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -56,6 +66,29 @@ func TestGetRequestURLRejectsResponsesCompaction(t *testing.T) {
 	require.ErrorContains(t, err, "does not support responses compaction")
 }
 
+func TestGetRequestURLRoutesOpenCodeGoModels(t *testing.T) {
+	tests := []struct {
+		name  string
+		model string
+		want  string
+	}{
+		{name: "gpt responses", model: "gpt-5.6-luna", want: "https://opencode.ai/zen/go/v1/responses"},
+		{name: "grok chat", model: "grok-4.5", want: "https://opencode.ai/zen/go/v1/chat/completions"},
+		{name: "minimax messages", model: "minimax-m3", want: "https://opencode.ai/zen/go/v1/messages"},
+		{name: "qwen messages", model: "qwen3.8-max", want: "https://opencode.ai/zen/go/v1/messages"},
+		{name: "kimi chat", model: "kimi-k3", want: "https://opencode.ai/zen/go/v1/chat/completions"},
+	}
+
+	adaptor := &GoAdaptor{}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := adaptor.GetRequestURL(newGoRelayInfo(tt.model))
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got)
+		})
+	}
+}
+
 func TestSetupRequestHeaderUsesEndpointSpecificAuthentication(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(nil)
@@ -83,4 +116,37 @@ func TestSetupRequestHeaderUsesEndpointSpecificAuthentication(t *testing.T) {
 			require.Equal(t, tt.headerWant, header.Get(tt.headerName))
 		})
 	}
+}
+
+func TestSetupRequestHeaderUsesOpenCodeGoEndpointAuthentication(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	c.Request = &http.Request{Header: make(http.Header)}
+
+	tests := []struct {
+		model      string
+		headerName string
+		headerWant string
+	}{
+		{model: "gpt-5.6-luna", headerName: "Authorization", headerWant: "Bearer test-key"},
+		{model: "grok-4.5", headerName: "Authorization", headerWant: "Bearer test-key"},
+		{model: "minimax-m3", headerName: "x-api-key", headerWant: "test-key"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			info := newGoRelayInfo(tt.model)
+			info.ApiKey = "test-key"
+			header := make(http.Header)
+			err := (&GoAdaptor{}).SetupRequestHeader(c, &header, info)
+			require.NoError(t, err)
+			require.Equal(t, tt.headerWant, header.Get(tt.headerName))
+		})
+	}
+}
+
+func TestGoAdaptorMetadata(t *testing.T) {
+	adaptor := &GoAdaptor{}
+	require.Equal(t, GoChannelName, adaptor.GetChannelName())
+	require.Equal(t, GoModelList, adaptor.GetModelList())
 }

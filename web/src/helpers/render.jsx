@@ -369,6 +369,7 @@ export function getChannelIcon(channelType) {
     case 62: // Cerebras
       return <Cerebras.Color size={iconSize} />;
     case 63: // OpenCode Zen
+    case 64: // OpenCode Go
       return <Layers size={iconSize} />;
     case 15: // 百度文心千帆
     case 46: // 百度文心千帆V2

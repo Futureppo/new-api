@@ -61,6 +61,7 @@ const (
 	ChannelTypeOpenAILocal    = 61
 	ChannelTypeCerebras       = 62
 	ChannelTypeOpenCode       = 63
+	ChannelTypeOpenCodeGo     = 64
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -130,6 +131,7 @@ var ChannelBaseURLs = []string{
 	"https://local.openai.com",                  //61
 	"https://api.cerebras.ai",                   //62
 	"https://opencode.ai/zen",                   //63
+	"https://opencode.ai/zen/go",                //64
 }
 
 var ChannelTypeNames = map[int]string{
@@ -193,6 +195,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeOpenAILocal:    "OpenAI-local",
 	ChannelTypeCerebras:       "Cerebras",
 	ChannelTypeOpenCode:       "OpenCode Zen",
+	ChannelTypeOpenCodeGo:     "OpenCode Go",
 }
 
 func GetChannelTypeName(channelType int) string {

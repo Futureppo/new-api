@@ -62,6 +62,7 @@ export const CHANNEL_OPTIONS = [
   { value: 43, color: 'blue', label: 'DeepSeek' },
   { value: 62, color: 'orange', label: 'Cerebras' },
   { value: 63, color: 'cyan', label: 'OpenCode Zen' },
+  { value: 64, color: 'green', label: 'OpenCode Go' },
   {
     value: 15,
     color: 'blue',
@@ -208,7 +209,7 @@ export const CHANNEL_OPTIONS = [
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
   1, 4, 14, 33, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
-  61, 62, 63,
+  61, 62, 63, 64,
 ]);
 
 export const isManualModelFetchSupported = (

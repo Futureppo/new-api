@@ -26,3 +26,18 @@ func GetOpenCodeEndpoint(model string) OpenCodeEndpoint {
 		return OpenCodeEndpointChat
 	}
 }
+
+// GetOpenCodeGoEndpoint returns the protocol required by OpenCode Go for a
+// model. Go's routing differs from Zen: Grok uses Chat Completions, while
+// MiniMax uses Messages.
+func GetOpenCodeGoEndpoint(model string) OpenCodeEndpoint {
+	model = strings.ToLower(strings.TrimSpace(model))
+	switch {
+	case strings.HasPrefix(model, "gpt-"):
+		return OpenCodeEndpointResponses
+	case strings.HasPrefix(model, "minimax-"), strings.HasPrefix(model, "qwen"):
+		return OpenCodeEndpointMessages
+	default:
+		return OpenCodeEndpointChat
+	}
+}

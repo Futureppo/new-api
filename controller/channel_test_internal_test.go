@@ -105,6 +105,18 @@ func TestNormalizeChannelTestEndpointVolcEngineModels(t *testing.T) {
 	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(channel, "doubao-seedream-5-0-260128", string(constant.EndpointTypeOpenAI)))
 }
 
+func TestNormalizeChannelTestEndpointOpenCodeModels(t *testing.T) {
+	zen := &model.Channel{Type: constant.ChannelTypeOpenCode}
+	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), normalizeChannelTestEndpoint(zen, "grok-4.5", ""))
+	require.Equal(t, string(constant.EndpointTypeAnthropic), normalizeChannelTestEndpoint(zen, "qwen3.6-plus", ""))
+	require.Equal(t, string(constant.EndpointTypeGemini), normalizeChannelTestEndpoint(zen, "gemini-3-flash", ""))
+
+	goChannel := &model.Channel{Type: constant.ChannelTypeOpenCodeGo}
+	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), normalizeChannelTestEndpoint(goChannel, "gpt-5.6-luna", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAI), normalizeChannelTestEndpoint(goChannel, "grok-4.5", ""))
+	require.Equal(t, string(constant.EndpointTypeAnthropic), normalizeChannelTestEndpoint(goChannel, "minimax-m3", ""))
+}
+
 func TestBuildTestVideoRequestBody(t *testing.T) {
 	data, err := buildTestVideoRequestBody("sora-2")
 	require.NoError(t, err)

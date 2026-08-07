@@ -27,9 +27,16 @@ type Adaptor struct {
 	gemini gemini.Adaptor
 }
 
+type GoAdaptor struct {
+	Adaptor
+}
+
 func endpoint(info *relaycommon.RelayInfo) constant.OpenCodeEndpoint {
 	if info == nil {
 		return constant.OpenCodeEndpointChat
+	}
+	if info.ChannelType == constant.ChannelTypeOpenCodeGo {
+		return constant.GetOpenCodeGoEndpoint(info.UpstreamModelName)
 	}
 	return constant.GetOpenCodeEndpoint(info.UpstreamModelName)
 }
@@ -174,4 +181,12 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	return ChannelName
+}
+
+func (a *GoAdaptor) GetModelList() []string {
+	return GoModelList
+}
+
+func (a *GoAdaptor) GetChannelName() string {
+	return GoChannelName
 }

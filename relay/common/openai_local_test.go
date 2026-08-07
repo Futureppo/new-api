@@ -18,3 +18,7 @@ func TestCerebrasSupportsStreamOptions(t *testing.T) {
 func TestOpenCodeSupportsStreamOptions(t *testing.T) {
 	require.True(t, streamSupportedChannels[constant.ChannelTypeOpenCode])
 }
+
+func TestOpenCodeGoSupportsStreamOptions(t *testing.T) {
+	require.True(t, streamSupportedChannels[constant.ChannelTypeOpenCodeGo])
+}

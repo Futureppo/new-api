@@ -21,6 +21,12 @@ func TestShouldChatCompletionsUseResponsesUsesOpenCodeUpstreamModel(t *testing.T
 
 	info.UpstreamModelName = "big-pickle"
 	require.False(t, shouldChatCompletionsUseResponses(info))
+
+	info.ChannelType = constant.ChannelTypeOpenCodeGo
+	info.UpstreamModelName = "gpt-5.6-luna"
+	require.True(t, shouldChatCompletionsUseResponses(info))
+	info.UpstreamModelName = "grok-4.5"
+	require.False(t, shouldChatCompletionsUseResponses(info))
 }
 
 func TestOpenCodeTextRequestsAlwaysUseAdaptorConversion(t *testing.T) {
@@ -32,5 +38,8 @@ func TestOpenCodeTextRequestsAlwaysUseAdaptorConversion(t *testing.T) {
 			},
 		},
 	}
+	require.False(t, shouldPassThroughTextRequest(info, true))
+
+	info.ChannelType = constant.ChannelTypeOpenCodeGo
 	require.False(t, shouldPassThroughTextRequest(info, true))
 }

@@ -75,16 +75,16 @@ func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
 		return false
 	}
 	model := info.OriginModelName
-	if info.ChannelType == constant.ChannelTypeOpenCode {
+	if info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo {
 		model = info.UpstreamModelName
 	}
 	return service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, model)
 }
 
 func shouldPassThroughTextRequest(info *relaycommon.RelayInfo, globalEnabled bool) bool {
-	// Zen selects a different upstream wire protocol for each model. The client
+	// OpenCode gateways select an upstream wire protocol per model. The client
 	// body therefore has to pass through the selected adaptor conversion.
-	if info != nil && info.ChannelType == constant.ChannelTypeOpenCode {
+	if info != nil && (info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo) {
 		return false
 	}
 	return globalEnabled || (info != nil && info.ChannelSetting.PassThroughBodyEnabled)

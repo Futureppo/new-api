@@ -243,6 +243,11 @@ func TestResolveFetchModelsURL(t *testing.T) {
 		"https://api.cerebras.ai/v1/models",
 		resolveFetchModelsURL(constant.ChannelTypeCerebras, constant.ChannelBaseURLs[constant.ChannelTypeCerebras], ""),
 	)
+	require.Equal(
+		t,
+		"https://opencode.ai/zen/go/v1/models",
+		resolveFetchModelsURL(constant.ChannelTypeOpenCodeGo, constant.ChannelBaseURLs[constant.ChannelTypeOpenCodeGo], ""),
+	)
 }
 
 func TestFetchModelsUsesCustomModelListURL(t *testing.T) {

@@ -137,6 +137,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &cerebras.Adaptor{}
 	case constant.APITypeOpenCode:
 		return &opencode.Adaptor{}
+	case constant.APITypeOpenCodeGo:
+		return &opencode.GoAdaptor{}
 	}
 	return nil
 }

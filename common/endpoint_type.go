@@ -41,6 +41,15 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 		default:
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 		}
+	case constant.ChannelTypeOpenCodeGo:
+		switch constant.GetOpenCodeGoEndpoint(modelName) {
+		case constant.OpenCodeEndpointResponses:
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAI}
+		case constant.OpenCodeEndpointMessages:
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}
+		default:
+			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
+		}
 	case constant.ChannelTypeSora:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
 	case constant.ChannelTypeVolcEngine:

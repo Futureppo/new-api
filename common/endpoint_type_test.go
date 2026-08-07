@@ -110,3 +110,26 @@ func TestGetEndpointTypesByChannelTypeOpenCode(t *testing.T) {
 		})
 	}
 }
+
+func TestGetEndpointTypesByChannelTypeOpenCodeGo(t *testing.T) {
+	apiType, ok := ChannelType2APIType(constant.ChannelTypeOpenCodeGo)
+	require.True(t, ok)
+	require.Equal(t, constant.APITypeOpenCodeGo, apiType)
+
+	tests := []struct {
+		model string
+		want  []constant.EndpointType
+	}{
+		{model: "gpt-5.6-luna", want: []constant.EndpointType{constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAI}},
+		{model: "grok-4.5", want: []constant.EndpointType{constant.EndpointTypeOpenAI}},
+		{model: "minimax-m3", want: []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}},
+		{model: "qwen3.8-max", want: []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}},
+		{model: "kimi-k3", want: []constant.EndpointType{constant.EndpointTypeOpenAI}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			require.Equal(t, tt.want, GetEndpointTypesByChannelType(constant.ChannelTypeOpenCodeGo, tt.model))
+		})
+	}
+}

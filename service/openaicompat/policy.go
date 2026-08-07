@@ -17,6 +17,10 @@ func ShouldChatCompletionsUseResponsesGlobal(channelID int, channelType int, mod
 		constant.GetOpenCodeEndpoint(model) == constant.OpenCodeEndpointResponses {
 		return true
 	}
+	if channelType == constant.ChannelTypeOpenCodeGo &&
+		constant.GetOpenCodeGoEndpoint(model) == constant.OpenCodeEndpointResponses {
+		return true
+	}
 	return ShouldChatCompletionsUseResponsesPolicy(
 		model_setting.GetGlobalSettings().ChatCompletionsToResponsesPolicy,
 		channelID,
