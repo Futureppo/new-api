@@ -214,6 +214,7 @@ const EditChannelModal = (props) => {
     disable_store: false, // false = 允许透传（默认开启）
     allow_safety_identifier: false,
     allow_include_obfuscation: false,
+    remove_gif_images_enabled: true,
     conversation_log_enabled: false,
     allow_inference_geo: false,
     allow_speed: false,
@@ -917,6 +918,8 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_safety_identifier || false;
           data.allow_include_obfuscation =
             parsedSettings.allow_include_obfuscation || false;
+          data.remove_gif_images_enabled =
+            parsedSettings.remove_gif_images_enabled !== false;
           data.conversation_log_enabled =
             parsedSettings.conversation_log_enabled === true;
           data.allow_inference_geo =
@@ -954,6 +957,7 @@ const EditChannelModal = (props) => {
           data.disable_store = false;
           data.allow_safety_identifier = false;
           data.allow_include_obfuscation = false;
+          data.remove_gif_images_enabled = true;
           data.conversation_log_enabled = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
@@ -975,6 +979,7 @@ const EditChannelModal = (props) => {
         data.disable_store = false;
         data.allow_safety_identifier = false;
         data.allow_include_obfuscation = false;
+        data.remove_gif_images_enabled = true;
         data.conversation_log_enabled = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
@@ -1879,6 +1884,12 @@ const EditChannelModal = (props) => {
     } else if ('xai_codex_compatibility_enabled' in settings) {
       delete settings.xai_codex_compatibility_enabled;
     }
+    if (localInputs.type === 24) {
+      settings.remove_gif_images_enabled =
+        localInputs.remove_gif_images_enabled === true;
+    } else if ('remove_gif_images_enabled' in settings) {
+      delete settings.remove_gif_images_enabled;
+    }
     if (isRoot()) {
       settings.conversation_log_enabled =
         localInputs.conversation_log_enabled === true;
@@ -1930,6 +1941,7 @@ const EditChannelModal = (props) => {
     delete localInputs.disable_store;
     delete localInputs.allow_safety_identifier;
     delete localInputs.allow_include_obfuscation;
+    delete localInputs.remove_gif_images_enabled;
     delete localInputs.conversation_log_enabled;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
@@ -2753,6 +2765,24 @@ const EditChannelModal = (props) => {
 
                   {inputs.type === 48 && (
                     <Form.Switch field='xai_codex_compatibility_enabled' label={t('xAI Codex 兼容模式（按 User-Agent 触发）')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('xai_codex_compatibility_enabled', value)} extraText={t('开启后，仅当入口请求 User-Agent 包含 codex 时，将 Codex Responses 请求映射为 xAI 兼容格式；无法映射的字段会被清除。')} />
+                  )}
+
+                  {inputs.type === 24 && (
+                    <Form.Switch
+                      field='remove_gif_images_enabled'
+                      label={t('移除 image/gif 图片')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'remove_gif_images_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        'Gemini 不支持 image/gif 输入。开启后将在发送前移除 GIF；此设置优先于请求体透传。',
+                      )}
+                    />
                   )}
 
                   {inputs.type === 1 && (

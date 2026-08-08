@@ -61,3 +61,34 @@ func TestChannelRPMProtectionSettingsValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestChannelOtherSettingsRemoveGifImagesDefaultsOn(t *testing.T) {
+	var settings dto.ChannelOtherSettings
+	require.NoError(t, common.Unmarshal([]byte(`{}`), &settings))
+	require.Nil(t, settings.RemoveGifImagesEnabled)
+	require.True(t, settings.ShouldRemoveGifImages())
+}
+
+func TestChannelOtherSettingsRemoveGifImagesExplicitValueRoundTrip(t *testing.T) {
+	tests := []struct {
+		name    string
+		payload string
+		want    bool
+	}{
+		{name: "enabled", payload: `{"remove_gif_images_enabled":true}`, want: true},
+		{name: "disabled", payload: `{"remove_gif_images_enabled":false}`, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var settings dto.ChannelOtherSettings
+			require.NoError(t, common.Unmarshal([]byte(tt.payload), &settings))
+			require.NotNil(t, settings.RemoveGifImagesEnabled)
+			require.Equal(t, tt.want, settings.ShouldRemoveGifImages())
+
+			data, err := common.Marshal(settings)
+			require.NoError(t, err)
+			require.JSONEq(t, tt.payload, string(data))
+		})
+	}
+}

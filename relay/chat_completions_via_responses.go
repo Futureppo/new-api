@@ -87,6 +87,12 @@ func shouldPassThroughTextRequest(info *relaycommon.RelayInfo, globalEnabled boo
 	if info != nil && (info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo) {
 		return false
 	}
+	// Gemini does not support image/gif inputs. When the per-channel filter is
+	// enabled, conversion must take precedence over byte-for-byte pass-through
+	// so the unsupported parts can be removed before the upstream request.
+	if info != nil && info.ChannelType == constant.ChannelTypeGemini && info.ChannelOtherSettings.ShouldRemoveGifImages() {
+		return false
+	}
 	return globalEnabled || (info != nil && info.ChannelSetting.PassThroughBodyEnabled)
 }
 

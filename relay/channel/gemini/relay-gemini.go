@@ -580,7 +580,13 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 					text = text[closeIdx+1:]
 				}
 				// 添加剩余文本或原始文本（如果没有找到 markdown 图片）
-				if !hasMarkdownImage {
+				if hasMarkdownImage {
+					if text != "" {
+						parts = append(parts, dto.GeminiPart{
+							Text: text,
+						})
+					}
+				} else {
 					parts = append(parts, dto.GeminiPart{
 						Text: part.Text,
 					})
@@ -596,7 +602,8 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 				}
 
 				// 校验 MimeType 是否在 Gemini 支持的白名单中
-				if _, ok := geminiSupportedMimeTypes[strings.ToLower(mimeType)]; !ok {
+				if _, ok := geminiSupportedMimeTypes[normalizeMimeType(mimeType)]; !ok &&
+					!(isGeminiGifFilterEnabled(info) && isGifMimeType(mimeType)) {
 					return nil, fmt.Errorf("mime type is not supported by Gemini: '%s', url: '%s', supported types are: %v", mimeType, source.GetIdentifier(), getSupportedMimeTypesList())
 				}
 
@@ -639,6 +646,10 @@ func CovertOpenAI2Gemini(c *gin.Context, textRequest dto.GeneralOpenAIRequest, i
 				},
 			},
 		}
+	}
+
+	if err := filterGeminiGifImages(&geminiRequest, info); err != nil {
+		return nil, err
 	}
 
 	return &geminiRequest, nil

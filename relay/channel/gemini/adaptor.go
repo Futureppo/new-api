@@ -40,6 +40,9 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 			}
 		}
 	}
+	if err := filterGeminiGifImages(request, info); err != nil {
+		return nil, err
+	}
 	return request, nil
 }
 
