@@ -206,8 +206,8 @@ const Setting = () => {
   }, [location.search]);
   return (
     <div className='mt-[60px] px-2'>
-      <Layout>
-        <Layout.Content>
+      <Layout className='site-background-page-surface'>
+        <Layout.Content className='site-background-page-surface'>
           <Tabs
             type='card'
             collapsible

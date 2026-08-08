@@ -32,6 +32,11 @@ import { API, showError, showSuccess, timestamp2string } from '../../helpers';
 import { useTranslation } from 'react-i18next';
 import { StatusContext } from '../../context/Status';
 import Text from '@douyinfe/semi-ui/lib/es/typography/text';
+import SiteBackgroundSetting from './SiteBackgroundSetting';
+import {
+  DEFAULT_SITE_BACKGROUND_CONFIG,
+  SITE_BACKGROUND_OPTION_KEY,
+} from '../../services/siteBackground';
 
 const LEGAL_USER_AGREEMENT_KEY = 'legal.user_agreement';
 const LEGAL_PRIVACY_POLICY_KEY = 'legal.privacy_policy';
@@ -238,6 +243,9 @@ const OtherSetting = () => {
     [LEGAL_PRIVACY_POLICY_KEY]: '',
     SystemName: '',
     Logo: '',
+    [SITE_BACKGROUND_OPTION_KEY]: JSON.stringify(
+      DEFAULT_SITE_BACKGROUND_CONFIG,
+    ),
     Footer: '',
     About: '',
     HomePageContent: '',
@@ -650,6 +658,15 @@ const OtherSetting = () => {
               <Button onClick={submitLogo} loading={loadingInput['Logo']}>
                 {t('设置 Logo')}
               </Button>
+              <SiteBackgroundSetting
+                value={inputs[SITE_BACKGROUND_OPTION_KEY]}
+                onSaved={(value) =>
+                  setInputs((current) => ({
+                    ...current,
+                    [SITE_BACKGROUND_OPTION_KEY]: value,
+                  }))
+                }
+              />
               <Form.TextArea
                 label={t('首页内容')}
                 placeholder={t(

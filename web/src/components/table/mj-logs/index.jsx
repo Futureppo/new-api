@@ -39,7 +39,7 @@ const MjLogsPage = () => {
       <ColumnSelectorModal {...mjLogsData} />
       <ContentModal {...mjLogsData} />
 
-      <Layout>
+      <Layout className='site-background-page-surface'>
         <CardPro
           type='type2'
           statsArea={<MjLogsActions {...mjLogsData} />}

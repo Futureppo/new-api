@@ -43,6 +43,172 @@ body {
   height: 100dvh;
 }
 
+.site-background-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: var(--semi-color-bg-0);
+}
+
+.site-background-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-position: center;
+  opacity: 0;
+  transition: opacity 300ms ease;
+}
+
+.site-background-image-loaded {
+  opacity: 1;
+}
+
+.site-background-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, var(--site-background-overlay-opacity, 0.25));
+}
+
+body[theme-mode='dark'] .site-background-overlay {
+  background: rgba(0, 0, 0, var(--site-background-overlay-opacity, 0.25));
+}
+
+.app-layout.site-background-active {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+}
+
+.site-background-active .site-background-shell,
+.site-background-active .site-background-main,
+.site-background-active .site-background-content,
+.site-background-active .site-background-page-surface {
+  background: transparent !important;
+}
+
+.site-background-settings {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--semi-color-border);
+}
+
+.site-background-setting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.site-background-setting-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.site-background-source-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 20px 0 10px;
+}
+
+.site-background-source-card {
+  width: 100%;
+  background: var(--semi-color-bg-1);
+}
+
+.site-background-source-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.site-background-source-type {
+  width: 160px;
+  flex: 0 0 160px;
+}
+
+.site-background-source-url,
+.site-background-source-path {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+.site-background-privacy-banner,
+.site-background-preview-section {
+  margin-top: 16px;
+}
+
+.site-background-preview {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  aspect-ratio: 16 / 9;
+  margin: 8px 0 16px;
+  overflow: hidden;
+  border: 1px solid var(--semi-color-border);
+  border-radius: 8px;
+  background: var(--semi-color-bg-0);
+}
+
+.site-background-preview > .semi-spin,
+.site-background-preview > .semi-spin > .semi-spin-children {
+  width: 100%;
+  height: 100%;
+}
+
+.site-background-preview img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-position: center;
+}
+
+.site-background-preview-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, var(--site-background-overlay-opacity, 0.25));
+  pointer-events: none;
+}
+
+body[theme-mode='dark'] .site-background-preview-overlay {
+  background: rgba(0, 0, 0, var(--site-background-overlay-opacity, 0.25));
+}
+
+.site-background-preview-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  color: var(--semi-color-text-2);
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .site-background-setting-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .site-background-source-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .site-background-source-type,
+  .site-background-source-url,
+  .site-background-source-path {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+}
+
 .app-sider {
   height: calc(100vh - 64px);
   height: calc(100dvh - 64px);

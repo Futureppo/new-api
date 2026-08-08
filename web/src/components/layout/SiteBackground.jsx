@@ -1,0 +1,82 @@
+/*
+Copyright (C) 2025 QuantumNous
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+For commercial licensing, please contact support@quantumnous.com
+*/
+
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  normalizeSiteBackgroundConfig,
+  resolveSiteBackground,
+} from '../../services/siteBackground';
+
+const SiteBackground = ({ config }) => {
+  const normalizedConfig = useMemo(
+    () => normalizeSiteBackgroundConfig(config),
+    [config],
+  );
+  const sourceSignature = useMemo(
+    () => JSON.stringify(normalizedConfig.sources),
+    [normalizedConfig.sources],
+  );
+  const [imageURL, setImageURL] = useState('');
+
+  useEffect(() => {
+    if (!normalizedConfig.enabled) {
+      setImageURL('');
+      return undefined;
+    }
+
+    const controller = new AbortController();
+    resolveSiteBackground(normalizedConfig.sources, {
+      signal: controller.signal,
+    })
+      .then(({ url }) => setImageURL(url))
+      .catch((error) => {
+        if (error?.name !== 'AbortError') {
+          console.warn('站点背景加载失败:', error);
+          setImageURL('');
+        }
+      });
+
+    return () => controller.abort();
+  }, [normalizedConfig.enabled, sourceSignature]);
+
+  if (!normalizedConfig.enabled) return null;
+
+  return (
+    <div className='site-background-layer' aria-hidden='true'>
+      {imageURL && (
+        <img
+          className='site-background-image site-background-image-loaded'
+          src={imageURL}
+          alt=''
+          referrerPolicy='no-referrer'
+          style={{ objectFit: normalizedConfig.fit }}
+        />
+      )}
+      <div
+        className='site-background-overlay'
+        style={{
+          '--site-background-overlay-opacity':
+            normalizedConfig.overlay_opacity / 100,
+        }}
+      />
+    </div>
+  );
+};
+
+export default SiteBackground;

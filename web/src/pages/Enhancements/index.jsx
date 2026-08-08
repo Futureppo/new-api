@@ -4968,7 +4968,7 @@ export function ModelStatusPublicPage() {
 
   if (!available && !loading) {
     return (
-      <div className='min-h-screen bg-semi-color-bg-0 px-4 py-10'>
+      <div className='site-background-page-surface min-h-screen bg-semi-color-bg-0 px-4 py-10'>
         <div className='mx-auto max-w-3xl'>
           <Card className='!rounded-lg'>
             <Empty
@@ -4983,7 +4983,7 @@ export function ModelStatusPublicPage() {
   }
 
   return (
-    <div className='min-h-screen bg-semi-color-bg-0 px-4 py-6 md:py-8'>
+    <div className='site-background-page-surface min-h-screen bg-semi-color-bg-0 px-4 py-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-5'>
         <ModelStatusBoard
           statuses={visibleStatuses}

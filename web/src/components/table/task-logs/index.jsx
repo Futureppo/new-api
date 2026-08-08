@@ -58,7 +58,7 @@ const TaskLogsPage = () => {
         imageRecord={taskLogsData.imageRecord}
       />
 
-      <Layout>
+      <Layout className='site-background-page-surface'>
         <CardPro
           type='type2'
           statsArea={<TaskLogsActions {...taskLogsData} />}

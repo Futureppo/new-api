@@ -352,6 +352,15 @@ func UpdateOption(c *gin.Context) {
 			})
 			return
 		}
+	case "site_background.config":
+		err = system_setting.ValidateSiteBackgroundConfig(option.Value.(string))
+		if err != nil {
+			c.JSON(http.StatusOK, gin.H{
+				"success": false,
+				"message": err.Error(),
+			})
+			return
+		}
 	}
 	err = model.UpdateOption(option.Key, option.Value.(string))
 	if err != nil {
