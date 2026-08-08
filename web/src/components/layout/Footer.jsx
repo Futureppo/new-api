@@ -23,6 +23,9 @@ import { Typography } from '@douyinfe/semi-ui';
 import { getFooterHTML, getLogo, getSystemName } from '../../helpers';
 import { StatusContext } from '../../context/Status';
 
+const MODIFIED_REPOSITORY_URL = 'https://github.com/Futureppo/new-api';
+const MODIFIED_REPOSITORY_NAME = 'Futureppo/new-api';
+
 const FooterBar = () => {
   const { t } = useTranslation();
   const [footer, setFooter] = useState(getFooterHTML());
@@ -195,18 +198,34 @@ const FooterBar = () => {
             </Typography.Text>
           </div>
 
-          <div className='text-sm'>
-            <span className='!text-semi-color-text-1'>
-              {t('设计与开发由')}{' '}
+          <div className='text-sm flex flex-wrap items-center justify-center gap-x-2 gap-y-1'>
+            <span className='whitespace-nowrap'>
+              <span className='!text-semi-color-text-1'>
+                {t('原设计开发')}{' '}
+              </span>
+              <a
+                href='https://github.com/QuantumNous/new-api'
+                target='_blank'
+                rel='noopener noreferrer'
+                className='!text-semi-color-primary font-medium'
+              >
+                New API
+              </a>
             </span>
-            <a
-              href='https://github.com/QuantumNous/new-api'
-              target='_blank'
-              rel='noopener noreferrer'
-              className='!text-semi-color-primary font-medium'
-            >
-              New API
-            </a>
+            <span className='!text-semi-color-text-2' aria-hidden='true'>
+              ·
+            </span>
+            <span className='whitespace-nowrap'>
+              <span className='!text-semi-color-text-1'>{t('二开地址')}：</span>
+              <a
+                href={MODIFIED_REPOSITORY_URL}
+                target='_blank'
+                rel='noopener noreferrer'
+                className='!text-semi-color-primary font-medium'
+              >
+                {MODIFIED_REPOSITORY_NAME}
+              </a>
+            </span>
           </div>
         </div>
       </footer>
@@ -227,18 +246,36 @@ const FooterBar = () => {
               className='custom-footer na-cb6feafeb3990c78 text-sm !text-semi-color-text-1'
               dangerouslySetInnerHTML={{ __html: footer }}
             ></div>
-            <div className='text-sm flex-shrink-0'>
-              <span className='!text-semi-color-text-1'>
-                {t('设计与开发由')}{' '}
+            <div className='text-sm flex-shrink-0 flex flex-wrap items-center justify-center gap-x-2 gap-y-1'>
+              <span className='whitespace-nowrap'>
+                <span className='!text-semi-color-text-1'>
+                  {t('原设计开发')}{' '}
+                </span>
+                <a
+                  href='https://github.com/QuantumNous/new-api'
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='!text-semi-color-primary font-medium'
+                >
+                  New API
+                </a>
               </span>
-              <a
-                href='https://github.com/QuantumNous/new-api'
-                target='_blank'
-                rel='noopener noreferrer'
-                className='!text-semi-color-primary font-medium'
-              >
-                New API
-              </a>
+              <span className='!text-semi-color-text-2' aria-hidden='true'>
+                ·
+              </span>
+              <span className='whitespace-nowrap'>
+                <span className='!text-semi-color-text-1'>
+                  {t('二开地址')}：
+                </span>
+                <a
+                  href={MODIFIED_REPOSITORY_URL}
+                  target='_blank'
+                  rel='noopener noreferrer'
+                  className='!text-semi-color-primary font-medium'
+                >
+                  {MODIFIED_REPOSITORY_NAME}
+                </a>
+              </span>
             </div>
           </div>
         </footer>
