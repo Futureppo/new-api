@@ -46,6 +46,21 @@ import {
 
 const JSON_PATH_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
 
+const parseDraftSource = (source) => {
+  const weight = Number(source?.weight);
+  return {
+    type: Object.values(SITE_BACKGROUND_SOURCE_TYPES).includes(source?.type)
+      ? source.type
+      : SITE_BACKGROUND_SOURCE_TYPES.IMAGE_URL,
+    url: String(source?.url || ''),
+    json_path: String(source?.json_path || ''),
+    enabled: source?.enabled !== false,
+    weight: Number.isFinite(weight)
+      ? Math.min(100, Math.max(1, Math.round(weight)))
+      : 1,
+  };
+};
+
 const parseDraftConfig = (value) => {
   let parsed = value;
   if (typeof value === 'string') {
@@ -72,15 +87,9 @@ const parseDraftConfig = (value) => {
       ? Math.min(100, Math.max(0, Math.round(glassOpacity)))
       : DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity,
     sources: Array.isArray(parsed.sources)
-      ? parsed.sources.slice(0, SITE_BACKGROUND_MAX_SOURCES).map((source) => ({
-          type: Object.values(SITE_BACKGROUND_SOURCE_TYPES).includes(
-            source?.type,
-          )
-            ? source.type
-            : SITE_BACKGROUND_SOURCE_TYPES.IMAGE_URL,
-          url: String(source?.url || ''),
-          json_path: String(source?.json_path || ''),
-        }))
+      ? parsed.sources
+          .slice(0, SITE_BACKGROUND_MAX_SOURCES)
+          .map(parseDraftSource)
       : [],
   };
 };
@@ -94,6 +103,8 @@ const cleanDraftConfig = (draft) => ({
   sources: draft.sources.map((source) => ({
     type: source.type,
     url: source.url.trim(),
+    enabled: source.enabled !== false,
+    weight: Number(source.weight),
     ...(source.type === SITE_BACKGROUND_SOURCE_TYPES.JSON_API
       ? { json_path: source.json_path.trim() }
       : {}),
@@ -121,12 +132,19 @@ const validateDraftConfig = (config, t) => {
   if (config.sources.length > SITE_BACKGROUND_MAX_SOURCES) {
     return t('背景图片来源不能超过 20 个');
   }
-  if (config.enabled && config.sources.length === 0) {
-    return t('启用站点背景前请至少添加一个图片来源');
+  if (config.enabled && !config.sources.some((source) => source.enabled)) {
+    return t('启用站点背景前请至少启用一个图片来源');
   }
 
   for (let index = 0; index < config.sources.length; index += 1) {
     const source = config.sources[index];
+    if (
+      !Number.isInteger(source.weight) ||
+      source.weight < 1 ||
+      source.weight > 100
+    ) {
+      return t('随机权重必须是 1 到 100 之间的整数');
+    }
     if (!isAllowedSiteBackgroundURL(source.url)) {
       return t('第 {{index}} 个背景图片地址无效', { index: index + 1 });
     }
@@ -161,8 +179,9 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
   useEffect(() => {
     let controller;
     let active = true;
-    const usableSources = draft.sources.filter((source) =>
-      isAllowedSiteBackgroundURL(source.url),
+    const usableSources = draft.sources.filter(
+      (source) =>
+        source.enabled && isAllowedSiteBackgroundURL(source.url),
     );
 
     if (usableSources.length === 0) {
@@ -222,6 +241,8 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
           type: SITE_BACKGROUND_SOURCE_TYPES.IMAGE_URL,
           url: '',
           json_path: '',
+          enabled: true,
+          weight: 1,
         },
       ],
     });
@@ -376,6 +397,14 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
             bodyStyle={{ padding: 12 }}
           >
             <div className='site-background-source-row'>
+              <div className='site-background-source-enabled'>
+                <Typography.Text>{t('启用来源')}</Typography.Text>
+                <Switch
+                  checked={source.enabled}
+                  aria-label={t('启用来源')}
+                  onChange={(enabled) => updateSource(index, { enabled })}
+                />
+              </div>
               <Select
                 value={source.type}
                 optionList={sourceTypeOptions}
@@ -409,6 +438,17 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
                   className='site-background-source-path'
                 />
               )}
+              <InputNumber
+                value={source.weight}
+                min={1}
+                max={100}
+                step={1}
+                prefix={t('随机权重')}
+                aria-label={t('随机权重')}
+                disabled={!source.enabled}
+                onChange={(weight) => updateSource(index, { weight })}
+                className='site-background-source-weight'
+              />
               <Button
                 type='danger'
                 theme='borderless'

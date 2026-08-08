@@ -28,6 +28,21 @@ type SiteBackgroundSource struct {
 	Type     string `json:"type"`
 	URL      string `json:"url"`
 	JSONPath string `json:"json_path,omitempty"`
+	Enabled  bool   `json:"enabled"`
+	Weight   int    `json:"weight"`
+}
+
+func (source *SiteBackgroundSource) UnmarshalJSON(data []byte) error {
+	type siteBackgroundSourceAlias SiteBackgroundSource
+	decoded := siteBackgroundSourceAlias{
+		Enabled: true,
+		Weight:  1,
+	}
+	if err := common.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*source = SiteBackgroundSource(decoded)
+	return nil
 }
 
 type SiteBackgroundSettings struct {
@@ -113,19 +128,26 @@ func ValidateSiteBackgroundSettings(settings SiteBackgroundSettings) error {
 	if len(settings.Sources) > MaxSiteBackgroundSources {
 		return fmt.Errorf("站点背景来源不能超过 %d 个", MaxSiteBackgroundSources)
 	}
-	if settings.Enabled && len(settings.Sources) == 0 {
-		return fmt.Errorf("启用站点背景前请至少添加一个图片来源")
-	}
-
+	enabledSourceCount := 0
 	for index, source := range settings.Sources {
 		if err := validateSiteBackgroundSource(source); err != nil {
 			return fmt.Errorf("第 %d 个站点背景来源无效: %w", index+1, err)
 		}
+		if source.Enabled {
+			enabledSourceCount++
+		}
+	}
+	if settings.Enabled && enabledSourceCount == 0 {
+		return fmt.Errorf("启用站点背景前请至少启用一个图片来源")
 	}
 	return nil
 }
 
 func validateSiteBackgroundSource(source SiteBackgroundSource) error {
+	if source.Weight < 1 || source.Weight > 100 {
+		return fmt.Errorf("随机权重必须在 1 到 100 之间")
+	}
+
 	switch source.Type {
 	case SiteBackgroundSourceImageURL, SiteBackgroundSourceImageAPI, SiteBackgroundSourceJSONAPI:
 	default:

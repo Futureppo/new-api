@@ -74,6 +74,7 @@ const normalizeSource = (source) => {
   const type = String(source.type || '').trim();
   const url = String(source.url || '').trim();
   const jsonPath = String(source.json_path || '').trim();
+  const parsedWeight = Number(source.weight);
   if (!ALLOWED_SOURCE_TYPES.has(type) || !isAllowedSiteBackgroundURL(url)) {
     return null;
   }
@@ -84,6 +85,10 @@ const normalizeSource = (source) => {
   return {
     type,
     url,
+    enabled: source.enabled !== false,
+    weight: Number.isFinite(parsedWeight)
+      ? Math.min(100, Math.max(1, Math.round(parsedWeight)))
+      : 1,
     ...(type === SITE_BACKGROUND_SOURCE_TYPES.JSON_API
       ? { json_path: jsonPath }
       : {}),
@@ -111,7 +116,8 @@ export const normalizeSiteBackgroundConfig = (value) => {
     : [];
 
   return {
-    enabled: parsed.enabled === true && sources.length > 0,
+    enabled:
+      parsed.enabled === true && sources.some((source) => source.enabled),
     fit,
     overlay_opacity: overlayOpacity,
     glass_enabled: parsed.glass_enabled === true,
@@ -120,12 +126,32 @@ export const normalizeSiteBackgroundConfig = (value) => {
   };
 };
 
-const shuffled = (values) => {
-  const result = [...values];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const target = Math.floor(Math.random() * (index + 1));
-    [result[index], result[target]] = [result[target], result[index]];
+export const orderSiteBackgroundSources = (
+  values,
+  random = Math.random,
+) => {
+  const pool = [...values];
+  const result = [];
+
+  while (pool.length > 0) {
+    const totalWeight = pool.reduce(
+      (total, source) => total + Math.max(1, Number(source.weight) || 1),
+      0,
+    );
+    let target = random() * totalWeight;
+    let selectedIndex = pool.length - 1;
+
+    for (let index = 0; index < pool.length; index += 1) {
+      target -= Math.max(1, Number(pool[index].weight) || 1);
+      if (target < 0) {
+        selectedIndex = index;
+        break;
+      }
+    }
+
+    result.push(pool.splice(selectedIndex, 1)[0]);
   }
+
   return result;
 };
 
@@ -247,11 +273,13 @@ export const preloadSiteBackgroundImage = (url, signal) =>
 export const resolveSiteBackground = async (sources, options = {}) => {
   const { signal } = options;
   const normalizedSources = Array.isArray(sources)
-    ? sources.map(normalizeSource).filter(Boolean)
+    ? sources
+        .map(normalizeSource)
+        .filter((source) => source?.enabled === true)
     : [];
   let lastError;
 
-  for (const source of shuffled(normalizedSources)) {
+  for (const source of orderSiteBackgroundSources(normalizedSources)) {
     if (signal?.aborted) {
       throw new DOMException('Aborted', 'AbortError');
     }

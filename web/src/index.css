@@ -198,6 +198,19 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   flex: 0 0 160px;
 }
 
+.site-background-source-enabled {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.site-background-source-weight {
+  width: 160px;
+  flex: 0 0 160px;
+}
+
 .site-background-source-url,
 .site-background-source-path {
   min-width: 0;
@@ -312,9 +325,15 @@ body[theme-mode='dark'] .site-background-preview-overlay {
 
   .site-background-source-type,
   .site-background-source-url,
-  .site-background-source-path {
+  .site-background-source-path,
+  .site-background-source-weight {
     width: 100%;
     flex: 1 1 auto;
+  }
+
+  .site-background-source-enabled {
+    justify-content: space-between;
+    width: 100%;
   }
 }
 

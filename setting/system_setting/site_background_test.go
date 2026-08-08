@@ -18,6 +18,8 @@ func validSiteBackgroundSettings() SiteBackgroundSettings {
 				Type:     SiteBackgroundSourceJSONAPI,
 				URL:      "https://api.nekosia.cat/api/v1/images/catgirl",
 				JSONPath: "image.compressed.url",
+				Enabled:  true,
+				Weight:   1,
 			},
 		},
 	}
@@ -66,11 +68,13 @@ func TestValidateSiteBackgroundSettings(t *testing.T) {
 		{name: "overlay upper boundary", mutate: func(settings *SiteBackgroundSettings) { settings.OverlayOpacity = 80 }},
 		{name: "glass opacity lower boundary", mutate: func(settings *SiteBackgroundSettings) { settings.GlassOpacity = 0 }},
 		{name: "glass opacity upper boundary", mutate: func(settings *SiteBackgroundSettings) { settings.GlassOpacity = 100 }},
+		{name: "source weight lower boundary", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Weight = 1 }},
+		{name: "source weight upper boundary", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Weight = 100 }},
 		{name: "root relative image", mutate: func(settings *SiteBackgroundSettings) {
-			settings.Sources = []SiteBackgroundSource{{Type: SiteBackgroundSourceImageURL, URL: "/background.jpg"}}
+			settings.Sources = []SiteBackgroundSource{{Type: SiteBackgroundSourceImageURL, URL: "/background.jpg", Enabled: true, Weight: 1}}
 		}},
 		{name: "direct image api", mutate: func(settings *SiteBackgroundSettings) {
-			settings.Sources = []SiteBackgroundSource{{Type: SiteBackgroundSourceImageAPI, URL: "https://example.com/random"}}
+			settings.Sources = []SiteBackgroundSource{{Type: SiteBackgroundSourceImageAPI, URL: "https://example.com/random", Enabled: true, Weight: 1}}
 		}},
 		{name: "empty root json path", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].JSONPath = "" }},
 		{name: "disabled without sources", mutate: func(settings *SiteBackgroundSettings) {
@@ -82,11 +86,14 @@ func TestValidateSiteBackgroundSettings(t *testing.T) {
 		{name: "overlay above range", mutate: func(settings *SiteBackgroundSettings) { settings.OverlayOpacity = 81 }, wantErr: true},
 		{name: "glass opacity below range", mutate: func(settings *SiteBackgroundSettings) { settings.GlassOpacity = -1 }, wantErr: true},
 		{name: "glass opacity above range", mutate: func(settings *SiteBackgroundSettings) { settings.GlassOpacity = 101 }, wantErr: true},
+		{name: "source weight below range", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Weight = 0 }, wantErr: true},
+		{name: "source weight above range", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Weight = 101 }, wantErr: true},
 		{name: "enabled without sources", mutate: func(settings *SiteBackgroundSettings) { settings.Sources = nil }, wantErr: true},
+		{name: "enabled without active sources", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Enabled = false }, wantErr: true},
 		{name: "too many sources", mutate: func(settings *SiteBackgroundSettings) {
 			settings.Sources = make([]SiteBackgroundSource, MaxSiteBackgroundSources+1)
 			for index := range settings.Sources {
-				settings.Sources[index] = SiteBackgroundSource{Type: SiteBackgroundSourceImageURL, URL: fmt.Sprintf("https://example.com/%d.jpg", index)}
+				settings.Sources[index] = SiteBackgroundSource{Type: SiteBackgroundSourceImageURL, URL: fmt.Sprintf("https://example.com/%d.jpg", index), Enabled: true, Weight: 1}
 			}
 		}, wantErr: true},
 		{name: "invalid source type", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Type = "other" }, wantErr: true},
@@ -115,7 +122,7 @@ func TestValidateSiteBackgroundSettings(t *testing.T) {
 }
 
 func TestValidateSiteBackgroundConfig(t *testing.T) {
-	validJSON := `{"enabled":true,"fit":"cover","overlay_opacity":25,"glass_enabled":true,"glass_opacity":72,"sources":[{"type":"json_api","url":"https://api.nekosia.cat/api/v1/images/catgirl","json_path":"image.compressed.url"}]}`
+	validJSON := `{"enabled":true,"fit":"cover","overlay_opacity":25,"glass_enabled":true,"glass_opacity":72,"sources":[{"type":"json_api","url":"https://api.nekosia.cat/api/v1/images/catgirl","json_path":"image.compressed.url","enabled":true,"weight":3}]}`
 	if err := ValidateSiteBackgroundConfig(validJSON); err != nil {
 		t.Fatalf("valid JSON rejected: %v", err)
 	}
@@ -125,8 +132,8 @@ func TestValidateSiteBackgroundConfig(t *testing.T) {
 	}
 }
 
-func TestSiteBackgroundLegacyConfigUsesGlassDefaults(t *testing.T) {
-	legacyJSON := []byte(`{"enabled":false,"fit":"cover","overlay_opacity":25,"sources":[]}`)
+func TestSiteBackgroundLegacyConfigUsesNewDefaults(t *testing.T) {
+	legacyJSON := []byte(`{"enabled":true,"fit":"cover","overlay_opacity":25,"sources":[{"type":"image_url","url":"https://example.com/background.jpg"}]}`)
 	var settings SiteBackgroundSettings
 	if err := settings.UnmarshalJSON(legacyJSON); err != nil {
 		t.Fatalf("legacy config rejected: %v", err)
@@ -136,5 +143,14 @@ func TestSiteBackgroundLegacyConfigUsesGlassDefaults(t *testing.T) {
 	}
 	if settings.GlassOpacity != 72 {
 		t.Fatalf("legacy glass opacity = %d, want 72", settings.GlassOpacity)
+	}
+	if len(settings.Sources) != 1 {
+		t.Fatalf("legacy sources length = %d, want 1", len(settings.Sources))
+	}
+	if !settings.Sources[0].Enabled {
+		t.Fatal("legacy source must remain enabled")
+	}
+	if settings.Sources[0].Weight != 1 {
+		t.Fatalf("legacy source weight = %d, want 1", settings.Sources[0].Weight)
 	}
 }
