@@ -1221,10 +1221,12 @@ const EditChannelModal = (props) => {
         return;
       }
       setGroupOptions(
-        res.data.data.map((group) => ({
-          label: group,
-          value: group,
-        })),
+        res.data.data
+          .map((group) => ({
+            label: group,
+            value: group,
+          }))
+          .sort((a, b) => a.value.localeCompare(b.value)),
       );
     } catch (error) {
       showError(error.message);
