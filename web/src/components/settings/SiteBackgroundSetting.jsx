@@ -58,6 +58,7 @@ const parseDraftConfig = (value) => {
   if (!parsed || typeof parsed !== 'object') parsed = {};
 
   const opacity = Number(parsed.overlay_opacity);
+  const glassOpacity = Number(parsed.glass_opacity);
   return {
     enabled: parsed.enabled === true,
     fit: SITE_BACKGROUND_FIT_MODES.includes(parsed.fit)
@@ -66,6 +67,10 @@ const parseDraftConfig = (value) => {
     overlay_opacity: Number.isFinite(opacity)
       ? Math.min(80, Math.max(0, Math.round(opacity)))
       : DEFAULT_SITE_BACKGROUND_CONFIG.overlay_opacity,
+    glass_enabled: parsed.glass_enabled === true,
+    glass_opacity: Number.isFinite(glassOpacity)
+      ? Math.min(100, Math.max(0, Math.round(glassOpacity)))
+      : DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity,
     sources: Array.isArray(parsed.sources)
       ? parsed.sources.slice(0, SITE_BACKGROUND_MAX_SOURCES).map((source) => ({
           type: Object.values(SITE_BACKGROUND_SOURCE_TYPES).includes(
@@ -84,6 +89,8 @@ const cleanDraftConfig = (draft) => ({
   enabled: draft.enabled === true,
   fit: draft.fit,
   overlay_opacity: Number(draft.overlay_opacity),
+  glass_enabled: draft.glass_enabled === true,
+  glass_opacity: Number(draft.glass_opacity),
   sources: draft.sources.map((source) => ({
     type: source.type,
     url: source.url.trim(),
@@ -103,6 +110,13 @@ const validateDraftConfig = (config, t) => {
     config.overlay_opacity > 80
   ) {
     return t('背景遮罩强度必须是 0 到 80 之间的整数');
+  }
+  if (
+    !Number.isInteger(config.glass_opacity) ||
+    config.glass_opacity < 0 ||
+    config.glass_opacity > 100
+  ) {
+    return t('玻璃不透明度必须是 0 到 100 之间的整数');
   }
   if (config.sources.length > SITE_BACKGROUND_MAX_SOURCES) {
     return t('背景图片来源不能超过 20 个');
@@ -318,6 +332,35 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
             style={{ width: '100%' }}
           />
         </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('启用液态玻璃')}</Typography.Text>
+          <Switch
+            checked={draft.glass_enabled}
+            aria-label={t('启用液态玻璃')}
+            onChange={(glassEnabled) =>
+              updateDraft({ glass_enabled: glassEnabled })
+            }
+          />
+        </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('玻璃不透明度')}</Typography.Text>
+          <InputNumber
+            value={draft.glass_opacity}
+            aria-label={t('玻璃不透明度')}
+            min={0}
+            max={100}
+            step={1}
+            suffix='%'
+            disabled={!draft.glass_enabled}
+            onChange={(glassOpacity) =>
+              updateDraft({ glass_opacity: glassOpacity })
+            }
+            style={{ width: '100%' }}
+          />
+          <Typography.Text type='tertiary'>
+            {t('数值越低越透明')}
+          </Typography.Text>
+        </div>
       </div>
 
       <div className='site-background-source-header'>
@@ -417,6 +460,18 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
                       Number(draft.overlay_opacity) / 100,
                   }}
                 />
+                {draft.glass_enabled ? (
+                  <div
+                    className='site-background-preview-glass'
+                    style={{
+                      '--site-background-glass-opacity': `${Number(
+                        draft.glass_opacity,
+                      )}%`,
+                    }}
+                  >
+                    {t('液态玻璃预览')}
+                  </div>
+                ) : null}
               </>
             ) : (
               <div className='site-background-preview-empty'>

@@ -55,6 +55,20 @@ const PageLayout = () => {
     statusState?.status?.site_background,
   );
   const siteBackgroundActive = siteBackgroundConfig.enabled;
+  const siteBackgroundGlassActive =
+    siteBackgroundActive && siteBackgroundConfig.glass_enabled;
+  const appLayoutClassName = [
+    'app-layout',
+    siteBackgroundActive ? 'site-background-active' : '',
+    siteBackgroundGlassActive ? 'site-background-glass' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const siteBackgroundGlassStyle = siteBackgroundGlassActive
+    ? {
+        '--site-background-glass-opacity': `${siteBackgroundConfig.glass_opacity}%`,
+      }
+    : {};
 
   const cardProPages = [
     '/console/channel',
@@ -158,8 +172,8 @@ const PageLayout = () => {
       <>
         <SiteBackground config={siteBackgroundConfig} />
         <Layout
-          className={`app-layout ${siteBackgroundActive ? 'site-background-active' : ''}`}
-          style={{ minHeight: '100vh' }}
+          className={appLayoutClassName}
+          style={{ minHeight: '100vh', ...siteBackgroundGlassStyle }}
         >
           <Content
             className='site-background-content'
@@ -179,11 +193,12 @@ const PageLayout = () => {
     <>
       <SiteBackground config={siteBackgroundConfig} />
       <Layout
-        className={`app-layout ${siteBackgroundActive ? 'site-background-active' : ''}`}
+        className={appLayoutClassName}
         style={{
           display: 'flex',
           flexDirection: 'column',
           overflow: isMobile ? 'visible' : 'hidden',
+          ...siteBackgroundGlassStyle,
         }}
       >
         <Header

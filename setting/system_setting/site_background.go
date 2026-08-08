@@ -34,6 +34,8 @@ type SiteBackgroundSettings struct {
 	Enabled        bool                   `json:"enabled"`
 	Fit            string                 `json:"fit"`
 	OverlayOpacity int                    `json:"overlay_opacity"`
+	GlassEnabled   bool                   `json:"glass_enabled"`
+	GlassOpacity   int                    `json:"glass_opacity"`
 	Sources        []SiteBackgroundSource `json:"sources"`
 }
 
@@ -54,8 +56,27 @@ func DefaultSiteBackgroundSettings() SiteBackgroundSettings {
 		Enabled:        false,
 		Fit:            SiteBackgroundFitCover,
 		OverlayOpacity: 25,
+		GlassEnabled:   false,
+		GlassOpacity:   72,
 		Sources:        []SiteBackgroundSource{},
 	}
+}
+
+func (settings *SiteBackgroundSettings) UnmarshalJSON(data []byte) error {
+	type siteBackgroundSettingsAlias SiteBackgroundSettings
+	var decoded siteBackgroundSettingsAlias
+	if err := common.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]any
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	if _, exists := fields["glass_opacity"]; !exists {
+		decoded.GlassOpacity = DefaultSiteBackgroundSettings().GlassOpacity
+	}
+	*settings = SiteBackgroundSettings(decoded)
+	return nil
 }
 
 func GetSiteBackgroundSettings() SiteBackgroundSettings {
@@ -84,6 +105,9 @@ func ValidateSiteBackgroundSettings(settings SiteBackgroundSettings) error {
 
 	if settings.OverlayOpacity < 0 || settings.OverlayOpacity > 80 {
 		return fmt.Errorf("站点背景遮罩强度必须在 0 到 80 之间")
+	}
+	if settings.GlassOpacity < 0 || settings.GlassOpacity > 100 {
+		return fmt.Errorf("液态玻璃不透明度必须在 0 到 100 之间")
 	}
 
 	if len(settings.Sources) > MaxSiteBackgroundSources {

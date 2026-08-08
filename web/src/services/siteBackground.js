@@ -32,6 +32,8 @@ export const DEFAULT_SITE_BACKGROUND_CONFIG = Object.freeze({
   enabled: false,
   fit: 'cover',
   overlay_opacity: 25,
+  glass_enabled: false,
+  glass_opacity: 72,
   sources: [],
 });
 
@@ -97,6 +99,10 @@ export const normalizeSiteBackgroundConfig = (value) => {
   const overlayOpacity = Number.isFinite(parsedOpacity)
     ? Math.min(80, Math.max(0, Math.round(parsedOpacity)))
     : DEFAULT_SITE_BACKGROUND_CONFIG.overlay_opacity;
+  const parsedGlassOpacity = Number(parsed.glass_opacity);
+  const glassOpacity = Number.isFinite(parsedGlassOpacity)
+    ? Math.min(100, Math.max(0, Math.round(parsedGlassOpacity)))
+    : DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity;
   const sources = Array.isArray(parsed.sources)
     ? parsed.sources
         .slice(0, SITE_BACKGROUND_MAX_SOURCES)
@@ -108,6 +114,8 @@ export const normalizeSiteBackgroundConfig = (value) => {
     enabled: parsed.enabled === true && sources.length > 0,
     fit,
     overlay_opacity: overlayOpacity,
+    glass_enabled: parsed.glass_enabled === true,
+    glass_opacity: glassOpacity,
     sources,
   };
 };
