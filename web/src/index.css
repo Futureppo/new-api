@@ -93,12 +93,12 @@ body[theme-mode='dark'] .site-background-overlay {
   --site-background-glass-blur: 18px;
   --site-background-glass-saturation: 145%;
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
-  --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.96);
+  --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.72);
 }
 
 body[theme-mode='dark'] .site-background-glass {
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
-  --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.96);
+  --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.72);
 }
 
 .site-background-glass .semi-card,
@@ -187,11 +187,13 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   background: var(--site-background-fixed-cell-fallback) !important;
   background: color-mix(
     in srgb,
-    var(--semi-color-bg-0) 96%,
+    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
     transparent
   ) !important;
   background-image: none !important;
   background-clip: padding-box !important;
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  backdrop-filter: blur(14px) saturate(120%);
 }
 
 .site-background-glass
@@ -215,12 +217,16 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
     .semi-table-cell-fixed-left,
     .semi-table-cell-fixed-right
   ) {
-  background: color-mix(
+  background-color: color-mix(
     in srgb,
-    var(--semi-color-bg-0) 90%,
-    var(--semi-color-fill-0) 10%
+    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+    transparent
   ) !important;
-  background-image: none !important;
+  background-image: linear-gradient(
+    0deg,
+    color-mix(in srgb, var(--semi-color-fill-0) 35%, transparent),
+    color-mix(in srgb, var(--semi-color-fill-0) 35%, transparent)
+  ) !important;
 }
 
 .site-background-settings {
