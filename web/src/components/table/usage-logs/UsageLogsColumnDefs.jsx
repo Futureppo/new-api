@@ -305,7 +305,7 @@ function renderOutputTokenSpeed(record, other) {
   }
 
   return (
-    <Tag color='white' shape='circle'>
+    <Tag color='cyan' shape='circle'>
       {formatTokenSpeed(speed)}t/s
     </Tag>
   );
@@ -629,7 +629,7 @@ export const getLogsColumns = ({
               )}
             </span>
             {isMultiKey && (
-              <Tag color='white' shape='circle'>
+              <Tag color='grey' shape='circle'>
                 {multiKeyIndex}
               </Tag>
             )}
