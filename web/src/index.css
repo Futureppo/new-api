@@ -93,12 +93,12 @@ body[theme-mode='dark'] .site-background-overlay {
   --site-background-glass-blur: 18px;
   --site-background-glass-saturation: 145%;
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
-  --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.72);
+  --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
 }
 
 body[theme-mode='dark'] .site-background-glass {
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
-  --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.72);
+  --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
 }
 
 .site-background-glass .semi-card,
@@ -187,8 +187,12 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   background: var(--site-background-fixed-cell-fallback) !important;
   background: color-mix(
     in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+    transparent 65%,
+    color-mix(
+      in srgb,
+      var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+      transparent
+    )
   ) !important;
   background-image: none !important;
   background-clip: padding-box !important;
@@ -217,16 +221,31 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
     .semi-table-cell-fixed-left,
     .semi-table-cell-fixed-right
   ) {
+  background-color: var(--site-background-fixed-cell-fallback) !important;
   background-color: color-mix(
     in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+    transparent 65%,
+    color-mix(
+      in srgb,
+      var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+      transparent
+    )
   ) !important;
   background-image: linear-gradient(
     0deg,
     color-mix(in srgb, var(--semi-color-fill-0) 35%, transparent),
     color-mix(in srgb, var(--semi-color-fill-0) 35%, transparent)
   ) !important;
+}
+
+/* 无横向溢出时 Semi 仍会保留 fixed 类，此时无需额外的固定列遮挡层。 */
+.site-background-glass
+  .semi-card
+  .semi-table.semi-table-scroll-position-left.semi-table-scroll-position-right
+  :is(.semi-table-cell-fixed-left, .semi-table-cell-fixed-right) {
+  background: transparent !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 .site-background-settings {
