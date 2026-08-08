@@ -92,6 +92,13 @@ body[theme-mode='dark'] .site-background-overlay {
 .site-background-glass {
   --site-background-glass-blur: 18px;
   --site-background-glass-saturation: 145%;
+  --site-background-table-fallback: rgba(255, 255, 255, 0.86);
+  --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.96);
+}
+
+body[theme-mode='dark'] .site-background-glass {
+  --site-background-table-fallback: rgba(24, 24, 27, 0.86);
+  --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.96);
 }
 
 .site-background-glass .semi-card,
@@ -153,6 +160,67 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
 .site-background-glass .semi-card .semi-table-row-cell,
 .site-background-glass .semi-card .semi-table-row-head {
   background: transparent !important;
+}
+
+/* 大型数据卡片降低模糊扩散，并在用户透明度基础上增加一层主题底色。 */
+.site-background-glass .semi-card.table-scroll-card,
+.site-background-glass .semi-card:has(.semi-table) {
+  background: var(--site-background-table-fallback) !important;
+  background: color-mix(
+    in srgb,
+    var(--semi-color-bg-0) 50%,
+    color-mix(
+      in srgb,
+      var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+      transparent
+    )
+  ) !important;
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  backdrop-filter: blur(8px) saturate(115%);
+}
+
+/* 固定列需要遮住下方滚动内容；同时清除 Semi 固定表头自带的白色伪元素。 */
+.site-background-glass
+  .semi-card
+  .semi-table
+  :is(.semi-table-cell-fixed-left, .semi-table-cell-fixed-right) {
+  background: var(--site-background-fixed-cell-fallback) !important;
+  background: color-mix(
+    in srgb,
+    var(--semi-color-bg-0) 96%,
+    transparent
+  ) !important;
+  background-image: none !important;
+  background-clip: padding-box !important;
+}
+
+.site-background-glass
+  .semi-card
+  .semi-table
+  :is(.semi-table-cell-fixed-left, .semi-table-cell-fixed-right)::before {
+  background: transparent !important;
+  background-image: none !important;
+}
+
+.site-background-glass
+  .semi-card
+  .semi-table-tbody
+  > .semi-table-row:hover
+  > :is(.semi-table-cell-fixed-left, .semi-table-cell-fixed-right),
+.site-background-glass
+  .semi-card
+  .semi-table-thead
+  > .semi-table-row
+  > .semi-table-row-head-clickSort:hover:is(
+    .semi-table-cell-fixed-left,
+    .semi-table-cell-fixed-right
+  ) {
+  background: color-mix(
+    in srgb,
+    var(--semi-color-bg-0) 90%,
+    var(--semi-color-fill-0) 10%
+  ) !important;
+  background-image: none !important;
 }
 
 .site-background-settings {
