@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -20,6 +21,8 @@ import (
 var ipBanPageTemplateSource string
 
 var ipBanPageTemplate = template.Must(template.New("ip-ban-page").Parse(ipBanPageTemplateSource))
+
+const ipBanBackgroundQueryKey = "_ip_ban_background"
 
 type ipBanPageData struct {
 	Lang                 string
@@ -47,8 +50,86 @@ func shouldRenderIPBanPage(c *gin.Context) bool {
 	return strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/html")
 }
 
+func shouldAllowIPBanBackgroundRequest(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
+		return false
+	}
+	if c.Query(ipBanBackgroundQueryKey) != "1" {
+		return false
+	}
+
+	settings := system_setting.GetSiteBackgroundSettings()
+	if !settings.Enabled {
+		return false
+	}
+
+	requestQuery := cloneURLValues(c.Request.URL.Query())
+	requestQuery.Del(ipBanBackgroundQueryKey)
+	for _, source := range settings.Sources {
+		if !source.Enabled {
+			continue
+		}
+		sourceURL, sameOrigin := parseSameOriginBackgroundURL(c, source.URL)
+		if !sameOrigin || sourceURL.Path != c.Request.URL.Path {
+			continue
+		}
+
+		expectedQuery := cloneURLValues(sourceURL.Query())
+		candidateQuery := cloneURLValues(requestQuery)
+		if source.Type == system_setting.SiteBackgroundSourceImageAPI {
+			expectedQuery.Del("_site_background")
+			candidateQuery.Del("_site_background")
+		}
+		if expectedQuery.Encode() == candidateQuery.Encode() {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareIPBanPageBackgroundSettings(c *gin.Context) system_setting.SiteBackgroundSettings {
+	settings := system_setting.GetSiteBackgroundSettings()
+	if !settings.Enabled {
+		return settings
+	}
+
+	for index, source := range settings.Sources {
+		if !source.Enabled {
+			continue
+		}
+		sourceURL, sameOrigin := parseSameOriginBackgroundURL(c, source.URL)
+		if !sameOrigin {
+			continue
+		}
+		query := sourceURL.Query()
+		query.Set(ipBanBackgroundQueryKey, "1")
+		sourceURL.RawQuery = query.Encode()
+		settings.Sources[index].URL = sourceURL.String()
+	}
+	return settings
+}
+
+func parseSameOriginBackgroundURL(c *gin.Context, rawURL string) (*url.URL, bool) {
+	parsed, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil {
+		return nil, false
+	}
+	if parsed.Host == "" {
+		return parsed, strings.HasPrefix(parsed.Path, "/")
+	}
+	return parsed, strings.EqualFold(parsed.Host, c.Request.Host)
+}
+
+func cloneURLValues(values url.Values) url.Values {
+	cloned := make(url.Values, len(values))
+	for key, entries := range values {
+		cloned[key] = append([]string(nil), entries...)
+	}
+	return cloned
+}
+
 func renderIPBanPage(c *gin.Context, ban *model.IPBan) error {
-	backgroundJSON, err := common.Marshal(system_setting.GetSiteBackgroundSettings())
+	backgroundJSON, err := common.Marshal(prepareIPBanPageBackgroundSettings(c))
 	if err != nil {
 		return fmt.Errorf("marshal site background settings: %w", err)
 	}

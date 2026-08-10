@@ -11,6 +11,8 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	appI18n "github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/setting/config"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -117,6 +119,92 @@ func TestIPBanMiddlewareRendersPermanentRestriction(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, recorder.Code)
 	require.Contains(t, recorder.Body.String(), "No automatic unblocking time is set")
 	require.NotContains(t, recorder.Body.String(), "data-expires-at=")
+}
+
+func TestIPBanMiddlewareAllowsConfiguredSameOriginBackground(t *testing.T) {
+	setupIPBanMiddlewareTestDB(t)
+	require.NoError(t, appI18n.Init())
+	restoreSiteBackgroundSettings(t)
+
+	backgroundSettings := system_setting.SiteBackgroundSettings{
+		Enabled:        true,
+		Fit:            system_setting.SiteBackgroundFitCover,
+		OverlayOpacity: 25,
+		GlassEnabled:   true,
+		GlassOpacity:   72,
+		Sources: []system_setting.SiteBackgroundSource{
+			{
+				Type:    system_setting.SiteBackgroundSourceImageURL,
+				URL:     "/wallpaper.jpg",
+				Enabled: true,
+				Weight:  1,
+			},
+		},
+	}
+	settingsJSON, err := common.Marshal(backgroundSettings)
+	require.NoError(t, err)
+	require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+		"site_background.config": string(settingsJSON),
+	}))
+	require.NoError(t, model.CreateIPBan(&model.IPBan{
+		Target: "203.0.113.10",
+		Reason: "abuse",
+	}))
+	model.InitIPBanCache()
+
+	router := gin.New()
+	router.Use(I18n())
+	router.Use(IPBan())
+	router.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+	router.GET("/wallpaper.jpg", func(c *gin.Context) {
+		c.Data(http.StatusOK, "image/jpeg", []byte("image"))
+	})
+	router.GET("/private", func(c *gin.Context) {
+		c.String(http.StatusOK, "private")
+	})
+
+	pageRequest := httptest.NewRequest(http.MethodGet, "/", nil)
+	pageRequest.RemoteAddr = "203.0.113.10:1234"
+	pageRequest.Header.Set("Accept", "text/html")
+	pageRecorder := httptest.NewRecorder()
+	router.ServeHTTP(pageRecorder, pageRequest)
+	require.Equal(t, http.StatusForbidden, pageRecorder.Code)
+	require.Contains(t, pageRecorder.Body.String(), `/wallpaper.jpg?_ip_ban_background=1`)
+
+	backgroundRequest := httptest.NewRequest(http.MethodGet, "/wallpaper.jpg?_ip_ban_background=1", nil)
+	backgroundRequest.RemoteAddr = "203.0.113.10:1234"
+	backgroundRequest.Header.Set("Accept", "image/avif,image/webp,image/*,*/*")
+	backgroundRecorder := httptest.NewRecorder()
+	router.ServeHTTP(backgroundRecorder, backgroundRequest)
+	require.Equal(t, http.StatusOK, backgroundRecorder.Code)
+	require.Equal(t, "image", backgroundRecorder.Body.String())
+
+	blockedRequest := httptest.NewRequest(http.MethodGet, "/wallpaper.jpg", nil)
+	blockedRequest.RemoteAddr = "203.0.113.10:1234"
+	blockedRequest.Header.Set("Accept", "image/*")
+	blockedRecorder := httptest.NewRecorder()
+	router.ServeHTTP(blockedRecorder, blockedRequest)
+	require.Equal(t, http.StatusForbidden, blockedRecorder.Code)
+
+	privateRequest := httptest.NewRequest(http.MethodGet, "/private?_ip_ban_background=1", nil)
+	privateRequest.RemoteAddr = "203.0.113.10:1234"
+	privateRequest.Header.Set("Accept", "application/json")
+	privateRecorder := httptest.NewRecorder()
+	router.ServeHTTP(privateRecorder, privateRequest)
+	require.Equal(t, http.StatusForbidden, privateRecorder.Code)
+}
+
+func restoreSiteBackgroundSettings(t *testing.T) {
+	t.Helper()
+	original, err := common.Marshal(system_setting.GetSiteBackgroundSettings())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, config.GlobalConfig.LoadFromDB(map[string]string{
+			"site_background.config": string(original),
+		}))
+	})
 }
 
 func TestShouldRenderIPBanPage(t *testing.T) {

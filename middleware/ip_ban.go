@@ -21,6 +21,11 @@ func IPBan() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if shouldAllowIPBanBackgroundRequest(c) {
+			c.Set(SkipAccessLogKey, true)
+			c.Next()
+			return
+		}
 		if ban.AutoBanUser && ban.ExpiresAt == 0 {
 			autoBanUserForIPBan(c, ban)
 		}
