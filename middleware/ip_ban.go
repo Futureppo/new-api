@@ -25,6 +25,14 @@ func IPBan() gin.HandlerFunc {
 			autoBanUserForIPBan(c, ban)
 		}
 		c.Set(SkipAccessLogKey, true)
+		if shouldRenderIPBanPage(c) {
+			if err := renderIPBanPage(c, ban); err == nil {
+				c.Abort()
+				return
+			} else {
+				common.SysLog("failed to render ip ban page: " + err.Error())
+			}
+		}
 		c.String(http.StatusForbidden, "该ip已被封禁，原因："+ban.Reason)
 		c.Abort()
 	}

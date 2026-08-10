@@ -24,6 +24,17 @@ common.already_exists: "已存在"
 common.name_cannot_be_empty: "名稱不能為空"
 common.batch_too_many: "批次請求數量過多，最多 {{.Max}} 條"
 
+# IP ban page
+ip_ban.page_title: "存取受限 | {{.SystemName}}"
+ip_ban.page_heading: "存取已被限制"
+ip_ban.page_description: "目前網路位址無法存取本站"
+ip_ban.page_current_ip: "目前 IP"
+ip_ban.page_reason: "封鎖原因"
+ip_ban.page_restriction_period: "限制期限"
+ip_ban.page_unblocks_at: "解除時間"
+ip_ban.page_permanent: "未設定自動解除時間"
+ip_ban.page_contact_admin: "如有疑問，請聯絡站點管理員"
+
 # Auth middleware messages
 auth.not_logged_in: "無權進行此操作，未登入且未提供 access token"
 auth.access_token_invalid: "無權進行此操作，access token 無效"

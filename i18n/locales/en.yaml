@@ -23,6 +23,17 @@ common.already_exists: "Already exists"
 common.name_cannot_be_empty: "Name cannot be empty"
 common.batch_too_many: "Too many items in batch request, maximum is {{.Max}}"
 
+# IP ban page
+ip_ban.page_title: "Access restricted | {{.SystemName}}"
+ip_ban.page_heading: "Access has been restricted"
+ip_ban.page_description: "This network address cannot access the site"
+ip_ban.page_current_ip: "Current IP"
+ip_ban.page_reason: "Reason"
+ip_ban.page_restriction_period: "Restriction period"
+ip_ban.page_unblocks_at: "Unblocks at"
+ip_ban.page_permanent: "No automatic unblocking time is set"
+ip_ban.page_contact_admin: "If you believe this is a mistake, contact the site administrator"
+
 # Auth middleware messages
 auth.not_logged_in: "Unauthorized, not logged in and no access token provided"
 auth.access_token_invalid: "Unauthorized, invalid access token"

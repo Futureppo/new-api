@@ -24,6 +24,17 @@ common.already_exists: "已存在"
 common.name_cannot_be_empty: "名称不能为空"
 common.batch_too_many: "批量请求数量过多，最多 {{.Max}} 条"
 
+# IP ban page
+ip_ban.page_title: "访问受限 | {{.SystemName}}"
+ip_ban.page_heading: "访问已被限制"
+ip_ban.page_description: "当前网络地址无法访问本站"
+ip_ban.page_current_ip: "当前 IP"
+ip_ban.page_reason: "封禁原因"
+ip_ban.page_restriction_period: "限制期限"
+ip_ban.page_unblocks_at: "解除时间"
+ip_ban.page_permanent: "未设置自动解除时间"
+ip_ban.page_contact_admin: "如有疑问，请联系站点管理员"
+
 # Auth middleware messages
 auth.not_logged_in: "无权进行此操作，未登录且未提供 access token"
 auth.access_token_invalid: "无权进行此操作，access token 无效"

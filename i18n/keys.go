@@ -28,6 +28,19 @@ const (
 	MsgBatchTooMany      = "common.batch_too_many"
 )
 
+// IP ban page messages
+const (
+	MsgIPBanPageTitle             = "ip_ban.page_title"
+	MsgIPBanPageHeading           = "ip_ban.page_heading"
+	MsgIPBanPageDescription       = "ip_ban.page_description"
+	MsgIPBanPageCurrentIP         = "ip_ban.page_current_ip"
+	MsgIPBanPageReason            = "ip_ban.page_reason"
+	MsgIPBanPageRestrictionPeriod = "ip_ban.page_restriction_period"
+	MsgIPBanPageUnblocksAt        = "ip_ban.page_unblocks_at"
+	MsgIPBanPagePermanent         = "ip_ban.page_permanent"
+	MsgIPBanPageContactAdmin      = "ip_ban.page_contact_admin"
+)
+
 // Auth middleware messages
 const (
 	MsgAuthNotLoggedIn           = "auth.not_logged_in"

@@ -2,12 +2,14 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	appI18n "github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -49,6 +51,96 @@ func TestIPBanMiddlewareBlocksWithoutAccessLog(t *testing.T) {
 	var count int64
 	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&count).Error)
 	require.EqualValues(t, 0, count)
+}
+
+func TestIPBanMiddlewareRendersBrowserPage(t *testing.T) {
+	setupIPBanMiddlewareTestDB(t)
+	require.NoError(t, appI18n.Init())
+	expiresAt := common.GetTimestamp() + 3600
+	require.NoError(t, model.CreateIPBan(&model.IPBan{
+		Target:    "203.0.113.10",
+		Reason:    `abuse <script>alert("xss")</script>`,
+		ExpiresAt: expiresAt,
+	}))
+	model.InitIPBanCache()
+
+	router := gin.New()
+	router.Use(I18n())
+	router.Use(IPBan())
+	router.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.10:1234"
+	req.Header.Set("Accept", "text/html,application/xhtml+xml")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Header().Get("Content-Type"), "text/html")
+	require.Equal(t, "zh-CN", recorder.Header().Get("Content-Language"))
+	require.Equal(t, "no-store, max-age=0", recorder.Header().Get("Cache-Control"))
+	require.Contains(t, recorder.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'")
+	require.Contains(t, recorder.Body.String(), "访问已被限制")
+	require.Contains(t, recorder.Body.String(), "203.0.113.10")
+	require.Contains(t, recorder.Body.String(), "解除时间")
+	require.Contains(t, recorder.Body.String(), fmt.Sprintf(`data-expires-at="%d"`, expiresAt))
+	require.NotContains(t, recorder.Body.String(), `<script>alert("xss")</script>`)
+	require.Contains(t, recorder.Body.String(), `&lt;script&gt;alert(&#34;xss&#34;)&lt;/script&gt;`)
+}
+
+func TestIPBanMiddlewareRendersPermanentRestriction(t *testing.T) {
+	setupIPBanMiddlewareTestDB(t)
+	require.NoError(t, appI18n.Init())
+	require.NoError(t, model.CreateIPBan(&model.IPBan{
+		Target: "203.0.113.10",
+		Reason: "policy violation",
+	}))
+	model.InitIPBanCache()
+
+	router := gin.New()
+	router.Use(I18n())
+	router.Use(IPBan())
+	router.GET("/", func(c *gin.Context) {
+		c.String(http.StatusOK, "ok")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "203.0.113.10:1234"
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("Accept-Language", "en")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusForbidden, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "No automatic unblocking time is set")
+	require.NotContains(t, recorder.Body.String(), "data-expires-at=")
+}
+
+func TestShouldRenderIPBanPage(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		accept string
+		want   bool
+	}{
+		{name: "browser get", method: http.MethodGet, accept: "text/html,application/xhtml+xml", want: true},
+		{name: "browser head", method: http.MethodHead, accept: "text/html", want: true},
+		{name: "api get", method: http.MethodGet, accept: "application/json", want: false},
+		{name: "api post", method: http.MethodPost, accept: "text/html", want: false},
+		{name: "empty accept", method: http.MethodGet, want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(test.method, "/", nil)
+			c.Request.Header.Set("Accept", test.accept)
+			require.Equal(t, test.want, shouldRenderIPBanPage(c))
+		})
+	}
 }
 
 func TestIPBanMiddlewareAutoBansCommonUserFromToken(t *testing.T) {

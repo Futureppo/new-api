@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="{{.Lang}}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="generator" content="new-api" />
+    <title>{{.PageTitle}}</title>
+    <script>
+      (() => {
+        let theme = 'auto';
+        try {
+          theme = localStorage.getItem('theme-mode') || 'auto';
+        } catch (_) {}
+        const dark =
+          theme === 'dark' ||
+          (theme !== 'light' &&
+            window.matchMedia?.('(prefers-color-scheme: dark)').matches);
+        document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+      })();
+    </script>
+    <style>
+      :root {
+        color-scheme: light;
+        --page-bg: #f4f7fb;
+        --page-glow-primary: rgba(65, 105, 225, 0.2);
+        --page-glow-secondary: rgba(15, 180, 168, 0.15);
+        --surface: #ffffff;
+        --surface-solid: rgba(255, 255, 255, 0.94);
+        --surface-border: rgba(255, 255, 255, 0.7);
+        --text-primary: #182230;
+        --text-secondary: #667085;
+        --text-muted: #8a94a5;
+        --line: rgba(24, 34, 48, 0.09);
+        --field-bg: rgba(24, 34, 48, 0.045);
+        --danger: #d92d20;
+        --danger-soft: rgba(217, 45, 32, 0.1);
+        --shadow: 0 28px 80px rgba(31, 45, 61, 0.16);
+        --overlay-opacity: 0.25;
+        --glass-opacity: 72%;
+      }
+
+      :root[data-theme='dark'] {
+        color-scheme: dark;
+        --page-bg: #0d1119;
+        --page-glow-primary: rgba(74, 105, 255, 0.24);
+        --page-glow-secondary: rgba(20, 184, 166, 0.16);
+        --surface: #18181b;
+        --surface-solid: rgba(24, 24, 27, 0.94);
+        --surface-border: rgba(255, 255, 255, 0.12);
+        --text-primary: #f4f6f8;
+        --text-secondary: #abb4c2;
+        --text-muted: #7f8998;
+        --line: rgba(255, 255, 255, 0.1);
+        --field-bg: rgba(255, 255, 255, 0.055);
+        --danger: #ff6b5e;
+        --danger-soft: rgba(255, 107, 94, 0.12);
+        --shadow: 0 30px 90px rgba(0, 0, 0, 0.42);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+      }
+
+      body {
+        min-height: 100vh;
+        min-height: 100dvh;
+        overflow-x: hidden;
+        color: var(--text-primary);
+        background:
+          radial-gradient(circle at 15% 10%, var(--page-glow-primary), transparent 38%),
+          radial-gradient(circle at 88% 82%, var(--page-glow-secondary), transparent 42%),
+          var(--page-bg);
+        font-family: Lato, 'Helvetica Neue', Arial, Helvetica, 'Microsoft YaHei', sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .site-background-layer {
+        position: fixed;
+        z-index: 0;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+      }
+
+      .site-background-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-position: center;
+        opacity: 0;
+        transform: scale(1.01);
+        transition: opacity 320ms ease;
+      }
+
+      .has-background .site-background-image {
+        opacity: 1;
+      }
+
+      .site-background-overlay {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        background: rgba(255, 255, 255, var(--overlay-opacity));
+        transition: opacity 320ms ease;
+      }
+
+      :root[data-theme='dark'] .site-background-overlay {
+        background: rgba(0, 0, 0, var(--overlay-opacity));
+      }
+
+      .has-background .site-background-overlay {
+        opacity: 1;
+      }
+
+      .page-shell {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        min-height: 100vh;
+        min-height: 100dvh;
+        padding: 32px 20px;
+        place-items: center;
+      }
+
+      .ban-card {
+        width: min(100%, 520px);
+        padding: 34px;
+        overflow: hidden;
+        background: var(--surface-solid);
+        border: 1px solid var(--surface-border);
+        border-radius: 24px;
+        box-shadow: var(--shadow);
+        transition: background 240ms ease, border-color 240ms ease;
+      }
+
+      .has-background.glass-enabled .ban-card {
+        background: rgba(255, 255, 255, 0.72);
+        background: color-mix(in srgb, var(--surface) var(--glass-opacity), transparent);
+        -webkit-backdrop-filter: blur(20px) saturate(145%);
+        backdrop-filter: blur(20px) saturate(145%);
+      }
+
+      :root[data-theme='dark'] .has-background.glass-enabled .ban-card {
+        background: rgba(24, 24, 27, 0.72);
+        background: color-mix(in srgb, var(--surface) var(--glass-opacity), transparent);
+      }
+
+      .icon-wrap {
+        display: grid;
+        width: 58px;
+        height: 58px;
+        margin-bottom: 22px;
+        color: var(--danger);
+        background: var(--danger-soft);
+        border: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+        border-radius: 18px;
+        place-items: center;
+      }
+
+      .icon-wrap svg {
+        width: 29px;
+        height: 29px;
+      }
+
+      .eyebrow {
+        margin: 0 0 9px;
+        color: var(--danger);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.11em;
+        line-height: 1.4;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(27px, 6vw, 34px);
+        font-weight: 700;
+        letter-spacing: -0.035em;
+        line-height: 1.18;
+      }
+
+      .description {
+        margin: 12px 0 27px;
+        color: var(--text-secondary);
+        font-size: 15px;
+        line-height: 1.7;
+      }
+
+      .details {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+      }
+
+      .detail-item {
+        display: grid;
+        grid-template-columns: 112px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+        padding: 14px 16px;
+        background: var(--field-bg);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+      }
+
+      dt,
+      dd {
+        margin: 0;
+      }
+
+      dt {
+        color: var(--text-muted);
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.6;
+      }
+
+      dd {
+        min-width: 0;
+        color: var(--text-primary);
+        font-size: 14px;
+        font-weight: 600;
+        line-height: 1.6;
+        overflow-wrap: anywhere;
+      }
+
+      .ip-address {
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .reason {
+        white-space: pre-wrap;
+      }
+
+      .contact {
+        margin: 24px 0 0;
+        padding-top: 20px;
+        color: var(--text-secondary);
+        border-top: 1px solid var(--line);
+        font-size: 13px;
+        line-height: 1.65;
+        text-align: center;
+      }
+
+      @media (max-width: 560px) {
+        .page-shell {
+          padding: 20px 14px;
+        }
+
+        .ban-card {
+          padding: 26px 20px;
+          border-radius: 20px;
+        }
+
+        .detail-item {
+          grid-template-columns: 1fr;
+          gap: 4px;
+          padding: 13px 14px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .site-background-image,
+        .site-background-overlay,
+        .ban-card {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="site-background-layer" aria-hidden="true">
+      <img id="site-background-image" class="site-background-image" alt="" referrerpolicy="no-referrer" />
+      <div class="site-background-overlay"></div>
+    </div>
+
+    <main class="page-shell">
+      <article class="ban-card" aria-labelledby="ban-title" aria-describedby="ban-description">
+        <div class="icon-wrap" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-3.7 8-10V5l-8-3-8 3v7c0 6.3 8 10 8 10Z" />
+            <path d="m8.5 8.5 7 7m0-7-7 7" />
+          </svg>
+        </div>
+        <p class="eyebrow">{{.SystemName}} · 403</p>
+        <h1 id="ban-title">{{.Heading}}</h1>
+        <p id="ban-description" class="description">{{.Description}}</p>
+
+        <dl class="details">
+          <div class="detail-item">
+            <dt>{{.CurrentIPLabel}}</dt>
+            <dd class="ip-address">{{.ClientIP}}</dd>
+          </div>
+          <div class="detail-item">
+            <dt>{{.ReasonLabel}}</dt>
+            <dd class="reason">{{.Reason}}</dd>
+          </div>
+          <div class="detail-item">
+            <dt>{{.RestrictionLabel}}</dt>
+            <dd>
+              {{if .HasExpiry}}
+              <time datetime="{{.ExpiresAtISO}}" data-expires-at="{{.ExpiresAt}}">{{.RestrictionText}}</time>
+              {{else}}
+              {{.RestrictionText}}
+              {{end}}
+            </dd>
+          </div>
+        </dl>
+
+        <p class="contact">{{.ContactAdmin}}</p>
+      </article>
+    </main>
+
+    <script>
+      (() => {
+        const config = {{.BackgroundConfigJSON}};
+        const root = document.documentElement;
+        const imageElement = document.getElementById('site-background-image');
+
+        const clamp = (value, min, max, fallback) => {
+          const number = Number(value);
+          return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+        };
+
+        const toURL = (value, base = window.location.href) => {
+          const url = new URL(String(value || '').trim(), base);
+          if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+            throw new Error('Unsupported background URL');
+          }
+          return url;
+        };
+
+        const weightedOrder = (sources) => {
+          const pool = [...sources];
+          const result = [];
+          while (pool.length) {
+            const total = pool.reduce((sum, source) => sum + Math.max(1, Number(source.weight) || 1), 0);
+            let target = Math.random() * total;
+            let selected = pool.length - 1;
+            for (let index = 0; index < pool.length; index += 1) {
+              target -= Math.max(1, Number(pool[index].weight) || 1);
+              if (target < 0) {
+                selected = index;
+                break;
+              }
+            }
+            result.push(pool.splice(selected, 1)[0]);
+          }
+          return result;
+        };
+
+        const getJSONPathValue = (payload, path) => {
+          const normalizedPath = String(path || '').trim();
+          if (!normalizedPath) return payload;
+          return normalizedPath.split('.').reduce((current, segment) => {
+            if (current == null || typeof current !== 'object') return undefined;
+            return current[segment];
+          }, payload);
+        };
+
+        const fetchJSONImageURL = async (source) => {
+          const controller = new AbortController();
+          const timeout = window.setTimeout(() => controller.abort(), 8000);
+          try {
+            const sourceURL = toURL(source.url);
+            const response = await fetch(sourceURL, {
+              cache: 'no-store',
+              credentials: 'omit',
+              referrerPolicy: 'no-referrer',
+              signal: controller.signal,
+            });
+            if (!response.ok) throw new Error('Background API request failed');
+            const payload = await response.json();
+            const value = getJSONPathValue(payload, source.json_path);
+            if (typeof value !== 'string' || !value.trim()) {
+              throw new Error('Background API response does not contain an image URL');
+            }
+            return toURL(value, sourceURL).href;
+          } finally {
+            window.clearTimeout(timeout);
+          }
+        };
+
+        const resolveSource = async (source) => {
+          if (source.type === 'json_api') return fetchJSONImageURL(source);
+          const url = toURL(source.url);
+          if (source.type === 'image_api') {
+            url.searchParams.set('_site_background', String(Date.now()));
+          }
+          return url.href;
+        };
+
+        const preload = (url) =>
+          new Promise((resolve, reject) => {
+            const image = new Image();
+            const timeout = window.setTimeout(() => {
+              image.src = '';
+              reject(new Error('Background image timed out'));
+            }, 8000);
+            image.referrerPolicy = 'no-referrer';
+            image.onload = () => {
+              window.clearTimeout(timeout);
+              resolve(url);
+            };
+            image.onerror = () => {
+              window.clearTimeout(timeout);
+              reject(new Error('Background image failed to load'));
+            };
+            image.src = url;
+          });
+
+        const loadBackground = async () => {
+          if (!config?.enabled || !Array.isArray(config.sources)) return;
+          const sources = config.sources.filter((source) => source?.enabled === true);
+          root.style.setProperty('--overlay-opacity', String(clamp(config.overlay_opacity, 0, 80, 25) / 100));
+          root.style.setProperty('--glass-opacity', `${clamp(config.glass_opacity, 0, 100, 72)}%`);
+          imageElement.style.objectFit = ['cover', 'contain', 'fill'].includes(config.fit) ? config.fit : 'cover';
+
+          for (const source of weightedOrder(sources)) {
+            try {
+              const url = await resolveSource(source);
+              await preload(url);
+              imageElement.src = url;
+              document.body.classList.toggle('glass-enabled', config.glass_enabled === true);
+              requestAnimationFrame(() => document.body.classList.add('has-background'));
+              return;
+            } catch (_) {}
+          }
+        };
+
+        const expiry = document.querySelector('time[data-expires-at]');
+        if (expiry) {
+          const timestamp = Number(expiry.dataset.expiresAt);
+          if (Number.isFinite(timestamp)) {
+            try {
+              expiry.textContent = new Intl.DateTimeFormat(root.lang || undefined, {
+                dateStyle: 'medium',
+                timeStyle: 'medium',
+              }).format(new Date(timestamp * 1000));
+            } catch (_) {}
+          }
+        }
+
+        loadBackground();
+      })();
+    </script>
+  </body>
+</html>
