@@ -260,5 +260,49 @@ func DeleteIPBanById(id int) error {
 	if id == 0 {
 		return errors.New("id为空")
 	}
-	return DB.Delete(&IPBan{Id: id}).Error
+	if err := DB.Delete(&IPBan{Id: id}).Error; err != nil {
+		return err
+	}
+	// 顺带清理关联的账号-规则记录
+	_ = DeleteIPBanUserBansByBanIds([]int{id})
+	return nil
+}
+
+// DeleteIPBansByIds soft-deletes multiple IP ban rules and returns the affected row count.
+func DeleteIPBansByIds(ids []int) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	result := DB.Where("id IN ?", ids).Delete(&IPBan{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	// 顺带清理关联的账号-规则记录
+	_ = DeleteIPBanUserBansByBanIds(ids)
+	return result.RowsAffected, nil
+}
+
+// GetIPBansByIds fetches a batch of IP ban rules by ids.
+func GetIPBansByIds(ids []int) ([]*IPBan, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var bans []*IPBan
+	if err := DB.Where("id IN ?", ids).Find(&bans).Error; err != nil {
+		return nil, err
+	}
+	return bans, nil
+}
+
+// BatchUpdateIPBanFields updates selected fields for the given ids and returns affected rows.
+func BatchUpdateIPBanFields(ids []int, updates map[string]interface{}) (int64, error) {
+	if len(ids) == 0 || len(updates) == 0 {
+		return 0, nil
+	}
+	updates["updated_at"] = common.GetTimestamp()
+	result := DB.Model(&IPBan{}).Where("id IN ?", ids).Updates(updates)
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
 }

@@ -178,6 +178,196 @@ func DeleteIPBan(c *gin.Context) {
 	common.ApiSuccess(c, gin.H{"id": id})
 }
 
+type IPBanBatchIdsRequest struct {
+	Ids []int `json:"ids"`
+}
+
+// BatchDeleteIPBans deletes multiple IP ban rules in one call.
+func BatchDeleteIPBans(c *gin.Context) {
+	req := IPBanBatchIdsRequest{}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ids := dedupIntSlice(req.Ids)
+	if len(ids) == 0 {
+		common.ApiErrorMsg(c, "请选择要删除的封禁规则")
+		return
+	}
+	affected, err := model.DeleteIPBansByIds(ids)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if affected > 0 {
+		model.InitIPBanCache()
+	}
+	common.ApiSuccess(c, gin.H{
+		"deleted": affected,
+		"ids":     ids,
+	})
+}
+
+// IPBanBatchUpdateRequest describes fields that can be batch-updated on IP ban rules.
+// Only fields with non-nil pointers are applied — this allows partial updates.
+type IPBanBatchUpdateRequest struct {
+	Ids             []int   `json:"ids"`
+	Reason          *string `json:"reason,omitempty"`
+	ExpiresAt       *int64  `json:"expires_at,omitempty"`       // 0 => 转永久；>0 => 临时并设置过期时间
+	AutoBanUser     *bool   `json:"auto_ban_user,omitempty"`    // 仅永久规则生效
+	ConfirmSelfLock bool    `json:"confirm_self_lock,omitempty"`
+}
+
+// BatchUpdateIPBans updates selected fields for multiple IP ban rules at once.
+func BatchUpdateIPBans(c *gin.Context) {
+	req := IPBanBatchUpdateRequest{}
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ids := dedupIntSlice(req.Ids)
+	if len(ids) == 0 {
+		common.ApiErrorMsg(c, "请选择要修改的封禁规则")
+		return
+	}
+	if req.Reason == nil && req.ExpiresAt == nil && req.AutoBanUser == nil {
+		common.ApiErrorMsg(c, "请指定至少一个要修改的字段")
+		return
+	}
+
+	updates := map[string]interface{}{}
+	var trimmedReason string
+	if req.Reason != nil {
+		trimmedReason = strings.TrimSpace(*req.Reason)
+		if err := validateIPBanReason(trimmedReason); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		updates["reason"] = trimmedReason
+	}
+	if req.ExpiresAt != nil {
+		if err := validateIPBanExpiresAt(*req.ExpiresAt); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		updates["expires_at"] = *req.ExpiresAt
+		// 转为临时时不能保留 auto_ban_user；转为永久时保持原值（除非同时显式指定）。
+		if *req.ExpiresAt > 0 {
+			updates["auto_ban_user"] = false
+		}
+	}
+	if req.AutoBanUser != nil {
+		// 只在最终为永久规则时启用；否则强制关闭。
+		if req.ExpiresAt != nil {
+			if *req.ExpiresAt == 0 {
+				updates["auto_ban_user"] = *req.AutoBanUser
+			}
+		} else {
+			// 未变更过期时间时，逐个检查目标记录当前是否为永久
+			existing, err := model.GetIPBansByIds(ids)
+			if err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			permanentIds := make([]int, 0, len(existing))
+			for _, ban := range existing {
+				if ban.ExpiresAt == 0 {
+					permanentIds = append(permanentIds, ban.Id)
+				}
+			}
+			if len(permanentIds) == 0 {
+				common.ApiErrorMsg(c, "所选规则中没有永久封禁，无法修改命中后封禁账号")
+				return
+			}
+			// 单独走一次更新
+			if _, err := model.BatchUpdateIPBanFields(permanentIds, map[string]interface{}{
+				"auto_ban_user": *req.AutoBanUser,
+			}); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+			// auto_ban_user 已单独处理，剔除，避免下面重复
+		}
+	}
+
+	// 自锁检测：仅当修改会保留/引入生效状态时校验
+	if !req.ConfirmSelfLock {
+		existing, err := model.GetIPBansByIds(ids)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		targets := make([]string, 0, len(existing))
+		for _, ban := range existing {
+			targets = append(targets, ban.Target)
+		}
+		if len(targets) > 0 && selfLockConfirmationRequired(c, req.ConfirmSelfLock, targets) {
+			return
+		}
+	}
+
+	var affected int64
+	if len(updates) > 0 {
+		var err error
+		affected, err = model.BatchUpdateIPBanFields(ids, updates)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
+
+	if affected > 0 || req.AutoBanUser != nil {
+		model.InitIPBanCache()
+	}
+	common.ApiSuccess(c, gin.H{
+		"updated": affected,
+		"ids":     ids,
+	})
+}
+
+// GetIPBanRelatedUsers returns users that were auto-banned by the given IP ban rule,
+// resolved via the ip_ban_user_bans association table (accurate ban_id → user_id link).
+func GetIPBanRelatedUsers(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	ban, err := model.GetIPBanById(id)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	users, err := model.GetIPBanRelatedUsersByBanId(id, 200)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, gin.H{
+		"ban":   ban,
+		"users": users,
+	})
+}
+
+func dedupIntSlice(input []int) []int {
+	if len(input) == 0 {
+		return nil
+	}
+	seen := make(map[int]struct{}, len(input))
+	out := make([]int, 0, len(input))
+	for _, v := range input {
+		if v <= 0 {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		out = append(out, v)
+	}
+	return out
+}
+
 func BatchCreateIPBans(c *gin.Context) {
 	req := IPBanBatchRequest{}
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
