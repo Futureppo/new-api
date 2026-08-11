@@ -357,10 +357,13 @@ func SetApiRouter(router *gin.Engine) {
 			ipBanRoute.GET("/", controller.GetAllIPBans)
 			ipBanRoute.GET("/search", controller.SearchIPBans)
 			ipBanRoute.GET("/:id", controller.GetIPBan)
+			ipBanRoute.GET("/:id/banned_users", controller.GetIPBanRelatedUsers)
 			ipBanRoute.POST("/", controller.AddIPBan)
 			ipBanRoute.PUT("/", controller.UpdateIPBan)
 			ipBanRoute.DELETE("/:id", controller.DeleteIPBan)
 			ipBanRoute.POST("/batch", controller.BatchCreateIPBans)
+			ipBanRoute.POST("/batch_delete", controller.BatchDeleteIPBans)
+			ipBanRoute.POST("/batch_update", controller.BatchUpdateIPBans)
 		}
 
 		prefillGroupRoute := apiRouter.Group("/prefill_group")

@@ -284,9 +284,13 @@ func migrateDB() error {
 		&CustomOAuthProvider{},
 		&UserOAuthBinding{},
 		&IPBan{},
+		&IPBanUserBan{},
 		&ProbeIPAbuseState{},
 	)
 	if err != nil {
+		return err
+	}
+	if err := EnsureIPBanUserBanUniqueIndex(DB); err != nil {
 		return err
 	}
 	if err := migrateConversationLogBodyColumns(DB); err != nil {

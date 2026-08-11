@@ -21,23 +21,10 @@ func IPBan() gin.HandlerFunc {
 			c.Next()
 			return
 		}
-		if shouldAllowIPBanBackgroundRequest(c) {
-			c.Set(SkipAccessLogKey, true)
-			c.Next()
-			return
-		}
 		if ban.AutoBanUser && ban.ExpiresAt == 0 {
 			autoBanUserForIPBan(c, ban)
 		}
 		c.Set(SkipAccessLogKey, true)
-		if shouldRenderIPBanPage(c) {
-			if err := renderIPBanPage(c, ban); err == nil {
-				c.Abort()
-				return
-			} else {
-				common.SysLog("failed to render ip ban page: " + err.Error())
-			}
-		}
 		c.String(http.StatusForbidden, "该ip已被封禁，原因："+ban.Reason)
 		c.Abort()
 	}
@@ -52,6 +39,10 @@ func autoBanUserForIPBan(c *gin.Context, ban *model.IPBan) {
 	if err != nil {
 		common.SysLog(fmt.Sprintf("failed to auto ban user %d for ip ban #%d: %s", userId, ban.Id, err.Error()))
 		return
+	}
+	// 无论是首次封禁还是已经处于封禁状态，都记录/刷新一次关联，方便后台按 ban_id 查询
+	if err := model.RecordIPBanUserBan(ban.Id, userId, c.ClientIP(), ban.Reason); err != nil {
+		common.SysLog(fmt.Sprintf("failed to record ip_ban_user_ban ban=%d user=%d: %s", ban.Id, userId, err.Error()))
 	}
 	if disabled {
 		common.SysLog(fmt.Sprintf("auto banned user %d for ip ban #%d target=%s", userId, ban.Id, ban.Target))

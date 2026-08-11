@@ -35,6 +35,7 @@ import {
   SideSheet,
   Space,
   Spin,
+  Table,
   Tag,
   Tooltip,
   Typography,
@@ -52,6 +53,7 @@ import {
   Search,
   Trash2,
   Upload,
+  Users,
   X,
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
@@ -490,13 +492,270 @@ const BatchImportModal = ({ visible, type, onClose, onSaved }) => {
   );
 };
 
+// 批量操作弹窗：支持修改原因 / 过期时间(含转永久) / 命中后封禁账号 / 转类型
+const BatchOperationModal = ({
+  visible,
+  type,
+  ids,
+  operation,
+  onClose,
+  onSaved,
+}) => {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const formApiRef = useRef(null);
+
+  useEffect(() => {
+    if (visible) {
+      formApiRef.current?.setValues({
+        reason: '',
+        expires_at: null,
+        auto_ban_user: false,
+      });
+    }
+  }, [visible, operation]);
+
+  const opConfig = useMemo(() => {
+    switch (operation) {
+      case 'reason':
+        return { title: t('批量修改封禁原因'), okText: t('保存') };
+      case 'expires_at':
+        return { title: t('批量修改过期时间'), okText: t('保存') };
+      case 'to_permanent':
+        return { title: t('批量转为永久封禁'), okText: t('确认转换') };
+      case 'to_temporary':
+        return { title: t('批量转为临时封禁'), okText: t('确认转换') };
+      case 'auto_ban_user':
+        return { title: t('批量修改命中后封禁账号'), okText: t('保存') };
+      default:
+        return { title: '', okText: t('确认') };
+    }
+  }, [operation, t]);
+
+  const submit = async (values, confirmSelfLock = false) => {
+    const payload = { ids, confirm_self_lock: confirmSelfLock };
+    if (operation === 'reason') {
+      if (!values.reason || !values.reason.trim()) {
+        showError(t('请输入封禁原因'));
+        return;
+      }
+      payload.reason = values.reason.trim();
+    } else if (operation === 'expires_at') {
+      if (!values.expires_at) {
+        showError(t('请选择临时封禁过期时间'));
+        return;
+      }
+      payload.expires_at = Math.floor(values.expires_at.getTime() / 1000);
+    } else if (operation === 'to_permanent') {
+      payload.expires_at = 0;
+    } else if (operation === 'to_temporary') {
+      if (!values.expires_at) {
+        showError(t('请选择临时封禁过期时间'));
+        return;
+      }
+      payload.expires_at = Math.floor(values.expires_at.getTime() / 1000);
+    } else if (operation === 'auto_ban_user') {
+      payload.auto_ban_user = Boolean(values.auto_ban_user);
+    }
+
+    setLoading(true);
+    try {
+      const res = await API.post('/api/ip_ban/batch_update', payload);
+      if (handleSelfLockResponse(res, () => submit(values, true), t)) {
+        return;
+      }
+      const { success, message, data } = res.data;
+      if (success) {
+        showSuccess(`${t('已更新')} ${data?.updated || 0} ${t('条')}`);
+        onSaved();
+        onClose();
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={opConfig.title}
+      visible={visible}
+      width={520}
+      onCancel={onClose}
+      footer={
+        <Space>
+          <Button
+            type='primary'
+            loading={loading}
+            onClick={() => formApiRef.current?.submitForm()}
+          >
+            {opConfig.okText}
+          </Button>
+          <Button type='tertiary' onClick={onClose}>
+            {t('取消')}
+          </Button>
+        </Space>
+      }
+    >
+      <div className='mb-3 text-sm text-gray-500'>
+        {t('将影响所选')} {ids.length} {t('条封禁规则')}
+      </div>
+      <Form getFormApi={(api) => (formApiRef.current = api)} onSubmit={submit}>
+        {operation === 'reason' && (
+          <Form.TextArea
+            field='reason'
+            label={t('封禁原因')}
+            placeholder={t('请输入封禁原因')}
+            rows={3}
+            autosize
+            rules={[{ required: true, message: t('请输入封禁原因') }]}
+            showClear
+          />
+        )}
+        {(operation === 'expires_at' || operation === 'to_temporary') && (
+          <Form.DatePicker
+            field='expires_at'
+            label={t('过期时间')}
+            type='dateTime'
+            placeholder={t('请选择临时封禁过期时间')}
+            rules={[
+              { required: true, message: t('请选择临时封禁过期时间') },
+            ]}
+            style={{ width: '100%' }}
+          />
+        )}
+        {operation === 'to_permanent' && (
+          <div className='text-sm'>
+            {t('将所选临时封禁转换为永久封禁，过期时间将被清空。')}
+          </div>
+        )}
+        {operation === 'auto_ban_user' && (
+          <Form.Switch
+            field='auto_ban_user'
+            label={t('命中后封禁账号')}
+            checkedText={t('开')}
+            uncheckedText={t('关')}
+            extraText={t(
+              '仅对永久封禁生效；所选临时封禁不会被修改。',
+            )}
+          />
+        )}
+      </Form>
+    </Modal>
+  );
+};
+
+// 查看该 IP 封禁规则下被禁用的账号（含最近访问IP）
+const RelatedUsersModal = ({ visible, record, onClose }) => {
+  const { t } = useTranslation();
+  const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!visible || !record?.id) return;
+      setLoading(true);
+      try {
+        const res = await API.get(`/api/ip_ban/${record.id}/banned_users`);
+        const { success, message, data } = res.data;
+        if (success) {
+          setUsers(data?.users || []);
+        } else {
+          showError(message);
+        }
+      } catch (error) {
+        showError(error.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [visible, record?.id]);
+
+  const columns = [
+    { title: t('账号ID'), dataIndex: 'id', width: 80 },
+    {
+      title: t('用户名'),
+      dataIndex: 'username',
+      render: (text, r) => (
+        <span>
+          {text}
+          {r.display_name && r.display_name !== text ? ` (${r.display_name})` : ''}
+        </span>
+      ),
+    },
+    { title: t('邮箱'), dataIndex: 'email' },
+    {
+      title: t('最近访问IP'),
+      dataIndex: 'last_ip',
+      render: (text) =>
+        text ? (
+          <Tag color='blue' shape='circle'>
+            {text}
+          </Tag>
+        ) : (
+          <Typography.Text type='tertiary'>-</Typography.Text>
+        ),
+    },
+    {
+      title: t('封禁原因'),
+      dataIndex: 'disable_reason',
+      render: (text) => <span className='break-all'>{text}</span>,
+    },
+  ];
+
+  return (
+    <Modal
+      title={`${t('被该规则连带封禁的账号')} - ${record?.target || ''}`}
+      visible={visible}
+      width={860}
+      onCancel={onClose}
+      footer={
+        <Button type='tertiary' onClick={onClose}>
+          {t('关闭')}
+        </Button>
+      }
+    >
+      <Spin spinning={loading}>
+        {users.length === 0 ? (
+          <div className='py-6 flex justify-center text-gray-400'>
+            {loading ? t('加载中') : t('暂无关联账号')}
+          </div>
+        ) : (
+          <Table
+            rowKey='id'
+            columns={columns}
+            dataSource={users}
+            pagination={false}
+            size='small'
+          />
+        )}
+      </Spin>
+    </Modal>
+  );
+};
+
 const IPBanSection = ({ type, title, description }) => {
   const list = useIPBanList(type);
   const isMobile = useIsMobile();
   const [editingRecord, setEditingRecord] = useState(null);
   const [showEdit, setShowEdit] = useState(false);
   const [showBatch, setShowBatch] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [batchOp, setBatchOp] = useState(null); // 'reason' | 'expires_at' | 'to_permanent' | 'to_temporary' | 'auto_ban_user'
+  const [relatedRecord, setRelatedRecord] = useState(null);
   const { t } = list;
+
+  // 数据变化时清理已失效的选中项
+  useEffect(() => {
+    const validIds = new Set(list.items.map((it) => it.id));
+    setSelectedRowKeys((prev) => prev.filter((id) => validIds.has(id)));
+  }, [list.items]);
+
+  const clearSelection = () => setSelectedRowKeys([]);
 
   const deleteRecord = (record) => {
     Modal.confirm({
@@ -517,6 +776,35 @@ const IPBanSection = ({ type, title, description }) => {
         }
       },
     });
+  };
+
+  const batchDelete = () => {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: t('确认批量删除'),
+      content: `${t('将删除所选')} ${selectedRowKeys.length} ${t('条IP封禁规则，删除后将立即失效')}`,
+      onOk: async () => {
+        try {
+          const res = await API.post('/api/ip_ban/batch_delete', {
+            ids: selectedRowKeys,
+          });
+          const { success, message, data } = res.data;
+          if (success) {
+            showSuccess(`${t('已删除')} ${data?.deleted || 0} ${t('条')}`);
+            clearSelection();
+            list.refresh();
+          } else {
+            showError(message);
+          }
+        } catch (error) {
+          showError(error.message);
+        }
+      },
+    });
+  };
+
+  const selectAllOnPage = () => {
+    setSelectedRowKeys(list.items.map((it) => it.id));
   };
 
   const columns = useMemo(
@@ -565,9 +853,17 @@ const IPBanSection = ({ type, title, description }) => {
         title: '',
         dataIndex: 'operate',
         fixed: 'right',
-        width: 150,
+        width: 180,
         render: (_text, record) => (
           <Space>
+            <Tooltip content={t('查看该规则连带封禁的账号')}>
+              <Button
+                size='small'
+                type='tertiary'
+                icon={<Users {...iconProps} />}
+                onClick={() => setRelatedRecord(record)}
+              />
+            </Tooltip>
             <Button
               size='small'
               type='tertiary'
@@ -605,6 +901,22 @@ const IPBanSection = ({ type, title, description }) => {
         onClose={() => setShowBatch(false)}
         onSaved={list.refresh}
       />
+      <BatchOperationModal
+        visible={Boolean(batchOp)}
+        type={type}
+        ids={selectedRowKeys}
+        operation={batchOp}
+        onClose={() => setBatchOp(null)}
+        onSaved={() => {
+          clearSelection();
+          list.refresh();
+        }}
+      />
+      <RelatedUsersModal
+        visible={Boolean(relatedRecord)}
+        record={relatedRecord}
+        onClose={() => setRelatedRecord(null)}
+      />
       <CardPro
         type='type1'
         descriptionArea={
@@ -618,50 +930,124 @@ const IPBanSection = ({ type, title, description }) => {
           </div>
         }
         actionsArea={
-          <div className='flex flex-col md:flex-row gap-2 justify-between'>
-            <div className='flex flex-wrap gap-2'>
-              <Button
-                type='primary'
-                size='small'
-                icon={<Plus {...iconProps} />}
-                onClick={() => {
-                  setEditingRecord(null);
-                  setShowEdit(true);
-                }}
-              >
-                {t('添加')}
-              </Button>
-              <Button
-                type='tertiary'
-                size='small'
-                icon={<Upload {...iconProps} />}
-                onClick={() => setShowBatch(true)}
-              >
-                {t('批量导入')}
-              </Button>
-              <Button
-                type='tertiary'
-                size='small'
-                icon={<RefreshCw {...iconProps} />}
-                onClick={list.refresh}
-              />
+          <div className='flex flex-col gap-2'>
+            <div className='flex flex-col md:flex-row gap-2 justify-between'>
+              <div className='flex flex-wrap gap-2'>
+                <Button
+                  type='primary'
+                  size='small'
+                  icon={<Plus {...iconProps} />}
+                  onClick={() => {
+                    setEditingRecord(null);
+                    setShowEdit(true);
+                  }}
+                >
+                  {t('添加')}
+                </Button>
+                <Button
+                  type='tertiary'
+                  size='small'
+                  icon={<Upload {...iconProps} />}
+                  onClick={() => setShowBatch(true)}
+                >
+                  {t('批量导入')}
+                </Button>
+                <Button
+                  type='tertiary'
+                  size='small'
+                  icon={<RefreshCw {...iconProps} />}
+                  onClick={list.refresh}
+                />
+              </div>
+              <div className='flex gap-2'>
+                <Input
+                  value={list.keyword}
+                  onChange={list.setKeyword}
+                  onEnterPress={list.search}
+                  prefix={<Search {...iconProps} />}
+                  placeholder={t('搜索IP或原因')}
+                  showClear
+                />
+                <Button
+                  type='tertiary'
+                  size='small'
+                  icon={<Search {...iconProps} />}
+                  onClick={list.search}
+                />
+              </div>
             </div>
-            <div className='flex gap-2'>
-              <Input
-                value={list.keyword}
-                onChange={list.setKeyword}
-                onEnterPress={list.search}
-                prefix={<Search {...iconProps} />}
-                placeholder={t('搜索IP或原因')}
-                showClear
-              />
-              <Button
-                type='tertiary'
-                size='small'
-                icon={<Search {...iconProps} />}
-                onClick={list.search}
-              />
-            </div>
+            {selectedRowKeys.length > 0 && (
+              <div
+                className='flex flex-wrap items-center gap-2 p-2 rounded-lg'
+                style={{ background: 'var(--semi-color-fill-0)' }}
+              >
+                <Text strong>
+                  {t('已选')} {selectedRowKeys.length} {t('项')}
+                </Text>
+                <Button
+                  size='small'
+                  type='tertiary'
+                  onClick={selectAllOnPage}
+                >
+                  {t('全选本页')}
+                </Button>
+                <Button size='small' type='tertiary' onClick={clearSelection}>
+                  {t('清空选择')}
+                </Button>
+                <div className='w-px h-4 bg-gray-300 mx-1' />
+                <Button
+                  size='small'
+                  type='danger'
+                  icon={<Trash2 {...iconProps} />}
+                  onClick={batchDelete}
+                >
+                  {t('批量删除')}
+                </Button>
+                <Button
+                  size='small'
+                  type='tertiary'
+                  onClick={() => setBatchOp('reason')}
+                >
+                  {t('修改原因')}
+                </Button>
+                {type === IP_BAN_TYPES.TEMPORARY && (
+                  <>
+                    <Button
+                      size='small'
+                      type='tertiary'
+                      onClick={() => setBatchOp('expires_at')}
+                    >
+                      {t('修改过期时间')}
+                    </Button>
+                    <Button
+                      size='small'
+                      type='tertiary'
+                      onClick={() => setBatchOp('to_permanent')}
+                    >
+                      {t('转为永久')}
+                    </Button>
+                  </>
+                )}
+                {type === IP_BAN_TYPES.PERMANENT && (
+                  <>
+                    <Button
+                      size='small'
+                      type='tertiary'
+                      onClick={() => setBatchOp('to_temporary')}
+                    >
+                      {t('转为临时')}
+                    </Button>
+                    <Button
+                      size='small'
+                      type='tertiary'
+                      onClick={() => setBatchOp('auto_ban_user')}
+                    >
+                      {t('修改命中后封禁账号')}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         }
         paginationArea={createCardProPagination({
@@ -682,6 +1068,10 @@ const IPBanSection = ({ type, title, description }) => {
           loading={list.loading}
           hidePagination
           scroll={{ x: 'max-content' }}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: (keys) => setSelectedRowKeys(keys),
+          }}
           onRow={(record) =>
             record.expires_at && record.expires_at <= getNow()
               ? { style: { background: 'var(--semi-color-disabled-border)' } }
