@@ -55,7 +55,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-	return requestOpenAI2Mistral(request), nil
+	convertedRequest := requestOpenAI2Mistral(request)
+	info.ReasoningEffort = convertedRequest.ReasoningEffort
+	return convertedRequest, nil
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
@@ -78,9 +80,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if info.IsStream {
-		usage, err = openai.OaiStreamHandler(c, info, resp)
+		usage, err = openai.OaiStreamHandlerWithDataTransformer(c, info, resp, normalizeMistralStreamData)
 	} else {
-		usage, err = openai.OpenaiHandler(c, info, resp)
+		usage, err = openai.OpenaiHandlerWithBodyTransformer(c, info, resp, normalizeMistralResponseData)
 	}
 	return
 }
