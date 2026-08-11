@@ -239,6 +239,7 @@ export const useChannelsData = () => {
     for (let i = 0; i < channels.length; i++) {
       channels[i].upstreamUpdateMeta = parseUpstreamUpdateMeta(
         channels[i].settings,
+        channels[i].type,
       );
       channels[i].key = '' + channels[i].id;
       if (!enableTagMode) {

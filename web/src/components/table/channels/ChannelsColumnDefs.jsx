@@ -291,7 +291,7 @@ const getUpstreamUpdateMeta = (record) => {
   const parsed =
     record?.upstreamUpdateMeta && typeof record.upstreamUpdateMeta === 'object'
       ? record.upstreamUpdateMeta
-      : parseUpstreamUpdateMeta(record?.settings);
+      : parseUpstreamUpdateMeta(record?.settings, record?.type);
   return {
     supported,
     enabled: parsed?.enabled === true,

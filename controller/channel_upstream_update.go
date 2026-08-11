@@ -58,12 +58,25 @@ type applyAllChannelUpstreamModelUpdatesResult struct {
 }
 
 type detectChannelUpstreamModelUpdatesResult struct {
-	ChannelID       int      `json:"channel_id"`
-	ChannelName     string   `json:"channel_name"`
-	AddModels       []string `json:"add_models"`
-	RemoveModels    []string `json:"remove_models"`
-	LastCheckTime   int64    `json:"last_check_time"`
-	AutoAddedModels int      `json:"auto_added_models"`
+	ChannelID         int      `json:"channel_id"`
+	ChannelName       string   `json:"channel_name"`
+	AddModels         []string `json:"add_models"`
+	RemoveModels      []string `json:"remove_models"`
+	LastCheckTime     int64    `json:"last_check_time"`
+	AutoAddedModels   int      `json:"auto_added_models"`
+	AutoRemovedModels int      `json:"auto_removed_models"`
+}
+
+type channelUpstreamAutoApplyResult struct {
+	AddedModels   []string
+	RemovedModels []string
+}
+
+type openRouterManagedModelPlan struct {
+	DesiredModels          []string
+	DesiredMappings        map[string]string
+	CurrentManagedMappings map[string]string
+	PreservedModelMappings map[string]string
 }
 
 type upstreamModelUpdateChannelSummary struct {
@@ -77,6 +90,34 @@ func normalizeModelNames(models []string) []string {
 		trimmed := strings.TrimSpace(model)
 		return trimmed, trimmed != ""
 	}))
+}
+
+func isOpenRouterManagedFreeOrAlphaModel(modelName string) bool {
+	modelName = strings.ToLower(strings.TrimSpace(modelName))
+	if modelName == "openrouter/free" || strings.HasSuffix(modelName, ":free") {
+		return true
+	}
+	if !strings.HasPrefix(modelName, "openrouter/") || !strings.HasSuffix(modelName, "-alpha") {
+		return false
+	}
+	alphaName := strings.TrimSuffix(strings.TrimPrefix(modelName, "openrouter/"), "-alpha")
+	return alphaName != "" && !strings.Contains(alphaName, "/")
+}
+
+func filterOpenRouterManagedFreeAndAlphaModels(models []string) []string {
+	return lo.Filter(normalizeModelNames(models), func(modelName string, _ int) bool {
+		return isOpenRouterManagedFreeOrAlphaModel(modelName)
+	})
+}
+
+func isOpenRouterManagedModelSyncEnabled(channel *model.Channel, settings dto.ChannelOtherSettings) bool {
+	return channel != nil &&
+		channel.Type == constant.ChannelTypeOpenRouter &&
+		settings.OpenRouterFreeAlphaSyncEnabled
+}
+
+func isChannelUpstreamModelUpdateEnabled(channel *model.Channel, settings dto.ChannelOtherSettings) bool {
+	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings)
 }
 
 func mergeModelNames(base []string, appended []string) []string {
@@ -151,6 +192,187 @@ func normalizeChannelModelMapping(channel *model.Channel) map[string]string {
 	return normalized
 }
 
+func cloneModelMapping(modelMapping map[string]string) map[string]string {
+	cloned := make(map[string]string, len(modelMapping))
+	for source, target := range modelMapping {
+		cloned[source] = target
+	}
+	return cloned
+}
+
+func modelMappingsEqual(left map[string]string, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for source, target := range left {
+		if right[source] != target {
+			return false
+		}
+	}
+	return true
+}
+
+func setChannelModelMapping(channel *model.Channel, modelMapping map[string]string) (bool, error) {
+	normalized := make(map[string]string, len(modelMapping))
+	for source, target := range modelMapping {
+		source = strings.TrimSpace(source)
+		target = strings.TrimSpace(target)
+		if source == "" || target == "" {
+			continue
+		}
+		normalized[source] = target
+	}
+	if modelMappingsEqual(normalizeChannelModelMapping(channel), normalized) {
+		return false, nil
+	}
+	mappingBytes, err := common.Marshal(normalized)
+	if err != nil {
+		return false, err
+	}
+	mappingJSON := string(mappingBytes)
+	channel.ModelMapping = &mappingJSON
+	return true, nil
+}
+
+func isIgnoredUpstreamModel(modelName string, ignoredModels []string) bool {
+	return lo.ContainsBy(normalizeModelNames(ignoredModels), func(ignoredModel string) bool {
+		if regexBody, ok := strings.CutPrefix(ignoredModel, "regex:"); ok {
+			matched, err := regexp.MatchString(strings.TrimSpace(regexBody), modelName)
+			return err == nil && matched
+		}
+		return ignoredModel == modelName
+	})
+}
+
+func simplifyOpenRouterFreeModelName(modelName string) (string, bool) {
+	modelName = strings.TrimSpace(modelName)
+	lowerName := strings.ToLower(modelName)
+	if lowerName == "openrouter/free" || !strings.HasSuffix(lowerName, ":free") {
+		return "", false
+	}
+	slashIndex := strings.Index(modelName, "/")
+	if slashIndex < 0 || slashIndex == len(modelName)-1 {
+		return "", false
+	}
+	simplified := strings.TrimSpace(modelName[slashIndex+1 : len(modelName)-len(":free")])
+	if simplified == "" {
+		return "", false
+	}
+	return simplified, true
+}
+
+func collectManagedOpenRouterFreeModelMappings(
+	modelMapping map[string]string,
+	generatedMappings map[string]string,
+) map[string]string {
+	managed := make(map[string]string)
+	for source, target := range generatedMappings {
+		source = strings.TrimSpace(source)
+		target = strings.TrimSpace(target)
+		if modelMapping[source] != target {
+			continue
+		}
+		simplified, ok := simplifyOpenRouterFreeModelName(target)
+		if ok && source == simplified {
+			managed[source] = target
+		}
+	}
+	return managed
+}
+
+func buildOpenRouterManagedModelPlan(
+	channel *model.Channel,
+	upstreamModels []string,
+	simplifyFreeModelNames bool,
+	generatedMappings map[string]string,
+) openRouterManagedModelPlan {
+	currentMapping := normalizeChannelModelMapping(channel)
+	currentManagedMappings := collectManagedOpenRouterFreeModelMappings(currentMapping, generatedMappings)
+	preservedMappings := cloneModelMapping(currentMapping)
+	for source := range currentManagedMappings {
+		delete(preservedMappings, source)
+	}
+
+	plan := openRouterManagedModelPlan{
+		DesiredModels:          make([]string, 0, len(upstreamModels)),
+		DesiredMappings:        make(map[string]string),
+		CurrentManagedMappings: currentManagedMappings,
+		PreservedModelMappings: preservedMappings,
+	}
+	if !simplifyFreeModelNames {
+		plan.DesiredModels = normalizeModelNames(upstreamModels)
+		return plan
+	}
+
+	aliasCounts := make(map[string]int)
+	for _, upstreamModel := range normalizeModelNames(upstreamModels) {
+		if alias, ok := simplifyOpenRouterFreeModelName(upstreamModel); ok {
+			aliasCounts[alias]++
+		}
+	}
+	localModelSet := make(map[string]struct{})
+	for _, localModel := range normalizeModelNames(channel.GetModels()) {
+		localModelSet[localModel] = struct{}{}
+	}
+
+	for _, upstreamModel := range normalizeModelNames(upstreamModels) {
+		alias, canSimplify := simplifyOpenRouterFreeModelName(upstreamModel)
+		if !canSimplify || aliasCounts[alias] != 1 {
+			plan.DesiredModels = append(plan.DesiredModels, upstreamModel)
+			continue
+		}
+		_, aliasAlreadyManaged := currentManagedMappings[alias]
+		if _, exists := localModelSet[alias]; exists && !aliasAlreadyManaged {
+			plan.DesiredModels = append(plan.DesiredModels, upstreamModel)
+			continue
+		}
+		if _, exists := preservedMappings[alias]; exists {
+			plan.DesiredModels = append(plan.DesiredModels, upstreamModel)
+			continue
+		}
+		plan.DesiredModels = append(plan.DesiredModels, alias)
+		plan.DesiredMappings[alias] = upstreamModel
+	}
+	plan.DesiredModels = normalizeModelNames(plan.DesiredModels)
+	return plan
+}
+
+func buildAutoAppliedOpenRouterModelMapping(
+	channel *model.Channel,
+	currentManagedMappings map[string]string,
+	desiredMappings map[string]string,
+	nextModels []string,
+) map[string]string {
+	nextMapping := cloneModelMapping(normalizeChannelModelMapping(channel))
+	for source := range currentManagedMappings {
+		delete(nextMapping, source)
+	}
+	nextModelSet := make(map[string]struct{}, len(nextModels))
+	for _, modelName := range normalizeModelNames(nextModels) {
+		nextModelSet[modelName] = struct{}{}
+	}
+	for source, target := range desiredMappings {
+		if _, exists := nextModelSet[source]; exists {
+			nextMapping[source] = target
+		}
+	}
+	return nextMapping
+}
+
+func filterModelMappingsBySources(modelMapping map[string]string, sources []string) map[string]string {
+	sourceSet := make(map[string]struct{}, len(sources))
+	for _, source := range normalizeModelNames(sources) {
+		sourceSet[source] = struct{}{}
+	}
+	filtered := make(map[string]string)
+	for source, target := range modelMapping {
+		if _, exists := sourceSet[source]; exists {
+			filtered[source] = target
+		}
+	}
+	return filtered
+}
+
 func collectPendingUpstreamModelChangesFromModels(
 	localModels []string,
 	upstreamModels []string,
@@ -167,8 +389,6 @@ func collectPendingUpstreamModelChangesFromModels(
 	for _, modelName := range upstreamModels {
 		upstreamSet[modelName] = struct{}{}
 	}
-
-	normalizedIgnoredModels := normalizeModelNames(ignoredModels)
 
 	redirectSourceSet := make(map[string]struct{}, len(modelMapping))
 	redirectTargetSet := make(map[string]struct{}, len(modelMapping))
@@ -189,13 +409,7 @@ func collectPendingUpstreamModelChangesFromModels(
 		if _, ok := coveredUpstreamSet[modelName]; ok {
 			return false
 		}
-		if lo.ContainsBy(normalizedIgnoredModels, func(ignoredModel string) bool {
-			if regexBody, ok := strings.CutPrefix(ignoredModel, "regex:"); ok {
-				matched, err := regexp.MatchString(strings.TrimSpace(regexBody), modelName)
-				return err == nil && matched
-			}
-			return ignoredModel == modelName
-		}) {
+		if isIgnoredUpstreamModel(modelName, ignoredModels) {
 			return false
 		}
 		return true
@@ -212,10 +426,67 @@ func collectPendingUpstreamModelChangesFromModels(
 	return normalizeModelNames(pendingAdd), normalizeModelNames(pendingRemove)
 }
 
-func collectPendingUpstreamModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings) (pendingAddModels []string, pendingRemoveModels []string, err error) {
+func collectPendingOpenRouterManagedModelChangesFromModels(
+	localModels []string,
+	plan openRouterManagedModelPlan,
+	ignoredModels []string,
+) (pendingAddModels []string, pendingRemoveModels []string) {
+	pendingAddModels, _ = collectPendingUpstreamModelChangesFromModels(
+		localModels,
+		plan.DesiredModels,
+		ignoredModels,
+		plan.PreservedModelMappings,
+	)
+	for source, target := range plan.DesiredMappings {
+		if isIgnoredUpstreamModel(source, ignoredModels) || isIgnoredUpstreamModel(target, ignoredModels) {
+			pendingAddModels = subtractModelNames(pendingAddModels, []string{source})
+			continue
+		}
+		if plan.CurrentManagedMappings[source] != target {
+			pendingAddModels = mergeModelNames(pendingAddModels, []string{source})
+		}
+	}
+
+	desiredModelSet := make(map[string]struct{}, len(plan.DesiredModels))
+	for _, modelName := range normalizeModelNames(plan.DesiredModels) {
+		desiredModelSet[modelName] = struct{}{}
+	}
+	preservedRedirectSourceSet := make(map[string]struct{}, len(plan.PreservedModelMappings))
+	for source := range plan.PreservedModelMappings {
+		preservedRedirectSourceSet[source] = struct{}{}
+	}
+	pendingRemoveModels = lo.Filter(normalizeModelNames(localModels), func(modelName string, _ int) bool {
+		_, isManagedAlias := plan.CurrentManagedMappings[modelName]
+		if !isOpenRouterManagedFreeOrAlphaModel(modelName) && !isManagedAlias {
+			return false
+		}
+		if _, ok := preservedRedirectSourceSet[modelName]; ok {
+			return false
+		}
+		_, exists := desiredModelSet[modelName]
+		return !exists
+	})
+	return normalizeModelNames(pendingAddModels), normalizeModelNames(pendingRemoveModels)
+}
+
+func collectPendingUpstreamModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings) (pendingAddModels []string, pendingRemoveModels []string, desiredMappings map[string]string, err error) {
 	upstreamModels, err := fetchChannelUpstreamModelIDs(channel)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
+	}
+	if isOpenRouterManagedModelSyncEnabled(channel, settings) {
+		plan := buildOpenRouterManagedModelPlan(
+			channel,
+			upstreamModels,
+			settings.OpenRouterFreeModelNameSimplificationEnabled,
+			settings.OpenRouterFreeModelGeneratedMappings,
+		)
+		pendingAddModels, pendingRemoveModels = collectPendingOpenRouterManagedModelChangesFromModels(
+			channel.GetModels(),
+			plan,
+			settings.UpstreamModelUpdateIgnoredModels,
+		)
+		return pendingAddModels, pendingRemoveModels, plan.DesiredMappings, nil
 	}
 	pendingAddModels, pendingRemoveModels = collectPendingUpstreamModelChangesFromModels(
 		channel.GetModels(),
@@ -223,7 +494,7 @@ func collectPendingUpstreamModelChanges(channel *model.Channel, settings dto.Cha
 		settings.UpstreamModelUpdateIgnoredModels,
 		normalizeChannelModelMapping(channel),
 	)
-	return pendingAddModels, pendingRemoveModels, nil
+	return pendingAddModels, pendingRemoveModels, nil, nil
 }
 
 func getUpstreamModelUpdateMinCheckIntervalSeconds() int64 {
@@ -235,6 +506,27 @@ func getUpstreamModelUpdateMinCheckIntervalSeconds() int64 {
 		return channelUpstreamModelUpdateMinCheckIntervalSeconds
 	}
 	return interval
+}
+
+func fetchOpenRouterManagedFreeAndAlphaModelIDs(
+	channel *model.Channel,
+	baseURL string,
+	key string,
+	customModelListURL string,
+) ([]string, error) {
+	fetchURL := strings.TrimSpace(customModelListURL)
+	if fetchURL == "" {
+		fetchURL = fmt.Sprintf("%s/v1/models/user", strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+	}
+	models, err := fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
+	if err != nil {
+		return nil, fmt.Errorf("获取 OpenRouter 用户模型列表失败: %w", err)
+	}
+	managedModels := filterOpenRouterManagedFreeAndAlphaModels(models)
+	if len(managedModels) == 0 {
+		return nil, fmt.Errorf("OpenRouter 用户模型列表未返回任何免费或匿名 Alpha 模型")
+	}
+	return managedModels, nil
 }
 
 func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
@@ -253,7 +545,16 @@ func fetchChannelUpstreamModelIDs(channel *model.Channel) ([]string, error) {
 		return nil, fmt.Errorf("获取渠道密钥失败: %w", apiErr)
 	}
 	key = strings.TrimSpace(key)
-	return fetchChannelModelIDsWithKey(channel, baseURL, key, channel.GetOtherSettings().CustomModelListURL)
+	settings := channel.GetOtherSettings()
+	if isOpenRouterManagedModelSyncEnabled(channel, settings) {
+		return fetchOpenRouterManagedFreeAndAlphaModelIDs(
+			channel,
+			baseURL,
+			key,
+			settings.CustomModelListURL,
+		)
+	}
+	return fetchChannelModelIDsWithKey(channel, baseURL, key, settings.CustomModelListURL)
 }
 
 func updateChannelUpstreamModelSettings(channel *model.Channel, settings dto.ChannelOtherSettings, updateModels bool) error {
@@ -263,6 +564,9 @@ func updateChannelUpstreamModelSettings(channel *model.Channel, settings dto.Cha
 	}
 	if updateModels {
 		updates["models"] = channel.Models
+		if channel.ModelMapping != nil {
+			updates["model_mapping"] = *channel.ModelMapping
+		}
 	}
 	return model.DB.Model(&model.Channel{}).Where("id = ?", channel.Id).Updates(updates).Error
 }
@@ -272,48 +576,78 @@ func checkAndPersistChannelUpstreamModelUpdates(
 	settings *dto.ChannelOtherSettings,
 	force bool,
 	allowAutoApply bool,
-) (modelsChanged bool, autoAdded int, err error) {
+) (modelsChanged bool, autoApplyResult channelUpstreamAutoApplyResult, err error) {
 	now := common.GetTimestamp()
 	if !force {
 		minInterval := getUpstreamModelUpdateMinCheckIntervalSeconds()
 		if settings.UpstreamModelUpdateLastCheckTime > 0 &&
 			now-settings.UpstreamModelUpdateLastCheckTime < minInterval {
-			return false, 0, nil
+			return false, channelUpstreamAutoApplyResult{}, nil
 		}
 	}
 
-	pendingAddModels, pendingRemoveModels, fetchErr := collectPendingUpstreamModelChanges(channel, *settings)
+	pendingAddModels, pendingRemoveModels, desiredMappings, fetchErr := collectPendingUpstreamModelChanges(channel, *settings)
 	settings.UpstreamModelUpdateLastCheckTime = now
 	if fetchErr != nil {
 		if err = updateChannelUpstreamModelSettings(channel, *settings, false); err != nil {
-			return false, 0, err
+			return false, channelUpstreamAutoApplyResult{}, err
 		}
-		return false, 0, fetchErr
+		return false, channelUpstreamAutoApplyResult{}, fetchErr
 	}
+	settings.OpenRouterFreeModelPendingMappings = filterModelMappingsBySources(desiredMappings, pendingAddModels)
 
-	if allowAutoApply && settings.UpstreamModelUpdateAutoSyncEnabled && len(pendingAddModels) > 0 {
+	if allowAutoApply && isOpenRouterManagedModelSyncEnabled(channel, *settings) {
+		originModels := normalizeModelNames(channel.GetModels())
+		nextModels := applySelectedModelChanges(originModels, pendingAddModels, pendingRemoveModels)
+		modelListChanged := !slices.Equal(originModels, nextModels)
+		if modelListChanged {
+			channel.Models = strings.Join(nextModels, ",")
+			autoApplyResult.AddedModels = subtractModelNames(nextModels, originModels)
+			autoApplyResult.RemovedModels = subtractModelNames(originModels, nextModels)
+		}
+		currentManagedMappings := collectManagedOpenRouterFreeModelMappings(
+			normalizeChannelModelMapping(channel),
+			settings.OpenRouterFreeModelGeneratedMappings,
+		)
+		nextMapping := buildAutoAppliedOpenRouterModelMapping(
+			channel,
+			currentManagedMappings,
+			desiredMappings,
+			nextModels,
+		)
+		mappingChanged, mappingErr := setChannelModelMapping(channel, nextMapping)
+		if mappingErr != nil {
+			return false, autoApplyResult, mappingErr
+		}
+		modelsChanged = modelListChanged || mappingChanged
+		settings.OpenRouterFreeModelGeneratedMappings = filterModelMappingsBySources(desiredMappings, nextModels)
+		settings.OpenRouterFreeModelPendingMappings = nil
+		settings.UpstreamModelUpdateLastDetectedModels = []string{}
+		settings.UpstreamModelUpdateLastRemovedModels = []string{}
+	} else if allowAutoApply && settings.UpstreamModelUpdateAutoSyncEnabled && len(pendingAddModels) > 0 {
 		originModels := normalizeModelNames(channel.GetModels())
 		mergedModels := mergeModelNames(originModels, pendingAddModels)
 		if len(mergedModels) > len(originModels) {
 			channel.Models = strings.Join(mergedModels, ",")
-			autoAdded = len(mergedModels) - len(originModels)
+			autoApplyResult.AddedModels = subtractModelNames(mergedModels, originModels)
 			modelsChanged = true
 		}
 		settings.UpstreamModelUpdateLastDetectedModels = []string{}
+		settings.UpstreamModelUpdateLastRemovedModels = pendingRemoveModels
 	} else {
 		settings.UpstreamModelUpdateLastDetectedModels = pendingAddModels
+		settings.UpstreamModelUpdateLastRemovedModels = pendingRemoveModels
 	}
-	settings.UpstreamModelUpdateLastRemovedModels = pendingRemoveModels
 
 	if err = updateChannelUpstreamModelSettings(channel, *settings, modelsChanged); err != nil {
-		return false, autoAdded, err
+		return false, autoApplyResult, err
 	}
 	if modelsChanged {
 		if err = channel.UpdateAbilities(nil); err != nil {
-			return true, autoAdded, err
+			return true, autoApplyResult, err
 		}
 	}
-	return modelsChanged, autoAdded, nil
+	return modelsChanged, autoApplyResult, nil
 }
 
 func refreshChannelRuntimeCache() {
@@ -357,6 +691,7 @@ func buildUpstreamModelUpdateTaskNotificationContent(
 	detectedAddModels int,
 	detectedRemoveModels int,
 	autoAddedModels int,
+	autoRemovedModels int,
 	failedChannelIDs []int,
 	channelSummaries []upstreamModelUpdateChannelSummary,
 	addModelSamples []string,
@@ -365,12 +700,13 @@ func buildUpstreamModelUpdateTaskNotificationContent(
 	var builder strings.Builder
 	failedChannels := len(failedChannelIDs)
 	builder.WriteString(fmt.Sprintf(
-		"上游模型巡检摘要：检测渠道 %d 个，发现变更 %d 个，新增 %d 个，删除 %d 个，自动同步新增 %d 个，失败 %d 个。",
+		"上游模型巡检摘要：检测渠道 %d 个，发现变更 %d 个，新增 %d 个，删除 %d 个，自动同步新增 %d 个、删除 %d 个，失败 %d 个。",
 		checkedChannels,
 		changedChannels,
 		detectedAddModels,
 		detectedRemoveModels,
 		autoAddedModels,
+		autoRemovedModels,
 		failedChannels,
 	))
 
@@ -442,6 +778,7 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 	detectedAddModels := 0
 	detectedRemoveModels := 0
 	autoAddedModels := 0
+	autoRemovedModels := 0
 	channelSummaries := make([]upstreamModelUpdateChannelSummary, 0)
 	addModelSamples := make([]string, 0)
 	removeModelSamples := make([]string, 0)
@@ -451,7 +788,7 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 	for {
 		var channels []*model.Channel
 		query := model.DB.
-			Select("id", "name", "type", "key", "status", "base_url", "models", "settings", "setting", "other", "group", "priority", "weight", "tag", "channel_info", "header_override").
+			Select("id", "name", "type", "key", "status", "base_url", "models", "model_mapping", "settings", "setting", "other", "group", "priority", "weight", "tag", "channel_info", "header_override").
 			Where("status = ?", common.ChannelStatusEnabled).
 			Order("id asc").
 			Limit(channelUpstreamModelUpdateTaskBatchSize)
@@ -474,12 +811,12 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 			}
 
 			settings := channel.GetOtherSettings()
-			if !settings.UpstreamModelUpdateCheckEnabled {
+			if !isChannelUpstreamModelUpdateEnabled(channel, settings) {
 				continue
 			}
 
 			checkedChannels++
-			modelsChanged, autoAdded, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, false, true)
+			modelsChanged, autoApplyResult, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, false, true)
 			if err != nil {
 				failedChannels++
 				failedChannelIDs = append(failedChannelIDs, channel.Id)
@@ -488,7 +825,9 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 			}
 			currentAddModels := normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
 			currentRemoveModels := normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
-			currentAddCount := len(currentAddModels) + autoAdded
+			currentAddModels = mergeModelNames(currentAddModels, autoApplyResult.AddedModels)
+			currentRemoveModels = mergeModelNames(currentRemoveModels, autoApplyResult.RemovedModels)
+			currentAddCount := len(currentAddModels)
 			currentRemoveCount := len(currentRemoveModels)
 			detectedAddModels += currentAddCount
 			detectedRemoveModels += currentRemoveCount
@@ -505,7 +844,8 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 			if modelsChanged {
 				refreshNeeded = true
 			}
-			autoAddedModels += autoAdded
+			autoAddedModels += len(autoApplyResult.AddedModels)
+			autoRemovedModels += len(autoApplyResult.RemovedModels)
 
 			if common.RequestInterval > 0 {
 				time.Sleep(common.RequestInterval)
@@ -523,13 +863,14 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 
 	if checkedChannels > 0 || common.DebugEnabled {
 		common.SysLog(fmt.Sprintf(
-			"upstream model update task done: checked_channels=%d changed_channels=%d detected_add_models=%d detected_remove_models=%d failed_channels=%d auto_added_models=%d",
+			"upstream model update task done: checked_channels=%d changed_channels=%d detected_add_models=%d detected_remove_models=%d failed_channels=%d auto_added_models=%d auto_removed_models=%d",
 			checkedChannels,
 			changedChannels,
 			detectedAddModels,
 			detectedRemoveModels,
 			failedChannels,
 			autoAddedModels,
+			autoRemovedModels,
 		))
 	}
 	if changedChannels > 0 || failedChannels > 0 {
@@ -550,6 +891,7 @@ func runChannelUpstreamModelUpdateTaskOnce() {
 				detectedAddModels,
 				detectedRemoveModels,
 				autoAddedModels,
+				autoRemovedModels,
 				failedChannelIDs,
 				channelSummaries,
 				addModelSamples,
@@ -664,7 +1006,7 @@ func DetectChannelUpstreamModelUpdates(c *gin.Context) {
 	}
 
 	settings := channel.GetOtherSettings()
-	modelsChanged, autoAdded, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, true, false)
+	modelsChanged, autoApplyResult, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, true, false)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -677,12 +1019,13 @@ func DetectChannelUpstreamModelUpdates(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": detectChannelUpstreamModelUpdatesResult{
-			ChannelID:       channel.Id,
-			ChannelName:     channel.Name,
-			AddModels:       normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels),
-			RemoveModels:    normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels),
-			LastCheckTime:   settings.UpstreamModelUpdateLastCheckTime,
-			AutoAddedModels: autoAdded,
+			ChannelID:         channel.Id,
+			ChannelName:       channel.Name,
+			AddModels:         normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels),
+			RemoveModels:      normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels),
+			LastCheckTime:     settings.UpstreamModelUpdateLastCheckTime,
+			AutoAddedModels:   len(autoApplyResult.AddedModels),
+			AutoRemovedModels: len(autoApplyResult.RemovedModels),
 		},
 	})
 }
@@ -703,6 +1046,21 @@ func applyChannelUpstreamModelUpdates(
 	settings := channel.GetOtherSettings()
 	pendingAddModels := normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
 	pendingRemoveModels := normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
+	isOpenRouterManagedSync := isOpenRouterManagedModelSyncEnabled(channel, settings)
+	currentManagedMappings := collectManagedOpenRouterFreeModelMappings(
+		normalizeChannelModelMapping(channel),
+		settings.OpenRouterFreeModelGeneratedMappings,
+	)
+	if isOpenRouterManagedSync {
+		pendingAddModels = lo.Filter(pendingAddModels, func(modelName string, _ int) bool {
+			_, isPendingAlias := settings.OpenRouterFreeModelPendingMappings[modelName]
+			return isOpenRouterManagedFreeOrAlphaModel(modelName) || isPendingAlias
+		})
+		pendingRemoveModels = lo.Filter(pendingRemoveModels, func(modelName string, _ int) bool {
+			_, isManagedAlias := currentManagedMappings[modelName]
+			return isOpenRouterManagedFreeOrAlphaModel(modelName) || isManagedAlias
+		})
+	}
 	addModels := intersectModelNames(addModelsInput, pendingAddModels)
 	ignoreModels := intersectModelNames(ignoreModelsInput, pendingAddModels)
 	removeModels := intersectModelNames(removeModelsInput, pendingRemoveModels)
@@ -710,10 +1068,34 @@ func applyChannelUpstreamModelUpdates(
 
 	originModels := normalizeModelNames(channel.GetModels())
 	nextModels := applySelectedModelChanges(originModels, addModels, removeModels)
-	modelsChanged = !slices.Equal(originModels, nextModels)
-	if modelsChanged {
+	modelListChanged := !slices.Equal(originModels, nextModels)
+	if modelListChanged {
 		channel.Models = strings.Join(nextModels, ",")
 	}
+	mappingChanged := false
+	if isOpenRouterManagedSync {
+		nextMapping := cloneModelMapping(normalizeChannelModelMapping(channel))
+		nextGeneratedMappings := cloneModelMapping(currentManagedMappings)
+		for _, removedModel := range removeModels {
+			if _, isManagedAlias := currentManagedMappings[removedModel]; isManagedAlias {
+				delete(nextMapping, removedModel)
+				delete(nextGeneratedMappings, removedModel)
+			}
+		}
+		for _, addedModel := range addModels {
+			if target := settings.OpenRouterFreeModelPendingMappings[addedModel]; target != "" {
+				nextMapping[addedModel] = target
+				nextGeneratedMappings[addedModel] = target
+			}
+		}
+		var mappingErr error
+		mappingChanged, mappingErr = setChannelModelMapping(channel, nextMapping)
+		if mappingErr != nil {
+			return nil, nil, nil, nil, false, mappingErr
+		}
+		settings.OpenRouterFreeModelGeneratedMappings = nextGeneratedMappings
+	}
+	modelsChanged = modelListChanged || mappingChanged
 
 	settings.UpstreamModelUpdateIgnoredModels = mergeModelNames(settings.UpstreamModelUpdateIgnoredModels, ignoreModels)
 	if len(addModels) > 0 {
@@ -723,6 +1105,10 @@ func applyChannelUpstreamModelUpdates(
 	remainingRemoveModels = subtractModelNames(pendingRemoveModels, removeModels)
 	settings.UpstreamModelUpdateLastDetectedModels = remainingModels
 	settings.UpstreamModelUpdateLastRemovedModels = remainingRemoveModels
+	settings.OpenRouterFreeModelPendingMappings = filterModelMappingsBySources(
+		settings.OpenRouterFreeModelPendingMappings,
+		remainingModels,
+	)
 	settings.UpstreamModelUpdateLastCheckTime = common.GetTimestamp()
 
 	if err := updateChannelUpstreamModelSettings(channel, settings, modelsChanged); err != nil {
@@ -737,14 +1123,30 @@ func applyChannelUpstreamModelUpdates(
 	return addModels, removeModels, remainingModels, remainingRemoveModels, modelsChanged, nil
 }
 
-func collectPendingApplyUpstreamModelChanges(settings dto.ChannelOtherSettings) (pendingAddModels []string, pendingRemoveModels []string) {
-	return normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels), normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
+func collectPendingApplyUpstreamModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings) (pendingAddModels []string, pendingRemoveModels []string) {
+	pendingAddModels = normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
+	pendingRemoveModels = normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
+	if isOpenRouterManagedModelSyncEnabled(channel, settings) {
+		currentManagedMappings := collectManagedOpenRouterFreeModelMappings(
+			normalizeChannelModelMapping(channel),
+			settings.OpenRouterFreeModelGeneratedMappings,
+		)
+		pendingAddModels = lo.Filter(pendingAddModels, func(modelName string, _ int) bool {
+			_, isPendingAlias := settings.OpenRouterFreeModelPendingMappings[modelName]
+			return isOpenRouterManagedFreeOrAlphaModel(modelName) || isPendingAlias
+		})
+		pendingRemoveModels = lo.Filter(pendingRemoveModels, func(modelName string, _ int) bool {
+			_, isManagedAlias := currentManagedMappings[modelName]
+			return isOpenRouterManagedFreeOrAlphaModel(modelName) || isManagedAlias
+		})
+	}
+	return pendingAddModels, pendingRemoveModels
 }
 
 func findEnabledChannelsAfterID(lastID int, batchSize int) ([]*model.Channel, error) {
 	var channels []*model.Channel
 	query := model.DB.
-		Select("id", "name", "type", "key", "status", "base_url", "models", "settings", "setting", "other", "group", "priority", "weight", "tag", "channel_info", "header_override").
+		Select("id", "name", "type", "key", "status", "base_url", "models", "model_mapping", "settings", "setting", "other", "group", "priority", "weight", "tag", "channel_info", "header_override").
 		Where("status = ?", common.ChannelStatusEnabled).
 		Order("id asc").
 		Limit(batchSize)
@@ -779,11 +1181,11 @@ func ApplyAllChannelUpstreamModelUpdates(c *gin.Context) {
 			}
 
 			settings := channel.GetOtherSettings()
-			if !settings.UpstreamModelUpdateCheckEnabled {
+			if !isChannelUpstreamModelUpdateEnabled(channel, settings) {
 				continue
 			}
 
-			pendingAddModels, pendingRemoveModels := collectPendingApplyUpstreamModelChanges(settings)
+			pendingAddModels, pendingRemoveModels := collectPendingApplyUpstreamModelChanges(channel, settings)
 			if len(pendingAddModels) == 0 && len(pendingRemoveModels) == 0 {
 				continue
 			}
@@ -859,11 +1261,11 @@ func DetectAllChannelUpstreamModelUpdates(c *gin.Context) {
 				continue
 			}
 			settings := channel.GetOtherSettings()
-			if !settings.UpstreamModelUpdateCheckEnabled {
+			if !isChannelUpstreamModelUpdateEnabled(channel, settings) {
 				continue
 			}
 
-			modelsChanged, autoAdded, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, true, false)
+			modelsChanged, autoApplyResult, err := checkAndPersistChannelUpstreamModelUpdates(channel, &settings, true, false)
 			if err != nil {
 				failed = append(failed, channel.Id)
 				continue
@@ -877,12 +1279,13 @@ func DetectAllChannelUpstreamModelUpdates(c *gin.Context) {
 			detectedAddCount += len(addModels)
 			detectedRemoveCount += len(removeModels)
 			results = append(results, detectChannelUpstreamModelUpdatesResult{
-				ChannelID:       channel.Id,
-				ChannelName:     channel.Name,
-				AddModels:       addModels,
-				RemoveModels:    removeModels,
-				LastCheckTime:   settings.UpstreamModelUpdateLastCheckTime,
-				AutoAddedModels: autoAdded,
+				ChannelID:         channel.Id,
+				ChannelName:       channel.Name,
+				AddModels:         addModels,
+				RemoveModels:      removeModels,
+				LastCheckTime:     settings.UpstreamModelUpdateLastCheckTime,
+				AutoAddedModels:   len(autoApplyResult.AddedModels),
+				AutoRemovedModels: len(autoApplyResult.RemovedModels),
 			})
 		}
 

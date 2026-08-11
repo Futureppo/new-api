@@ -1,5 +1,10 @@
 {
   "translation": {
+    "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Tự động quản lý mô hình OpenRouter miễn phí và Alpha ẩn danh",
+    "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "Khi bật, tự động thêm hoặc xóa các mô hình kết thúc bằng :free, openrouter/free và openrouter/*-alpha, đồng thời giữ nguyên các mô hình khác",
+    "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "Đồng bộ mô hình OpenRouter miễn phí và Alpha ẩn danh đang bật. Cài đặt kiểm tra toàn bộ mô hình tạm thời bị vô hiệu hóa",
+    "简化 OpenRouter 免费模型名称": "Rút gọn tên mô hình OpenRouter miễn phí",
+    "将 provider/model:free 简化为 model 并自动添加模型重定向；openrouter/free 和匿名 Alpha 模型保持原名，名称冲突时保留完整模型名": "Rút gọn provider/model:free thành model và tự động thêm chuyển hướng mô hình; openrouter/free và mô hình Alpha ẩn danh giữ nguyên tên, còn khi trùng tên sẽ dùng tên mô hình đầy đủ",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + Gọi tạo hình ảnh {{symbol}}{{price}} / 1 lần * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + Tìm kiếm tệp {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + Tìm kiếm tệp {{count}} lần / 1K lần * {{symbol}}{{price}} * {{ratioType}} {{ratio}}",

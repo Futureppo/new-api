@@ -221,6 +221,8 @@ const EditChannelModal = (props) => {
     claude_beta_query: false,
     xai_codex_compatibility_enabled: false,
     custom_model_list_url: '',
+    openrouter_auto_sync_free_and_alpha_models_enabled: false,
+    openrouter_free_model_name_simplification_enabled: false,
     upstream_model_update_check_enabled: false,
     upstream_model_update_auto_sync_enabled: false,
     upstream_model_update_last_check_time: 0,
@@ -930,6 +932,12 @@ const EditChannelModal = (props) => {
             parsedSettings.xai_codex_compatibility_enabled === true;
           data.custom_model_list_url =
             parsedSettings.custom_model_list_url || '';
+          data.openrouter_auto_sync_free_and_alpha_models_enabled =
+            parsedSettings.openrouter_auto_sync_free_and_alpha_models_enabled ===
+            true;
+          data.openrouter_free_model_name_simplification_enabled =
+            parsedSettings.openrouter_free_model_name_simplification_enabled ===
+            true;
           data.upstream_model_update_check_enabled =
             parsedSettings.upstream_model_update_check_enabled === true;
           data.upstream_model_update_auto_sync_enabled =
@@ -964,6 +972,8 @@ const EditChannelModal = (props) => {
           data.claude_beta_query = false;
           data.xai_codex_compatibility_enabled = false;
           data.custom_model_list_url = '';
+          data.openrouter_auto_sync_free_and_alpha_models_enabled = false;
+          data.openrouter_free_model_name_simplification_enabled = false;
           data.upstream_model_update_check_enabled = false;
           data.upstream_model_update_auto_sync_enabled = false;
           data.upstream_model_update_last_check_time = 0;
@@ -986,6 +996,8 @@ const EditChannelModal = (props) => {
         data.claude_beta_query = false;
         data.xai_codex_compatibility_enabled = false;
         data.custom_model_list_url = '';
+        data.openrouter_auto_sync_free_and_alpha_models_enabled = false;
+        data.openrouter_free_model_name_simplification_enabled = false;
         data.upstream_model_update_check_enabled = false;
         data.upstream_model_update_auto_sync_enabled = false;
         data.upstream_model_update_last_check_time = 0;
@@ -1835,6 +1847,17 @@ const EditChannelModal = (props) => {
     if (localInputs.type === 20) {
       settings.openrouter_enterprise =
         localInputs.is_enterprise_account === true;
+      settings.openrouter_auto_sync_free_and_alpha_models_enabled =
+        localInputs.openrouter_auto_sync_free_and_alpha_models_enabled === true;
+      settings.openrouter_free_model_name_simplification_enabled =
+        settings.openrouter_auto_sync_free_and_alpha_models_enabled &&
+        localInputs.openrouter_free_model_name_simplification_enabled === true;
+    } else if (
+      'openrouter_auto_sync_free_and_alpha_models_enabled' in settings ||
+      'openrouter_free_model_name_simplification_enabled' in settings
+    ) {
+      delete settings.openrouter_auto_sync_free_and_alpha_models_enabled;
+      delete settings.openrouter_free_model_name_simplification_enabled;
     }
 
     // type === 33 (AWS): 保存 aws_key_type 到 settings
@@ -1910,7 +1933,8 @@ const EditChannelModal = (props) => {
     );
     if (
       !Array.isArray(settings.upstream_model_update_last_detected_models) ||
-      !settings.upstream_model_update_check_enabled
+      (!settings.upstream_model_update_check_enabled &&
+        !settings.openrouter_auto_sync_free_and_alpha_models_enabled)
     ) {
       settings.upstream_model_update_last_detected_models = [];
     }
@@ -1948,6 +1972,8 @@ const EditChannelModal = (props) => {
     delete localInputs.claude_beta_query;
     delete localInputs.xai_codex_compatibility_enabled;
     delete localInputs.custom_model_list_url;
+    delete localInputs.openrouter_auto_sync_free_and_alpha_models_enabled;
+    delete localInputs.openrouter_free_model_name_simplification_enabled;
     delete localInputs.upstream_model_update_check_enabled;
     delete localInputs.upstream_model_update_auto_sync_enabled;
     delete localInputs.upstream_model_update_last_check_time;
@@ -2342,11 +2368,52 @@ const EditChannelModal = (props) => {
                     {t('上游模型管理')}
                   </Text>
 
+                  {inputs.type === 20 && (
+                    <Form.Switch
+                      field='openrouter_auto_sync_free_and_alpha_models_enabled'
+                      label={t('自动维护 OpenRouter 免费及匿名 Alpha 模型')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'openrouter_auto_sync_free_and_alpha_models_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型',
+                      )}
+                    />
+                  )}
+                  {inputs.type === 20 && (
+                    <Form.Switch
+                      field='openrouter_free_model_name_simplification_enabled'
+                      label={t('简化 OpenRouter 免费模型名称')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      disabled={
+                        !inputs.openrouter_auto_sync_free_and_alpha_models_enabled
+                      }
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'openrouter_free_model_name_simplification_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '将 provider/model:free 简化为 model 并自动添加模型重定向；openrouter/free 和匿名 Alpha 模型保持原名，名称冲突时保留完整模型名',
+                      )}
+                    />
+                  )}
                   <Form.Switch
                     field='upstream_model_update_check_enabled'
                     label={t('是否检测上游模型更新')}
                     checkedText={t('开')}
                     uncheckedText={t('关')}
+                    disabled={
+                      inputs.type === 20 &&
+                      inputs.openrouter_auto_sync_free_and_alpha_models_enabled
+                    }
                     onChange={(value) =>
                       handleChannelOtherSettingsChange(
                         'upstream_model_update_check_enabled',
@@ -2354,7 +2421,10 @@ const EditChannelModal = (props) => {
                       )
                     }
                     extraText={t(
-                      '开启后由后端定时任务检测该渠道上游模型变化',
+                      inputs.type === 20 &&
+                        inputs.openrouter_auto_sync_free_and_alpha_models_enabled
+                        ? 'OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用'
+                        : '开启后由后端定时任务检测该渠道上游模型变化',
                     )}
                   />
                   <Form.Switch
@@ -2362,7 +2432,11 @@ const EditChannelModal = (props) => {
                     label={t('是否自动同步上游模型更新')}
                     checkedText={t('开')}
                     uncheckedText={t('关')}
-                    disabled={!inputs.upstream_model_update_check_enabled}
+                    disabled={
+                      !inputs.upstream_model_update_check_enabled ||
+                      (inputs.type === 20 &&
+                        inputs.openrouter_auto_sync_free_and_alpha_models_enabled)
+                    }
                     onChange={(value) =>
                       handleChannelOtherSettingsChange('upstream_model_update_auto_sync_enabled', value)
                     }

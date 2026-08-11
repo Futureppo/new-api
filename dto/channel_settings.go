@@ -75,6 +75,11 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastDetectedModels []string      `json:"upstream_model_update_last_detected_models,omitempty"` // 上次检测到的可加入模型
 	UpstreamModelUpdateLastRemovedModels  []string      `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string      `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
+
+	OpenRouterFreeAlphaSyncEnabled               bool              `json:"openrouter_auto_sync_free_and_alpha_models_enabled,omitempty"` // OpenRouter 是否自动维护免费及匿名 Alpha 模型
+	OpenRouterFreeModelNameSimplificationEnabled bool              `json:"openrouter_free_model_name_simplification_enabled,omitempty"`  // 是否将 provider/model:free 简化为 model 并生成映射
+	OpenRouterFreeModelGeneratedMappings         map[string]string `json:"openrouter_free_model_generated_mappings,omitempty"`           // 已自动生成的免费模型名称映射
+	OpenRouterFreeModelPendingMappings           map[string]string `json:"openrouter_free_model_pending_mappings,omitempty"`             // 待应用的免费模型名称映射
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

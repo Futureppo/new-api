@@ -1,5 +1,10 @@
 {
   "translation": {
+    "自动维护 OpenRouter 免费及匿名 Alpha 模型": "OpenRouter の無料モデルと匿名 Alpha モデルを自動管理",
+    "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "有効にすると、:free で終わるモデル、openrouter/free、openrouter/*-alpha を自動で追加・削除し、その他のモデルは保持します",
+    "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "OpenRouter の無料モデルと匿名 Alpha モデルの同期が有効です。全モデルの巡回設定は一時的に無効になります",
+    "简化 OpenRouter 免费模型名称": "OpenRouter の無料モデル名を簡略化",
+    "将 provider/model:free 简化为 model 并自动添加模型重定向；openrouter/free 和匿名 Alpha 模型保持原名，名称冲突时保留完整模型名": "provider/model:free を model に簡略化してモデルリダイレクトを自動追加します。openrouter/free と匿名 Alpha モデルは元の名前を維持し、名前が競合する場合は完全なモデル名を使用します",
     " + 图片生成调用 {{symbol}}{{price}} / 1次 * {{ratioType}} {{ratio}}": " + 画像生成APIコール {{symbol}}{{price}} / 1回 * {{ratioType}} {{ratio}}",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one": " + ファイル検索 {{count}}回 / 1K回 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_one",
     " + 文件搜索 {{count}}次 / 1K 次 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other": " + ファイル検索 {{count}}回 / 1K回 * {{symbol}}{{price}} * {{ratioType}} {{ratio}}_other",

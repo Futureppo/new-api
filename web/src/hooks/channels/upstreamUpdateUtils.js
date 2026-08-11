@@ -24,7 +24,7 @@ export const normalizeModelList = (models = []) =>
     ),
   );
 
-export const parseUpstreamUpdateMeta = (settings) => {
+export const parseUpstreamUpdateMeta = (settings, channelType) => {
   let parsed = null;
   if (settings && typeof settings === 'object') {
     parsed = settings;
@@ -45,7 +45,10 @@ export const parseUpstreamUpdateMeta = (settings) => {
   }
 
   return {
-    enabled: parsed.upstream_model_update_check_enabled === true,
+    enabled:
+      parsed.upstream_model_update_check_enabled === true ||
+      (Number(channelType) === 20 &&
+        parsed.openrouter_auto_sync_free_and_alpha_models_enabled === true),
     pendingAddModels: normalizeModelList(
       parsed.upstream_model_update_last_detected_models,
     ),
