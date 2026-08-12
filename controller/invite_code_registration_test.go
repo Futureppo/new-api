@@ -189,6 +189,17 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	require.Contains(t, invalidInvite.Message, "邀请码无效")
 	requireRegistrationUserMissing(t, db, "invalid-invite")
 
+	require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusDisabled).Error)
+	disabledInviter := registerTestUser(t, gin.H{
+		"username": "disabled-inviter",
+		"password": "password123",
+		"aff_code": inviter.AffCode,
+	})
+	require.False(t, disabledInviter.Success)
+	require.Contains(t, disabledInviter.Message, "邀请码无效")
+	requireRegistrationUserMissing(t, db, "disabled-inviter")
+	require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusEnabled).Error)
+
 	validInvite := registerTestUser(t, gin.H{
 		"username": "valid-invite",
 		"password": "password123",

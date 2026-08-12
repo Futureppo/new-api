@@ -131,6 +131,14 @@ func TestResolveInviterIdByAffCodeRequiredAndOptional(t *testing.T) {
 	_, err = ResolveInviterIdByAffCode("UNKNOWN", true)
 	require.EqualError(t, err, "邀请码无效")
 
+	require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusDisabled).Error)
+	_, err = ResolveInviterIdByAffCode(inviter.AffCode, true)
+	require.EqualError(t, err, "邀请码无效")
+
+	inviterId, err = ResolveInviterIdByAffCode(inviter.AffCode, false)
+	require.NoError(t, err)
+	require.Zero(t, inviterId)
+
 	require.NoError(t, db.Delete(&inviter).Error)
 	_, err = ResolveInviterIdByAffCode(inviter.AffCode, true)
 	require.EqualError(t, err, "邀请码无效")

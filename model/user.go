@@ -346,7 +346,7 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 		return 0, errors.New("affCode 为空！")
 	}
 	var user User
-	err := DB.Select("id").First(&user, "aff_code = ?", affCode).Error
+	err := DB.Select("id").Where("aff_code = ? AND status = ?", affCode, common.UserStatusEnabled).First(&user).Error
 	return user.Id, err
 }
 
