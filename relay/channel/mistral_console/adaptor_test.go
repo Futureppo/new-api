@@ -93,7 +93,8 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 		"stream":true,
 		"inputs":[
 			{"object":"entry","type":"message.input","role":"user","content":"[user:alice]\nHello world","prefix":false},
-			{"object":"entry","type":"message.output","role":"assistant","content":"Hi!"}
+			{"object":"entry","type":"message.output","role":"assistant","content":"Hi!"},
+			{"object":"entry","type":"message.input","role":"user","content":"Continue the preceding assistant response from where it ended. Do not repeat the existing assistant content.","prefix":false}
 		]
 	}`, string(data))
 }
@@ -163,6 +164,25 @@ func TestConvertOpenAIRequestIgnoresReasoningMetadataAndKeepsVisibleHistory(t *t
 		{"object":"entry","type":"message.input","role":"user","content":"Question","prefix":false},
 		{"object":"entry","type":"message.output","role":"assistant","content":"Visible answer"},
 		{"object":"entry","type":"message.input","role":"user","content":"Continue","prefix":false}
+	]`, string(data))
+}
+
+func TestConvertOpenAIRequestSupportsTrailingAssistantPrefill(t *testing.T) {
+	request := &dto.GeneralOpenAIRequest{Messages: []dto.Message{
+		{Role: "system", Content: "Write a story."},
+		{Role: "user", Content: "Begin."},
+		{Role: "assistant", Content: "Once upon a time"},
+	}}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, testRelayInfo(false), request)
+	require.NoError(t, err)
+	payload := converted.(*boraConversationRequest)
+	data, err := common.Marshal(payload.Inputs)
+	require.NoError(t, err)
+	require.JSONEq(t, `[
+		{"object":"entry","type":"message.input","role":"user","content":"Begin.","prefix":false},
+		{"object":"entry","type":"message.output","role":"assistant","content":"Once upon a time"},
+		{"object":"entry","type":"message.input","role":"user","content":"Continue the preceding assistant response from where it ended. Do not repeat the existing assistant content.","prefix":false}
 	]`, string(data))
 }
 
@@ -251,6 +271,32 @@ func TestConvertOpenAIRequestRespectsBuiltInToolSettings(t *testing.T) {
 	require.Len(t, payload.Tools, 1)
 	require.Equal(t, "function", payload.Tools[0].Type)
 	require.Equal(t, "get_time", payload.Tools[0].Function.Name)
+}
+
+func TestConvertOpenAIRequestNormalizesBoraValidationEdgeCases(t *testing.T) {
+	temperature := 2.0
+	topP := 0.0
+	request := &dto.GeneralOpenAIRequest{
+		Temperature: &temperature,
+		TopP:        &topP,
+		Messages:    []dto.Message{{Role: "user", Content: "hello"}},
+		Tools: []dto.ToolCallRequest{{
+			Type:     "function",
+			Function: dto.FunctionRequest{Name: "get_time"},
+		}},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, testRelayInfo(false), request)
+	require.NoError(t, err)
+	payload := converted.(*boraConversationRequest)
+	require.Equal(t, 1.0, *payload.CompletionArgs.Temperature)
+	require.Equal(t, 0.0001, *payload.CompletionArgs.TopP)
+	require.Len(t, payload.Tools, 4)
+	require.Equal(t, "function", payload.Tools[3].Type)
+	require.Equal(t, map[string]any{
+		"type":       "object",
+		"properties": map[string]any{},
+	}, payload.Tools[3].Function.Parameters)
 }
 
 func TestConvertOpenAIRequestRejectsUnsupportedContent(t *testing.T) {

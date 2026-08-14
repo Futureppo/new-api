@@ -20,6 +20,8 @@ type Adaptor struct {
 	clientStream bool
 }
 
+const boraContinueAssistantInstruction = "Continue the preceding assistant response from where it ended. Do not repeat the existing assistant content."
+
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.clientStream = info != nil && info.IsStream
 }
@@ -89,9 +91,9 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 		Model:        info.UpstreamModelName,
 		Instructions: instructions,
 		CompletionArgs: boraCompletionArgs{
-			Temperature: request.Temperature,
+			Temperature: normalizeBoraTemperature(request.Temperature),
 			MaxTokens:   &maxTokens,
-			TopP:        request.TopP,
+			TopP:        normalizeBoraTopP(request.TopP),
 			// Bora only accepts none/high. high is its maximum reasoning level,
 			// so every downstream reasoning setting is normalized to high.
 			ReasoningEffort: boraMaxReasoningEffort,
@@ -241,6 +243,34 @@ func boraMaxTokens(request *dto.GeneralOpenAIRequest) uint {
 	return value
 }
 
+func normalizeBoraTemperature(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	normalized := *value
+	if normalized < 0 {
+		normalized = 0
+	} else if normalized > 1 {
+		normalized = 1
+	}
+	return &normalized
+}
+
+func normalizeBoraTopP(value *float64) *float64 {
+	if value == nil {
+		return nil
+	}
+	normalized := *value
+	// Bora's request schema advertises zero as valid, but its model backend
+	// rejects top_p=0 with a 422. Keep the closest usable positive value.
+	if normalized <= 0 {
+		normalized = 0.0001
+	} else if normalized > 1 {
+		normalized = 1
+	}
+	return &normalized
+}
+
 func convertBoraInputs(messages []dto.Message) (string, []boraInput, error) {
 	instructionParts := make([]string, 0)
 	inputs := make([]boraInput, 0, len(messages))
@@ -318,6 +348,20 @@ func convertBoraInputs(messages []dto.Message) (string, []boraInput, error) {
 			return "", nil, fmt.Errorf("message role %q is not supported", message.Role)
 		}
 	}
+	// Bora rejects a conversation whose final entry is message.output. Some
+	// OpenAI clients intentionally end with an assistant prefill to request a
+	// continuation, so preserve that output and add an explicit continuation
+	// input instead of returning the upstream's opaque 422/code 3000 error.
+	if len(inputs) > 0 && inputs[len(inputs)-1].Type == "message.output" {
+		content := boraContinueAssistantInstruction
+		inputs = append(inputs, boraInput{
+			Object:  "entry",
+			Type:    "message.input",
+			Role:    "user",
+			Content: &content,
+			Prefix:  &falseValue,
+		})
+	}
 	return strings.Join(instructionParts, "\n\n"), inputs, nil
 }
 
@@ -359,12 +403,21 @@ func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, setting
 			if strings.TrimSpace(tool.Function.Name) == "" {
 				return nil, "", fmt.Errorf("tool %d requires function.name", index)
 			}
+			parameters := tool.Function.Parameters
+			if parameters == nil {
+				// OpenAI permits an omitted parameters schema, while Bora requires
+				// the field to be present even for a function without arguments.
+				parameters = map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				}
+			}
 			tools = append(tools, boraTool{
 				Type: "function",
 				Function: &boraFunction{
 					Name:        tool.Function.Name,
 					Description: tool.Function.Description,
-					Parameters:  tool.Function.Parameters,
+					Parameters:  parameters,
 					Strict:      tool.Function.Strict,
 				},
 			})
