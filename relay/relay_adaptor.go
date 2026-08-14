@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/jina"
 	"github.com/QuantumNous/new-api/relay/channel/minimax"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
+	mistralconsole "github.com/QuantumNous/new-api/relay/channel/mistral_console"
 	"github.com/QuantumNous/new-api/relay/channel/mokaai"
 	"github.com/QuantumNous/new-api/relay/channel/moonshot"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
@@ -139,6 +140,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &opencode.Adaptor{}
 	case constant.APITypeOpenCodeGo:
 		return &opencode.GoAdaptor{}
+	case constant.APITypeMistralConsole:
+		return &mistralconsole.Adaptor{}
 	}
 	return nil
 }

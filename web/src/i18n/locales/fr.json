@@ -1,5 +1,6 @@
 {
   "translation": {
+    "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Saisissez l’en-tête Cookie complet ou une valeur ory_session brute par ligne en mode lot (sans le préfixe Cookie :)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Gérer automatiquement les modèles gratuits et Alpha anonymes d’OpenRouter",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "Une fois activé, ajoute ou supprime automatiquement les modèles se terminant par :free, openrouter/free et openrouter/*-alpha, tout en conservant les autres modèles",
     "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "La synchronisation des modèles gratuits et Alpha anonymes d’OpenRouter est activée. L’inspection de tous les modèles est temporairement désactivée",

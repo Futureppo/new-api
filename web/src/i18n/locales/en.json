@@ -1,5 +1,6 @@
 {
   "translation": {
+    "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Enter the complete Cookie header value, or one raw ory_session value per line in batch mode (without the Cookie: prefix)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Automatically manage OpenRouter free and anonymous Alpha models",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "When enabled, automatically adds or removes models ending in :free, openrouter/free, and openrouter/*-alpha while preserving other models",
     "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "OpenRouter free and anonymous Alpha model sync is enabled. All-model inspection settings are temporarily disabled",

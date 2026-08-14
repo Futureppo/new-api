@@ -42,5 +42,6 @@ const (
 	APITypeCerebras
 	APITypeOpenCode
 	APITypeOpenCodeGo
+	APITypeMistralConsole
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

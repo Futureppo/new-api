@@ -351,6 +351,22 @@ func TestFetchCohereModelsPaginatesEndpointsAndSorts(t *testing.T) {
 	require.Equal(t, []string{"command-a-03-2025", "command-r-plus", "embed-v4.0", "rerank-v4.0"}, models)
 }
 
+func TestFetchMistralConsoleModelsUsesStaticList(t *testing.T) {
+	channel := &model.Channel{
+		Type: constant.ChannelTypeMistralConsole,
+		Key:  "ory_session_test=\"session\"",
+	}
+
+	models, err := fetchChannelModelIDsWithKey(
+		channel,
+		constant.ChannelBaseURLs[constant.ChannelTypeMistralConsole],
+		channel.Key,
+		"",
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"glm-5-2"}, models)
+}
+
 func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {
 	db := openChannelRetryControllerTestDB(t)
 

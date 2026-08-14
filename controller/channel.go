@@ -400,6 +400,10 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 		return models, nil
 	}
 
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeMistralConsole {
+		return []string{"glm-5-2"}, nil
+	}
+
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
 	return fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 }

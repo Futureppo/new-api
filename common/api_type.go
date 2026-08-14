@@ -89,6 +89,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeOpenCode
 	case constant.ChannelTypeOpenCodeGo:
 		apiType = constant.APITypeOpenCodeGo
+	case constant.ChannelTypeMistralConsole:
+		apiType = constant.APITypeMistralConsole
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

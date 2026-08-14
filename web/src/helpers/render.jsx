@@ -407,6 +407,7 @@ export function getChannelIcon(channelType) {
     case 40: // SiliconCloud
       return <SiliconCloud.Color size={iconSize} />;
     case 42: // Mistral AI
+    case 65: // Mistral Console
       return <Mistral.Color size={iconSize} />;
     case 45: // 字节火山方舟、豆包通用
       return <Doubao.Color size={iconSize} />;

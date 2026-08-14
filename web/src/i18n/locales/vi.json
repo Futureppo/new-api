@@ -1,5 +1,6 @@
 {
   "translation": {
+    "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Nhập đầy đủ giá trị tiêu đề Cookie, hoặc mỗi dòng một giá trị ory_session thô khi tạo hàng loạt (không gồm tiền tố Cookie:)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Tự động quản lý mô hình OpenRouter miễn phí và Alpha ẩn danh",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "Khi bật, tự động thêm hoặc xóa các mô hình kết thúc bằng :free, openrouter/free và openrouter/*-alpha, đồng thời giữ nguyên các mô hình khác",
     "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "Đồng bộ mô hình OpenRouter miễn phí và Alpha ẩn danh đang bật. Cài đặt kiểm tra toàn bộ mô hình tạm thời bị vô hiệu hóa",

@@ -1,5 +1,6 @@
 {
   "translation": {
+    "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "完全な Cookie ヘッダー値を入力するか、一括作成では行ごとに ory_session の値のみを入力してください（Cookie: プレフィックスは不要）",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "OpenRouter の無料モデルと匿名 Alpha モデルを自動管理",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "有効にすると、:free で終わるモデル、openrouter/free、openrouter/*-alpha を自動で追加・削除し、その他のモデルは保持します",
     "OpenRouter 免费及匿名 Alpha 模型同步已开启，全部模型巡检设置暂时停用": "OpenRouter の無料モデルと匿名 Alpha モデルの同期が有効です。全モデルの巡回設定は一時的に無効になります",
