@@ -128,6 +128,7 @@ const PARAM_OVERRIDE_OPERATIONS_TEMPLATE = {
 const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
 const VERTEX_CHANNEL_TYPE = 41;
 const GCP_CHANNEL_TYPE = 60;
+const MISTRAL_CONSOLE_CHANNEL_TYPE = 65;
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -217,6 +218,9 @@ const EditChannelModal = (props) => {
     allow_safety_identifier: false,
     allow_include_obfuscation: false,
     remove_gif_images_enabled: true,
+    mistral_console_code_interpreter_enabled: true,
+    mistral_console_image_generation_enabled: true,
+    mistral_console_web_search_enabled: true,
     conversation_log_enabled: false,
     allow_inference_geo: false,
     allow_speed: false,
@@ -924,6 +928,12 @@ const EditChannelModal = (props) => {
             parsedSettings.allow_include_obfuscation || false;
           data.remove_gif_images_enabled =
             parsedSettings.remove_gif_images_enabled !== false;
+          data.mistral_console_code_interpreter_enabled =
+            parsedSettings.mistral_console_code_interpreter_enabled !== false;
+          data.mistral_console_image_generation_enabled =
+            parsedSettings.mistral_console_image_generation_enabled !== false;
+          data.mistral_console_web_search_enabled =
+            parsedSettings.mistral_console_web_search_enabled !== false;
           data.conversation_log_enabled =
             parsedSettings.conversation_log_enabled === true;
           data.allow_inference_geo =
@@ -968,6 +978,9 @@ const EditChannelModal = (props) => {
           data.allow_safety_identifier = false;
           data.allow_include_obfuscation = false;
           data.remove_gif_images_enabled = true;
+          data.mistral_console_code_interpreter_enabled = true;
+          data.mistral_console_image_generation_enabled = true;
+          data.mistral_console_web_search_enabled = true;
           data.conversation_log_enabled = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
@@ -992,6 +1005,9 @@ const EditChannelModal = (props) => {
         data.allow_safety_identifier = false;
         data.allow_include_obfuscation = false;
         data.remove_gif_images_enabled = true;
+        data.mistral_console_code_interpreter_enabled = true;
+        data.mistral_console_image_generation_enabled = true;
+        data.mistral_console_web_search_enabled = true;
         data.conversation_log_enabled = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
@@ -1915,6 +1931,18 @@ const EditChannelModal = (props) => {
     } else if ('remove_gif_images_enabled' in settings) {
       delete settings.remove_gif_images_enabled;
     }
+    if (localInputs.type === MISTRAL_CONSOLE_CHANNEL_TYPE) {
+      settings.mistral_console_code_interpreter_enabled =
+        localInputs.mistral_console_code_interpreter_enabled !== false;
+      settings.mistral_console_image_generation_enabled =
+        localInputs.mistral_console_image_generation_enabled !== false;
+      settings.mistral_console_web_search_enabled =
+        localInputs.mistral_console_web_search_enabled !== false;
+    } else {
+      delete settings.mistral_console_code_interpreter_enabled;
+      delete settings.mistral_console_image_generation_enabled;
+      delete settings.mistral_console_web_search_enabled;
+    }
     if (isRoot()) {
       settings.conversation_log_enabled =
         localInputs.conversation_log_enabled === true;
@@ -1968,6 +1996,9 @@ const EditChannelModal = (props) => {
     delete localInputs.allow_safety_identifier;
     delete localInputs.allow_include_obfuscation;
     delete localInputs.remove_gif_images_enabled;
+    delete localInputs.mistral_console_code_interpreter_enabled;
+    delete localInputs.mistral_console_image_generation_enabled;
+    delete localInputs.mistral_console_web_search_enabled;
     delete localInputs.conversation_log_enabled;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
@@ -2859,6 +2890,59 @@ const EditChannelModal = (props) => {
                         'Gemini 不支持 image/gif 输入。开启后将在发送前移除 GIF；此设置优先于请求体透传。',
                       )}
                     />
+                  )}
+
+                  {inputs.type === MISTRAL_CONSOLE_CHANNEL_TYPE && (
+                    <>
+                      <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
+                        {t('内置工具')}
+                      </div>
+                      <Form.Switch
+                        field='mistral_console_code_interpreter_enabled'
+                        label={t('启用代码解释器')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelOtherSettingsChange(
+                            'mistral_console_code_interpreter_enabled',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '允许模型运行代码进行计算、数据处理和文件分析，默认开启。',
+                        )}
+                      />
+                      <Form.Switch
+                        field='mistral_console_image_generation_enabled'
+                        label={t('启用图片生成')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelOtherSettingsChange(
+                            'mistral_console_image_generation_enabled',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '允许模型根据提示词生成图片，默认开启。',
+                        )}
+                      />
+                      <Form.Switch
+                        field='mistral_console_web_search_enabled'
+                        label={t('启用高级网页搜索')}
+                        checkedText={t('开')}
+                        uncheckedText={t('关')}
+                        onChange={(value) =>
+                          handleChannelOtherSettingsChange(
+                            'mistral_console_web_search_enabled',
+                            value,
+                          )
+                        }
+                        extraText={t(
+                          '允许模型搜索网页并获取最新信息，默认开启。',
+                        )}
+                      />
+                    </>
                   )}
 
                   {inputs.type === 1 && (

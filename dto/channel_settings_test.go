@@ -92,3 +92,28 @@ func TestChannelOtherSettingsRemoveGifImagesExplicitValueRoundTrip(t *testing.T)
 		})
 	}
 }
+
+func TestChannelOtherSettingsMistralConsoleToolsDefaultOn(t *testing.T) {
+	var settings dto.ChannelOtherSettings
+	require.NoError(t, common.Unmarshal([]byte(`{}`), &settings))
+	require.True(t, settings.ShouldEnableMistralConsoleCodeInterpreter())
+	require.True(t, settings.ShouldEnableMistralConsoleImageGeneration())
+	require.True(t, settings.ShouldEnableMistralConsoleWebSearch())
+}
+
+func TestChannelOtherSettingsMistralConsoleToolsExplicitValues(t *testing.T) {
+	payload := `{
+		"mistral_console_code_interpreter_enabled": false,
+		"mistral_console_image_generation_enabled": true,
+		"mistral_console_web_search_enabled": false
+	}`
+	var settings dto.ChannelOtherSettings
+	require.NoError(t, common.Unmarshal([]byte(payload), &settings))
+	require.False(t, settings.ShouldEnableMistralConsoleCodeInterpreter())
+	require.True(t, settings.ShouldEnableMistralConsoleImageGeneration())
+	require.False(t, settings.ShouldEnableMistralConsoleWebSearch())
+
+	data, err := common.Marshal(settings)
+	require.NoError(t, err)
+	require.JSONEq(t, payload, string(data))
+}

@@ -219,6 +219,40 @@ func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 	}
 }
 
+func TestConvertOpenAIRequestRespectsBuiltInToolSettings(t *testing.T) {
+	disabled := false
+	info := testRelayInfo(false)
+	info.ChannelOtherSettings = dto.ChannelOtherSettings{
+		MistralConsoleCodeInterpreterEnabled: &disabled,
+		MistralConsoleWebSearchEnabled:       &disabled,
+	}
+	request := &dto.GeneralOpenAIRequest{
+		Messages: []dto.Message{{Role: "user", Content: "hello"}},
+		Tools: []dto.ToolCallRequest{
+			{Type: "code_interpreter"},
+			{Type: "image_generation"},
+			{Type: "web_search"},
+			{Type: "function", Function: dto.FunctionRequest{Name: "get_time"}},
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	require.NoError(t, err)
+	payload := converted.(*boraConversationRequest)
+	require.Len(t, payload.Tools, 2)
+	require.Equal(t, "image_generation", payload.Tools[0].Type)
+	require.Equal(t, "function", payload.Tools[1].Type)
+	require.Equal(t, "get_time", payload.Tools[1].Function.Name)
+
+	info.ChannelOtherSettings.MistralConsoleImageGenerationEnabled = &disabled
+	converted, err = (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	require.NoError(t, err)
+	payload = converted.(*boraConversationRequest)
+	require.Len(t, payload.Tools, 1)
+	require.Equal(t, "function", payload.Tools[0].Type)
+	require.Equal(t, "get_time", payload.Tools[0].Function.Name)
+}
+
 func TestConvertOpenAIRequestRejectsUnsupportedContent(t *testing.T) {
 	info := testRelayInfo(false)
 	tests := []struct {

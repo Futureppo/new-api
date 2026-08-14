@@ -1,5 +1,12 @@
 {
   "translation": {
+    "内置工具": "Outils intégrés",
+    "启用代码解释器": "Activer l’interpréteur de code",
+    "启用高级网页搜索": "Activer la recherche web avancée",
+    "启用图片生成": "Activer la génération d’images",
+    "允许模型根据提示词生成图片，默认开启。": "Autorise le modèle à générer des images à partir d’instructions. Activé par défaut.",
+    "允许模型搜索网页并获取最新信息，默认开启。": "Autorise le modèle à rechercher sur le web et à obtenir des informations à jour. Activé par défaut.",
+    "允许模型运行代码进行计算、数据处理和文件分析，默认开启。": "Autorise le modèle à exécuter du code pour les calculs, le traitement des données et l’analyse de fichiers. Activé par défaut.",
     "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Saisissez l’en-tête Cookie complet ou une valeur ory_session brute par ligne en mode lot (sans le préfixe Cookie :)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Gérer automatiquement les modèles gratuits et Alpha anonymes d’OpenRouter",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "Une fois activé, ajoute ou supprime automatiquement les modèles se terminant par :free, openrouter/free et openrouter/*-alpha, tout en conservant les autres modèles",

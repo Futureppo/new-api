@@ -73,7 +73,7 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 		return nil, invalidRequestError("at least one text message or function result is required")
 	}
 
-	tools, toolInstruction, err := convertBoraTools(request.Tools, request.ToolChoice)
+	tools, toolInstruction, err := convertBoraTools(request.Tools, request.ToolChoice, info.ChannelOtherSettings)
 	if err != nil {
 		return nil, invalidRequestError(err.Error())
 	}
@@ -350,7 +350,7 @@ func convertAssistantToolCalls(raw []byte) ([]boraInput, error) {
 	return inputs, nil
 }
 
-func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any) ([]boraTool, string, error) {
+func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, settings dto.ChannelOtherSettings) ([]boraTool, string, error) {
 	tools := make([]boraTool, 0, len(openAITools))
 	for index := range openAITools {
 		tool := &openAITools[index]
@@ -368,29 +368,50 @@ func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any) ([]bora
 					Strict:      tool.Function.Strict,
 				},
 			})
-		case "code_interpreter", "image_generation", "web_search_premium":
-			tools = append(tools, boraTool{Type: tool.Type})
+		case "code_interpreter":
+			if settings.ShouldEnableMistralConsoleCodeInterpreter() {
+				tools = append(tools, boraTool{Type: tool.Type})
+			}
+		case "image_generation":
+			if settings.ShouldEnableMistralConsoleImageGeneration() {
+				tools = append(tools, boraTool{Type: tool.Type})
+			}
+		case "web_search_premium":
+			if settings.ShouldEnableMistralConsoleWebSearch() {
+				tools = append(tools, boraTool{Type: tool.Type})
+			}
 		case "web_search", "web_search_preview":
-			tools = append(tools, boraTool{Type: "web_search_premium"})
+			if settings.ShouldEnableMistralConsoleWebSearch() {
+				tools = append(tools, boraTool{Type: "web_search_premium"})
+			}
 		default:
 			return nil, "", fmt.Errorf("tool %d has unsupported type %q", index, tool.Type)
 		}
 	}
 
-	// Mistral Console built-ins are always available, including when the
-	// downstream Playground does not send a tools field. Apply tool_choice to
-	// custom tools, then merge the forced built-ins again so "none" cannot
-	// disable them.
-	tools = mergeForcedBoraTools(tools)
+	// Built-ins enabled in channel settings remain available even when the
+	// downstream request does not send a tools field. Apply tool_choice to
+	// custom tools, then merge enabled built-ins again so "none" cannot
+	// disable channel-configured tools.
+	tools = mergeForcedBoraTools(tools, settings)
 	selectedTools, instruction, err := applyBoraToolChoice(tools, toolChoice)
 	if err != nil {
 		return nil, "", err
 	}
-	return mergeForcedBoraTools(selectedTools), instruction, nil
+	return mergeForcedBoraTools(selectedTools, settings), instruction, nil
 }
 
-func mergeForcedBoraTools(tools []boraTool) []boraTool {
-	forcedTypes := []string{"code_interpreter", "image_generation", "web_search_premium"}
+func mergeForcedBoraTools(tools []boraTool, settings dto.ChannelOtherSettings) []boraTool {
+	forcedTypes := make([]string, 0, 3)
+	if settings.ShouldEnableMistralConsoleCodeInterpreter() {
+		forcedTypes = append(forcedTypes, "code_interpreter")
+	}
+	if settings.ShouldEnableMistralConsoleImageGeneration() {
+		forcedTypes = append(forcedTypes, "image_generation")
+	}
+	if settings.ShouldEnableMistralConsoleWebSearch() {
+		forcedTypes = append(forcedTypes, "web_search_premium")
+	}
 	result := make([]boraTool, 0, len(forcedTypes)+len(tools))
 	for _, toolType := range forcedTypes {
 		result = append(result, boraTool{Type: toolType})

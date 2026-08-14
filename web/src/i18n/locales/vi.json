@@ -1,5 +1,12 @@
 {
   "translation": {
+    "内置工具": "Công cụ tích hợp",
+    "启用代码解释器": "Bật trình thông dịch mã",
+    "启用高级网页搜索": "Bật tìm kiếm web nâng cao",
+    "启用图片生成": "Bật tạo hình ảnh",
+    "允许模型根据提示词生成图片，默认开启。": "Cho phép mô hình tạo hình ảnh từ câu lệnh. Được bật theo mặc định.",
+    "允许模型搜索网页并获取最新信息，默认开启。": "Cho phép mô hình tìm kiếm trên web và lấy thông tin mới nhất. Được bật theo mặc định.",
+    "允许模型运行代码进行计算、数据处理和文件分析，默认开启。": "Cho phép mô hình chạy mã để tính toán, xử lý dữ liệu và phân tích tệp. Được bật theo mặc định.",
     "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Nhập đầy đủ giá trị tiêu đề Cookie, hoặc mỗi dòng một giá trị ory_session thô khi tạo hàng loạt (không gồm tiền tố Cookie:)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Tự động quản lý mô hình OpenRouter miễn phí và Alpha ẩn danh",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "Khi bật, tự động thêm hoặc xóa các mô hình kết thúc bằng :free, openrouter/free và openrouter/*-alpha, đồng thời giữ nguyên các mô hình khác",

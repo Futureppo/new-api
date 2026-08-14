@@ -65,6 +65,9 @@ type ChannelOtherSettings struct {
 	DisableStore                          bool          `json:"disable_store,omitempty"`             // 是否禁用 store 透传（默认允许透传，禁用后可能导致 Codex 无法使用）
 	AllowIncludeObfuscation               bool          `json:"allow_include_obfuscation,omitempty"` // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
 	RemoveGifImagesEnabled                *bool         `json:"remove_gif_images_enabled,omitempty"` // 是否移除 Gemini 不支持的 image/gif 输入（未配置时默认开启）
+	MistralConsoleCodeInterpreterEnabled  *bool         `json:"mistral_console_code_interpreter_enabled,omitempty"`
+	MistralConsoleImageGenerationEnabled  *bool         `json:"mistral_console_image_generation_enabled,omitempty"`
+	MistralConsoleWebSearchEnabled        *bool         `json:"mistral_console_web_search_enabled,omitempty"`
 	XAICodexCompatibilityEnabled          bool          `json:"xai_codex_compatibility_enabled,omitempty"`
 	ConversationLogEnabled                bool          `json:"conversation_log_enabled,omitempty"` // Root-only: capture full conversation payloads for distillation
 	AwsKeyType                            AwsKeyType    `json:"aws_key_type,omitempty"`
@@ -91,4 +94,16 @@ func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {
 
 func (s ChannelOtherSettings) ShouldRemoveGifImages() bool {
 	return s.RemoveGifImagesEnabled == nil || *s.RemoveGifImagesEnabled
+}
+
+func (s ChannelOtherSettings) ShouldEnableMistralConsoleCodeInterpreter() bool {
+	return s.MistralConsoleCodeInterpreterEnabled == nil || *s.MistralConsoleCodeInterpreterEnabled
+}
+
+func (s ChannelOtherSettings) ShouldEnableMistralConsoleImageGeneration() bool {
+	return s.MistralConsoleImageGenerationEnabled == nil || *s.MistralConsoleImageGenerationEnabled
+}
+
+func (s ChannelOtherSettings) ShouldEnableMistralConsoleWebSearch() bool {
+	return s.MistralConsoleWebSearchEnabled == nil || *s.MistralConsoleWebSearchEnabled
 }

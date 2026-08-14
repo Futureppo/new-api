@@ -1,5 +1,12 @@
 {
   "translation": {
+    "内置工具": "Built-in tools",
+    "启用代码解释器": "Enable code interpreter",
+    "启用高级网页搜索": "Enable premium web search",
+    "启用图片生成": "Enable image generation",
+    "允许模型根据提示词生成图片，默认开启。": "Allow the model to generate images from prompts. Enabled by default.",
+    "允许模型搜索网页并获取最新信息，默认开启。": "Allow the model to search the web for up-to-date information. Enabled by default.",
+    "允许模型运行代码进行计算、数据处理和文件分析，默认开启。": "Allow the model to run code for calculations, data processing, and file analysis. Enabled by default.",
     "请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）": "Enter the complete Cookie header value, or one raw ory_session value per line in batch mode (without the Cookie: prefix)",
     "自动维护 OpenRouter 免费及匿名 Alpha 模型": "Automatically manage OpenRouter free and anonymous Alpha models",
     "开启后自动增删以 :free 结尾、openrouter/free 及 openrouter/*-alpha 模型，并保留其他模型": "When enabled, automatically adds or removes models ending in :free, openrouter/free, and openrouter/*-alpha while preserving other models",
