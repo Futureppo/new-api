@@ -3,6 +3,7 @@ package mistralconsole
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -188,7 +189,8 @@ func TestConvertOpenAIRequestSupportsTrailingAssistantPrefill(t *testing.T) {
 
 func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 	zero := uint(0)
-	tooLarge := uint(defaultBoraMaxTokens + 100)
+	aboveDefault := uint(defaultBoraMaxTokens + 1)
+	tooLarge := uint(maximumBoraMaxTokens + 100)
 	tests := []struct {
 		name     string
 		request  *dto.GeneralOpenAIRequest
@@ -202,6 +204,12 @@ func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 			tools:    3,
 		},
 		{
+			name:     "explicit value above default preserved",
+			request:  &dto.GeneralOpenAIRequest{MaxTokens: &aboveDefault, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
+			expected: aboveDefault,
+			tools:    3,
+		},
+		{
 			name:     "explicit zero preserved",
 			request:  &dto.GeneralOpenAIRequest{MaxCompletionTokens: &zero, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
 			expected: 0,
@@ -210,7 +218,7 @@ func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 		{
 			name:     "oversized value clamped",
 			request:  &dto.GeneralOpenAIRequest{MaxTokens: &tooLarge, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
-			expected: defaultBoraMaxTokens,
+			expected: maximumBoraMaxTokens,
 			tools:    3,
 		},
 		{
@@ -235,6 +243,37 @@ func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 			require.Equal(t, "code_interpreter", payload.Tools[0].Type)
 			require.Equal(t, "image_generation", payload.Tools[1].Type)
 			require.Equal(t, "web_search_premium", payload.Tools[2].Type)
+		})
+	}
+}
+
+func TestConvertOpenAIRequestNormalizesReasoningEffort(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    string
+		expected string
+	}{
+		{name: "missing defaults high", expected: "high"},
+		{name: "high", value: "high", expected: "high"},
+		{name: "none", value: "none", expected: "none"},
+		{name: "low falls back high", value: "low", expected: "high"},
+		{name: "unknown falls back high", value: "max", expected: "high"},
+		{name: "incorrect case falls back high", value: "NONE", expected: "high"},
+		{name: "whitespace falls back high", value: " none ", expected: "high"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			info := testRelayInfo(false)
+			converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, &dto.GeneralOpenAIRequest{
+				ReasoningEffort: test.value,
+				Messages:        []dto.Message{{Role: "user", Content: "hi"}},
+			})
+			require.NoError(t, err)
+			payload := converted.(*boraConversationRequest)
+			require.Equal(t, test.expected, payload.CompletionArgs.ReasoningEffort)
+			require.Equal(t, test.expected, info.ReasoningEffort)
+			require.Empty(t, payload.Instructions)
 		})
 	}
 }
@@ -390,11 +429,14 @@ func TestSetupRequestHeaderRejectsInvalidCookie(t *testing.T) {
 }
 
 func testRelayInfo(stream bool) *relaycommon.RelayInfo {
-	return &relaycommon.RelayInfo{
-		IsStream: stream,
-		ChannelMeta: &relaycommon.ChannelMeta{
-			ApiKey:            `ory_session_test="session"`,
-			UpstreamModelName: "glm-5-2",
-		},
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	request := &dto.GeneralOpenAIRequest{Stream: &stream}
+	info := relaycommon.GenRelayInfoOpenAI(ctx, request)
+	info.ChannelMeta = &relaycommon.ChannelMeta{
+		ApiKey:            `ory_session_test="session"`,
+		UpstreamModelName: "glm-5-2",
 	}
+	return info
 }

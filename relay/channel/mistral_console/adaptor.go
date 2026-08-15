@@ -85,18 +85,18 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 	if toolInstruction != "" {
 		instructions = appendInstruction(instructions, toolInstruction)
 	}
+	reasoningEffort := normalizeBoraReasoningEffort(request.ReasoningEffort)
+	info.ReasoningEffort = reasoningEffort
 
 	maxTokens := boraMaxTokens(request)
 	return &boraConversationRequest{
 		Model:        info.UpstreamModelName,
 		Instructions: instructions,
 		CompletionArgs: boraCompletionArgs{
-			Temperature: normalizeBoraTemperature(request.Temperature),
-			MaxTokens:   &maxTokens,
-			TopP:        normalizeBoraTopP(request.TopP),
-			// Bora only accepts none/high. high is its maximum reasoning level,
-			// so every downstream reasoning setting is normalized to high.
-			ReasoningEffort: boraMaxReasoningEffort,
+			Temperature:     normalizeBoraTemperature(request.Temperature),
+			MaxTokens:       &maxTokens,
+			TopP:            normalizeBoraTopP(request.TopP),
+			ReasoningEffort: reasoningEffort,
 		},
 		Tools:  tools,
 		Stream: true,
@@ -237,10 +237,19 @@ func boraMaxTokens(request *dto.GeneralOpenAIRequest) uint {
 	} else if request.MaxTokens != nil {
 		value = *request.MaxTokens
 	}
-	if value > defaultBoraMaxTokens {
-		return defaultBoraMaxTokens
+	if value > maximumBoraMaxTokens {
+		return maximumBoraMaxTokens
 	}
 	return value
+}
+
+func normalizeBoraReasoningEffort(value string) string {
+	if value == boraNoReasoningEffort {
+		return boraNoReasoningEffort
+	}
+	// Bora only accepts none/high. Missing and unsupported values (including
+	// low, medium, xhigh, max, and incorrectly cased values) safely fall back.
+	return boraMaxReasoningEffort
 }
 
 func normalizeBoraTemperature(value *float64) *float64 {

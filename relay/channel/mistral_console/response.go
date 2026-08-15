@@ -47,7 +47,7 @@ func handleBoraStreamResponse(c *gin.Context, resp *http.Response, info *relayco
 	helper.SetEventStreamHeaders(c)
 
 	err := consumeBoraSSE(resp, func(eventName string, event boraStreamEvent) error {
-		return state.handleStreamEvent(c, eventName, event)
+		return state.handleStreamEvent(c, info, eventName, event)
 	})
 	if err != nil {
 		return nil, badResponseError(err)
@@ -58,6 +58,7 @@ func handleBoraStreamResponse(c *gin.Context, resp *http.Response, info *relayco
 
 	usage := state.finalUsage(c, info)
 	if !state.startEmitted {
+		info.SetFirstResponseTime()
 		if err := helper.ObjectData(c, helper.GenerateStartEmptyResponse(state.id, state.created, state.model, nil)); err != nil {
 			return nil, badResponseError(err)
 		}
@@ -117,6 +118,7 @@ func handleBoraResponse(c *gin.Context, resp *http.Response, info *relaycommon.R
 		return nil, badResponseError(err)
 	}
 	relaycommon.AppendConversationClientResponse(c, data)
+	info.SetFirstResponseTime()
 	c.Data(http.StatusOK, "application/json", data)
 	return usage, nil
 }
@@ -130,13 +132,14 @@ func newBoraResponseState(c *gin.Context, info *relaycommon.RelayInfo) *boraResp
 	}
 }
 
-func (state *boraResponseState) handleStreamEvent(c *gin.Context, eventName string, event boraStreamEvent) error {
+func (state *boraResponseState) handleStreamEvent(c *gin.Context, info *relaycommon.RelayInfo, eventName string, event boraStreamEvent) error {
 	output, err := state.handleEvent(eventName, event)
 	if err != nil {
 		return err
 	}
 	eventType := boraEventType(eventName, event)
 	if !state.startEmitted && (eventType == "conversation.response.started" || output.hasOutput()) {
+		info.SetFirstResponseTime()
 		if err := helper.ObjectData(c, helper.GenerateStartEmptyResponse(state.id, state.created, state.model, nil)); err != nil {
 			return err
 		}

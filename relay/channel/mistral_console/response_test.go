@@ -45,6 +45,7 @@ func TestHandleBoraStreamResponse(t *testing.T) {
 	adaptor := &Adaptor{}
 	adaptor.Init(info)
 	resp := boraHTTPResponse(testBoraSSE)
+	initialFirstResponseTime := info.FirstResponseTime
 
 	usageAny, apiErr := adaptor.DoResponse(ctx, resp, info)
 	require.Nil(t, apiErr)
@@ -54,6 +55,8 @@ func TestHandleBoraStreamResponse(t *testing.T) {
 	require.Equal(t, 2, usage.CompletionTokens)
 	require.Equal(t, 9, usage.TotalTokens)
 	require.True(t, info.IsStream)
+	require.True(t, info.FirstResponseTime.After(initialFirstResponseTime))
+	require.GreaterOrEqual(t, info.FirstResponseTime.UnixNano(), info.StartTime.UnixNano())
 	require.Equal(t, "text/event-stream", recorder.Header().Get("Content-Type"))
 
 	data := streamDataLines(recorder.Body.String())
@@ -87,6 +90,7 @@ func TestHandleBoraNonStreamResponseRestoresClientMode(t *testing.T) {
 	info := testRelayInfo(false)
 	adaptor := &Adaptor{}
 	adaptor.Init(info)
+	initialFirstResponseTime := info.FirstResponseTime
 	// Simulate the relay detecting the upstream text/event-stream Content-Type.
 	info.IsStream = true
 
@@ -96,6 +100,8 @@ func TestHandleBoraNonStreamResponseRestoresClientMode(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, 9, usage.TotalTokens)
 	require.False(t, info.IsStream)
+	require.True(t, info.FirstResponseTime.After(initialFirstResponseTime))
+	require.GreaterOrEqual(t, info.FirstResponseTime.UnixNano(), info.StartTime.UnixNano())
 	require.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
 
 	var response dto.OpenAITextResponse
