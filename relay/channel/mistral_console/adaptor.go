@@ -17,13 +17,15 @@ import (
 )
 
 type Adaptor struct {
-	clientStream bool
+	clientStream  bool
+	functionNames *boraFunctionNameMapper
 }
 
 const boraContinueAssistantInstruction = "Continue the preceding assistant response from where it ended. Do not repeat the existing assistant content."
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 	a.clientStream = info != nil && info.IsStream
+	a.functionNames = newBoraFunctionNameMapper()
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
@@ -67,7 +69,8 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 		return nil, invalidRequestError("legacy functions and function_call are not supported; use tools instead")
 	}
 
-	instructions, inputs, err := convertBoraInputs(request.Messages)
+	functionNames := a.getFunctionNameMapper()
+	instructions, inputs, err := convertBoraInputs(request.Messages, functionNames)
 	if err != nil {
 		return nil, invalidRequestError(err.Error())
 	}
@@ -75,7 +78,7 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 		return nil, invalidRequestError("at least one text message or function result is required")
 	}
 
-	tools, toolInstruction, err := convertBoraTools(request.Tools, request.ToolChoice, info.ChannelOtherSettings)
+	tools, toolInstruction, err := convertBoraTools(request.Tools, request.ToolChoice, info.ChannelOtherSettings, functionNames)
 	if err != nil {
 		return nil, invalidRequestError(err.Error())
 	}
@@ -116,9 +119,23 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	// after the relay's Content-Type detection changed info.IsStream.
 	info.IsStream = a.clientStream
 	if a.clientStream {
-		return handleBoraStreamResponse(c, resp, info)
+		return handleBoraStreamResponse(c, resp, info, a.restoreFunctionName)
 	}
-	return handleBoraResponse(c, resp, info)
+	return handleBoraResponse(c, resp, info, a.restoreFunctionName)
+}
+
+func (a *Adaptor) getFunctionNameMapper() *boraFunctionNameMapper {
+	if a.functionNames == nil {
+		a.functionNames = newBoraFunctionNameMapper()
+	}
+	return a.functionNames
+}
+
+func (a *Adaptor) restoreFunctionName(name string) string {
+	if a.functionNames == nil {
+		return name
+	}
+	return a.functionNames.original(name)
 }
 
 func (a *Adaptor) GetModelList() []string {
@@ -280,7 +297,7 @@ func normalizeBoraTopP(value *float64) *float64 {
 	return &normalized
 }
 
-func convertBoraInputs(messages []dto.Message) (string, []boraInput, error) {
+func convertBoraInputs(messages []dto.Message, functionNames *boraFunctionNameMapper) (string, []boraInput, error) {
 	instructionParts := make([]string, 0)
 	inputs := make([]boraInput, 0, len(messages))
 	falseValue := false
@@ -331,7 +348,7 @@ func convertBoraInputs(messages []dto.Message) (string, []boraInput, error) {
 				})
 			}
 			if rawJSONHasValue(message.ToolCalls) {
-				toolCallInputs, err := convertAssistantToolCalls(message.ToolCalls)
+				toolCallInputs, err := convertAssistantToolCalls(message.ToolCalls, functionNames)
 				if err != nil {
 					return "", nil, fmt.Errorf("message %d: %w", index, err)
 				}
@@ -374,7 +391,7 @@ func convertBoraInputs(messages []dto.Message) (string, []boraInput, error) {
 	return strings.Join(instructionParts, "\n\n"), inputs, nil
 }
 
-func convertAssistantToolCalls(raw []byte) ([]boraInput, error) {
+func convertAssistantToolCalls(raw []byte, functionNames *boraFunctionNameMapper) ([]boraInput, error) {
 	var toolCalls []dto.ToolCallRequest
 	if err := common.Unmarshal(raw, &toolCalls); err != nil {
 		return nil, fmt.Errorf("invalid tool_calls: %w", err)
@@ -395,7 +412,7 @@ func convertAssistantToolCalls(raw []byte) ([]boraInput, error) {
 		inputs = append(inputs, boraInput{
 			Object:     "entry",
 			Type:       "function.call",
-			Name:       toolCall.Function.Name,
+			Name:       functionNames.alias(toolCall.Function.Name),
 			ToolCallID: toolCall.ID,
 			Arguments:  &arguments,
 		})
@@ -403,7 +420,7 @@ func convertAssistantToolCalls(raw []byte) ([]boraInput, error) {
 	return inputs, nil
 }
 
-func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, settings dto.ChannelOtherSettings) ([]boraTool, string, error) {
+func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, settings dto.ChannelOtherSettings, functionNames *boraFunctionNameMapper) ([]boraTool, string, error) {
 	tools := make([]boraTool, 0, len(openAITools))
 	for index := range openAITools {
 		tool := &openAITools[index]
@@ -424,7 +441,7 @@ func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, setting
 			tools = append(tools, boraTool{
 				Type: "function",
 				Function: &boraFunction{
-					Name:        tool.Function.Name,
+					Name:        functionNames.alias(tool.Function.Name),
 					Description: tool.Function.Description,
 					Parameters:  parameters,
 					Strict:      tool.Function.Strict,
@@ -456,7 +473,7 @@ func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, setting
 	// custom tools, then merge enabled built-ins again so "none" cannot
 	// disable channel-configured tools.
 	tools = mergeForcedBoraTools(tools, settings)
-	selectedTools, instruction, err := applyBoraToolChoice(tools, toolChoice)
+	selectedTools, instruction, err := applyBoraToolChoice(tools, toolChoice, functionNames)
 	if err != nil {
 		return nil, "", err
 	}
@@ -489,7 +506,7 @@ func mergeForcedBoraTools(tools []boraTool, settings dto.ChannelOtherSettings) [
 	return result
 }
 
-func applyBoraToolChoice(tools []boraTool, choice any) ([]boraTool, string, error) {
+func applyBoraToolChoice(tools []boraTool, choice any, functionNames *boraFunctionNameMapper) ([]boraTool, string, error) {
 	if choice == nil {
 		return tools, "", nil
 	}
@@ -525,9 +542,10 @@ func applyBoraToolChoice(tools []boraTool, choice any) ([]boraTool, string, erro
 	if selected.Type != "function" || strings.TrimSpace(selected.Function.Name) == "" {
 		return nil, "", errors.New("only a named function object is supported for tool_choice")
 	}
+	selectedAlias := functionNames.alias(selected.Function.Name)
 	for _, tool := range tools {
-		if tool.Type == "function" && tool.Function != nil && tool.Function.Name == selected.Function.Name {
-			return []boraTool{tool}, "You must call the function " + selected.Function.Name + " before answering.", nil
+		if tool.Type == "function" && tool.Function != nil && tool.Function.Name == selectedAlias {
+			return []boraTool{tool}, "You must call the function " + selectedAlias + " before answering.", nil
 		}
 	}
 	return nil, "", fmt.Errorf("tool_choice references unknown function %q", selected.Function.Name)

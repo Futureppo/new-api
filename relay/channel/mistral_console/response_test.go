@@ -1,6 +1,7 @@
 package mistralconsole
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -160,17 +161,19 @@ data: {"type":"conversation.response.done","usage":{"prompt_tokens":11,"completi
 }
 
 func TestHandleBoraStreamResponseMapsThinkingAndFunctionCalls(t *testing.T) {
-	sse := `data: {"type":"conversation.response.started","conversation_id":"conv-tools"}
+	mapper := newBoraFunctionNameMapper()
+	alias := mapper.alias("get_time")
+	sse := fmt.Sprintf(`data: {"type":"conversation.response.started","conversation_id":"conv-tools"}
 
 data: {"type":"message.output.delta","content":{"type":"thinking","thinking":[{"type":"text","text":"Need the current time. "}],"closed":true}}
 
-data: {"type":"function.call.delta","output_index":0,"id":"fc-1","name":"get_time","tool_call_id":"call-1","arguments":"{\"timezone\":\"Asia"}
+data: {"type":"function.call.delta","output_index":0,"id":"fc-1","name":"%s","tool_call_id":"call-1","arguments":"{\"timezone\":\"Asia"}
 
-data: {"type":"function.call.delta","output_index":0,"id":"fc-1","name":"get_time","tool_call_id":"call-1","arguments":"/Shanghai\"}"}
+data: {"type":"function.call.delta","output_index":0,"id":"fc-1","name":"%s","tool_call_id":"call-1","arguments":"/Shanghai\"}"}
 
 data: {"type":"conversation.response.done","usage":{"prompt_tokens":25,"completion_tokens":9,"total_tokens":34,"connectors":{"web_search_premium":1}}}
 
-`
+`, alias, alias)
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
@@ -178,7 +181,7 @@ data: {"type":"conversation.response.done","usage":{"prompt_tokens":25,"completi
 	info := testRelayInfo(true)
 	info.ShouldIncludeUsage = true
 
-	usage, apiErr := handleBoraStreamResponse(ctx, boraHTTPResponse(sse), info)
+	usage, apiErr := handleBoraStreamResponse(ctx, boraHTTPResponse(sse), info, mapper.original)
 	require.Nil(t, apiErr)
 	require.Equal(t, 34, usage.TotalTokens)
 
@@ -196,6 +199,7 @@ data: {"type":"conversation.response.done","usage":{"prompt_tokens":25,"completi
 	require.Equal(t, "call-1", firstCall.Choices[0].Delta.ToolCalls[0].ID)
 	require.Equal(t, 0, *firstCall.Choices[0].Delta.ToolCalls[0].Index)
 	require.Equal(t, "get_time", firstCall.Choices[0].Delta.ToolCalls[0].Function.Name)
+	require.NotContains(t, recorder.Body.String(), alias)
 	require.Equal(t, `{"timezone":"Asia`, firstCall.Choices[0].Delta.ToolCalls[0].Function.Arguments)
 
 	var secondCall dto.ChatCompletionsStreamResponse
@@ -208,23 +212,25 @@ data: {"type":"conversation.response.done","usage":{"prompt_tokens":25,"completi
 }
 
 func TestHandleBoraNonStreamResponseAggregatesThinkingAndFunctionCalls(t *testing.T) {
-	sse := `data: {"type":"conversation.response.started","conversation_id":"conv-function"}
+	mapper := newBoraFunctionNameMapper()
+	alias := mapper.alias("get_time")
+	sse := fmt.Sprintf(`data: {"type":"conversation.response.started","conversation_id":"conv-function"}
 
 data: {"type":"message.output.delta","content":{"type":"thinking","thinking":[{"type":"text","text":"Calling tool"}],"closed":true}}
 
-data: {"type":"function.call.delta","id":"fc-1","name":"get_time","tool_call_id":"call-1","arguments":"{\"timezone\":"}
+data: {"type":"function.call.delta","id":"fc-1","name":"%s","tool_call_id":"call-1","arguments":"{\"timezone\":"}
 
-data: {"type":"function.call.delta","id":"fc-1","name":"get_time","tool_call_id":"call-1","arguments":"\"Asia/Shanghai\"}"}
+data: {"type":"function.call.delta","id":"fc-1","name":"%s","tool_call_id":"call-1","arguments":"\"Asia/Shanghai\"}"}
 
 data: {"type":"conversation.response.done","usage":{"input_tokens":15,"output_tokens":8}}
 
-`
+`, alias, alias)
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 
-	usage, apiErr := handleBoraResponse(ctx, boraHTTPResponse(sse), testRelayInfo(false))
+	usage, apiErr := handleBoraResponse(ctx, boraHTTPResponse(sse), testRelayInfo(false), mapper.original)
 	require.Nil(t, apiErr)
 	require.Equal(t, 23, usage.TotalTokens)
 
@@ -237,7 +243,52 @@ data: {"type":"conversation.response.done","usage":{"input_tokens":15,"output_to
 	require.Len(t, toolCalls, 1)
 	require.Equal(t, "call-1", toolCalls[0].ID)
 	require.Equal(t, "get_time", toolCalls[0].Function.Name)
+	require.NotContains(t, recorder.Body.String(), alias)
 	require.JSONEq(t, `{"timezone":"Asia/Shanghai"}`, toolCalls[0].Function.Arguments)
+}
+
+func TestAdaptorRestoresFunctionNameAcrossConversionAndResponse(t *testing.T) {
+	disabled := false
+	info := testRelayInfo(false)
+	info.ChannelOtherSettings = dto.ChannelOtherSettings{
+		MistralConsoleCodeInterpreterEnabled: &disabled,
+		MistralConsoleImageGenerationEnabled: &disabled,
+		MistralConsoleWebSearchEnabled:       &disabled,
+	}
+	adaptor := &Adaptor{}
+	adaptor.Init(info)
+	converted, err := adaptor.ConvertOpenAIRequest(nil, info, &dto.GeneralOpenAIRequest{
+		Messages: []dto.Message{{Role: "user", Content: "Search"}},
+		Tools: []dto.ToolCallRequest{{
+			Type:     "function",
+			Function: dto.FunctionRequest{Name: "web_search"},
+		}},
+	})
+	require.NoError(t, err)
+	payload := converted.(*boraConversationRequest)
+	require.Len(t, payload.Tools, 1)
+	alias := payload.Tools[0].Function.Name
+
+	sse := fmt.Sprintf(`data: {"type":"conversation.response.started","conversation_id":"conv-restored"}
+
+data: {"type":"function.call.delta","tool_call_id":"call-search","name":"%s","arguments":"{}"}
+
+data: {"type":"conversation.response.done","usage":{"input_tokens":5,"output_tokens":2}}
+
+`, alias)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+
+	usage, apiErr := adaptor.DoResponse(ctx, boraHTTPResponse(sse), info)
+	require.Nil(t, apiErr)
+	require.Equal(t, 7, usage.(*dto.Usage).TotalTokens)
+	var response dto.OpenAITextResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	toolCalls := response.Choices[0].Message.ParseToolCalls()
+	require.Len(t, toolCalls, 1)
+	require.Equal(t, "web_search", toolCalls[0].Function.Name)
+	require.NotContains(t, recorder.Body.String(), alias)
 }
 
 func TestHandleBoraResponseExposesGeneratedImageURL(t *testing.T) {

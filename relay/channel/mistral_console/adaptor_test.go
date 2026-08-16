@@ -60,7 +60,8 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 		},
 	}
 
-	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(nil, info, request)
 	require.NoError(t, err)
 	payload, ok := converted.(*boraConversationRequest)
 	require.True(t, ok)
@@ -68,6 +69,9 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 	require.True(t, payload.Stream)
 	require.Equal(t, "high", payload.CompletionArgs.ReasoningEffort)
 	require.Equal(t, uint(2048), *payload.CompletionArgs.MaxTokens)
+	functionAlias := payload.Tools[3].Function.Name
+	require.NotEqual(t, "get_time", functionAlias)
+	require.Equal(t, "get_time", adaptor.restoreFunctionName(functionAlias))
 
 	data, err := common.Marshal(payload)
 	require.NoError(t, err)
@@ -85,7 +89,7 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 			{"type":"image_generation"},
 			{"type":"web_search_premium"},
 			{"type":"function","function":{
-				"name":"get_time",
+				"name":"`+functionAlias+`",
 				"description":"Get current time",
 				"parameters":{"type":"object","properties":{"timezone":{"type":"string"}}},
 				"strict":true
@@ -124,7 +128,8 @@ func TestConvertOpenAIRequestMapsFunctionCallHistory(t *testing.T) {
 		{Role: "tool", ToolCallId: "call-1", Content: `{"time":"17:30"}`},
 	}}
 
-	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, testRelayInfo(false), request)
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(nil, testRelayInfo(false), request)
 	require.NoError(t, err)
 	payload := converted.(*boraConversationRequest)
 	data, err := common.Marshal(payload.Inputs)
@@ -132,9 +137,12 @@ func TestConvertOpenAIRequestMapsFunctionCallHistory(t *testing.T) {
 	require.NotContains(t, string(data), "private reasoning content")
 	require.NotContains(t, string(data), "private reasoning alias")
 	require.NotContains(t, string(data), `"prefix":true`)
+	functionAlias := payload.Inputs[1].Name
+	require.NotEqual(t, "get_time", functionAlias)
+	require.Equal(t, "get_time", adaptor.restoreFunctionName(functionAlias))
 	require.JSONEq(t, `[
 		{"object":"entry","type":"message.input","role":"user","content":"What time is it?","prefix":false},
-		{"object":"entry","type":"function.call","name":"get_time","tool_call_id":"call-1","arguments":"{\"timezone\":\"Asia/Shanghai\"}"},
+		{"object":"entry","type":"function.call","name":"`+functionAlias+`","tool_call_id":"call-1","arguments":"{\"timezone\":\"Asia/Shanghai\"}"},
 		{"object":"entry","type":"function.result","tool_call_id":"call-1","result":"{\"time\":\"17:30\"}"}
 	]`, string(data))
 }
@@ -295,21 +303,22 @@ func TestConvertOpenAIRequestRespectsBuiltInToolSettings(t *testing.T) {
 		},
 	}
 
-	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	adaptor := &Adaptor{}
+	converted, err := adaptor.ConvertOpenAIRequest(nil, info, request)
 	require.NoError(t, err)
 	payload := converted.(*boraConversationRequest)
 	require.Len(t, payload.Tools, 2)
 	require.Equal(t, "image_generation", payload.Tools[0].Type)
 	require.Equal(t, "function", payload.Tools[1].Type)
-	require.Equal(t, "get_time", payload.Tools[1].Function.Name)
+	require.Equal(t, "get_time", adaptor.restoreFunctionName(payload.Tools[1].Function.Name))
 
 	info.ChannelOtherSettings.MistralConsoleImageGenerationEnabled = &disabled
-	converted, err = (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	converted, err = adaptor.ConvertOpenAIRequest(nil, info, request)
 	require.NoError(t, err)
 	payload = converted.(*boraConversationRequest)
 	require.Len(t, payload.Tools, 1)
 	require.Equal(t, "function", payload.Tools[0].Type)
-	require.Equal(t, "get_time", payload.Tools[0].Function.Name)
+	require.Equal(t, "get_time", adaptor.restoreFunctionName(payload.Tools[0].Function.Name))
 }
 
 func TestConvertOpenAIRequestNormalizesBoraValidationEdgeCases(t *testing.T) {

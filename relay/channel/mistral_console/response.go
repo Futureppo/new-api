@@ -27,6 +27,7 @@ type boraResponseState struct {
 	id              string
 	created         int64
 	model           string
+	restoreToolName func(string) string
 	text            strings.Builder
 	reasoning       strings.Builder
 	toolCalls       []dto.ToolCallResponse
@@ -42,8 +43,8 @@ type boraEventOutput struct {
 	toolCall  *dto.ToolCallResponse
 }
 
-func handleBoraStreamResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
-	state := newBoraResponseState(c, info)
+func handleBoraStreamResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, restorers ...func(string) string) (*dto.Usage, *types.NewAPIError) {
+	state := newBoraResponseState(c, info, restorers...)
 	helper.SetEventStreamHeaders(c)
 
 	err := consumeBoraSSE(resp, func(eventName string, event boraStreamEvent) error {
@@ -77,8 +78,8 @@ func handleBoraStreamResponse(c *gin.Context, resp *http.Response, info *relayco
 	return usage, nil
 }
 
-func handleBoraResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
-	state := newBoraResponseState(c, info)
+func handleBoraResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, restorers ...func(string) string) (*dto.Usage, *types.NewAPIError) {
+	state := newBoraResponseState(c, info, restorers...)
 	err := consumeBoraSSE(resp, func(eventName string, event boraStreamEvent) error {
 		_, err := state.handleEvent(eventName, event)
 		return err
@@ -123,11 +124,16 @@ func handleBoraResponse(c *gin.Context, resp *http.Response, info *relaycommon.R
 	return usage, nil
 }
 
-func newBoraResponseState(c *gin.Context, info *relaycommon.RelayInfo) *boraResponseState {
+func newBoraResponseState(c *gin.Context, info *relaycommon.RelayInfo, restorers ...func(string) string) *boraResponseState {
+	restoreToolName := func(name string) string { return name }
+	if len(restorers) > 0 && restorers[0] != nil {
+		restoreToolName = restorers[0]
+	}
 	return &boraResponseState{
 		id:              helper.GetResponseID(c),
 		created:         common.GetTimestamp(),
 		model:           info.UpstreamModelName,
+		restoreToolName: restoreToolName,
 		toolCallIndexes: make(map[string]int),
 	}
 }
@@ -237,7 +243,8 @@ func (state *boraResponseState) appendFunctionCall(event boraStreamEvent) (*dto.
 
 	index, exists := state.toolCallIndexes[toolCallID]
 	if !exists {
-		if strings.TrimSpace(event.Name) == "" {
+		functionName := state.restoreToolName(event.Name)
+		if strings.TrimSpace(functionName) == "" {
 			return nil, errors.New("upstream function call is missing function name")
 		}
 		index = len(state.toolCalls)
@@ -246,13 +253,13 @@ func (state *boraResponseState) appendFunctionCall(event boraStreamEvent) (*dto.
 			ID:   toolCallID,
 			Type: "function",
 			Function: dto.FunctionResponse{
-				Name: event.Name,
+				Name: functionName,
 			},
 		})
 	}
 	call := &state.toolCalls[index]
 	if event.Name != "" {
-		call.Function.Name = event.Name
+		call.Function.Name = state.restoreToolName(event.Name)
 	}
 	call.Function.Arguments += event.Arguments
 
