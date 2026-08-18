@@ -55,7 +55,20 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		requestBody = common.ReaderOnly(storage)
+		if shouldApplyImageEditParamOverride(info) {
+			body, err := storage.Bytes()
+			if err != nil {
+				return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+			}
+			overriddenBody, contentType, err := applyImageEditParamOverride(body, c.Request.Header.Get("Content-Type"), info)
+			if err != nil {
+				return newAPIErrorFromParamOverride(err)
+			}
+			c.Request.Header.Set("Content-Type", contentType)
+			requestBody = overriddenBody
+		} else {
+			requestBody = common.ReaderOnly(storage)
+		}
 	} else {
 		convertedRequest, err := adaptor.ConvertImageRequest(c, info, *request)
 		if err != nil {
@@ -63,9 +76,18 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
 
-		switch convertedRequest.(type) {
+		switch convertedRequest := convertedRequest.(type) {
 		case *bytes.Buffer:
-			requestBody = convertedRequest.(io.Reader)
+			if shouldApplyImageEditParamOverride(info) {
+				overriddenBody, contentType, err := applyImageEditParamOverride(convertedRequest.Bytes(), c.Request.Header.Get("Content-Type"), info)
+				if err != nil {
+					return newAPIErrorFromParamOverride(err)
+				}
+				c.Request.Header.Set("Content-Type", contentType)
+				requestBody = overriddenBody
+			} else {
+				requestBody = convertedRequest
+			}
 		default:
 			jsonData, err := common.Marshal(convertedRequest)
 			if err != nil {
