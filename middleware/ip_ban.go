@@ -21,10 +21,23 @@ func IPBan() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		if shouldAllowIPBanBackgroundRequest(c) {
+			c.Set(SkipAccessLogKey, true)
+			c.Next()
+			return
+		}
 		if ban.AutoBanUser && ban.ExpiresAt == 0 {
 			autoBanUserForIPBan(c, ban)
 		}
 		c.Set(SkipAccessLogKey, true)
+		if shouldRenderIPBanPage(c) {
+			if err := renderIPBanPage(c, ban); err == nil {
+				c.Abort()
+				return
+			} else {
+				common.SysLog("failed to render ip ban page: " + err.Error())
+			}
+		}
 		c.String(http.StatusForbidden, "该ip已被封禁，原因："+ban.Reason)
 		c.Abort()
 	}
