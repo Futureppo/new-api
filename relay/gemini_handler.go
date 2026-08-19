@@ -139,6 +139,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 	var requestBody io.Reader
 	if shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled) {
+		info.MarkModelMappingBypassed()
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())

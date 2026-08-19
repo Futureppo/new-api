@@ -59,6 +59,17 @@ func RecordConversationLogAfterConsume(ctx *gin.Context, relayInfo *relaycommon.
 	if len(snapshot.ClientRequestBody) == 0 && len(snapshot.ClientResponseBody) == 0 {
 		return
 	}
+	upstreamModelName := relayInfo.UpstreamModelName
+	if relayInfo.IsModelMappingFullActive() {
+		displayModel := relayInfo.GetDisplayModelName()
+		hiddenModels := []string{relayInfo.ModelMappingTargetName, relayInfo.UpstreamModelName}
+		snapshot.ClientRequestBody = relaycommon.RewriteModelMappingBytes(snapshot.ClientRequestBody, displayModel, hiddenModels, false)
+		snapshot.UpstreamRequestBody = relaycommon.RewriteModelMappingBytes(snapshot.UpstreamRequestBody, displayModel, hiddenModels, false)
+		snapshot.UpstreamResponseBody = relaycommon.RewriteModelMappingBytes(snapshot.UpstreamResponseBody, displayModel, hiddenModels, false)
+		snapshot.ClientResponseBody = relaycommon.RewriteModelMappingBytes(snapshot.ClientResponseBody, displayModel, hiddenModels, false)
+		logModel = displayModel
+		upstreamModelName = displayModel
+	}
 
 	assistantText, toolCallsJSON := deriveConversationLogPayload(snapshot.ClientResponseBody, relayInfo.RelayFormat, relayInfo.IsStream)
 	metadataBytes, _ := common.Marshal(map[string]interface{}{
@@ -84,7 +95,7 @@ func RecordConversationLogAfterConsume(ctx *gin.Context, relayInfo *relaycommon.
 		ChannelId:            relayInfo.ChannelId,
 		Group:                relayInfo.UsingGroup,
 		ModelName:            logModel,
-		UpstreamModelName:    relayInfo.UpstreamModelName,
+		UpstreamModelName:    upstreamModelName,
 		RelayFormat:          string(relayInfo.RelayFormat),
 		FinalRequestFormat:   string(relayInfo.GetFinalRequestRelayFormat()),
 		RequestPath:          relayInfo.RequestURLPath,

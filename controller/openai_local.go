@@ -9,6 +9,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay"
 	"github.com/gin-gonic/gin"
 )
 
@@ -104,7 +105,7 @@ func openAILocalTaskToEditableFileItem(task *model.Task) openAILocalEditableFile
 		CreatedAt: openAILocalTaskTime(task.SubmitTime),
 		UpdatedAt: openAILocalTaskTime(openAILocalUpdatedAt(task)),
 		Result:    result,
-		Error:     strings.TrimSpace(task.FailReason),
+		Error:     relay.SanitizeTaskModelText(task, strings.TrimSpace(task.FailReason)),
 	}
 }
 

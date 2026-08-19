@@ -4389,7 +4389,9 @@
     "最多 20 个": "Up to 20",
     "JSON 路径，例如 image.compressed.url": "JSON path, for example image.compressed.url",
     "JSON 接口必须允许浏览器跨域访问。第三方图片或接口仍可看到访客 IP，请勿在地址中填写密钥。": "JSON APIs must allow browser CORS access. Third-party image services can still see visitor IP addresses; do not put secrets in URLs.",
-    "JSON 图片接口": "JSON image API"
+    "JSON 图片接口": "JSON image API",
+    "完全重定向": "Full model redirect",
+    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "When enabled, model names in response bodies and all externally visible logs are shown as the pre-redirect requested model. The actual upstream model is used only for internal requests and billing."
   },
   "??": "Disable",
   "24h": "24h",

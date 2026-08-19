@@ -118,7 +118,7 @@ func AppendConversationClientResponse(c *gin.Context, data []byte) {
 	if capture == nil {
 		return
 	}
-	capture.AppendClientResponseBody(data)
+	capture.AppendClientResponseBody(RewriteClientResponseBytes(c, data))
 }
 
 func WrapConversationUpstreamResponse(info *RelayInfo, resp *http.Response) {

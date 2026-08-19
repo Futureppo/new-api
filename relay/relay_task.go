@@ -384,6 +384,12 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
 	}
+	defer func() {
+		if taskResp == nil && originTask.PrivateData.ModelMappingFullEnabled {
+			displayModel := taskDisplayModelName(originTask)
+			respBody = relaycommon.RewriteModelMetadataBytes(respBody, displayModel, originTask.Properties.UpstreamModelName)
+		}
+	}()
 
 	isOpenAIVideoAPI := strings.HasPrefix(c.Request.RequestURI, "/v1/videos/")
 
@@ -567,14 +573,34 @@ func taskDisplayModelName(task *model.Task) string {
 	return ""
 }
 
+func SanitizeTaskModelText(task *model.Task, text string) string {
+	if task == nil || !task.PrivateData.ModelMappingFullEnabled || text == "" {
+		return text
+	}
+	displayModel := taskDisplayModelName(task)
+	hiddenModel := strings.TrimSpace(task.Properties.UpstreamModelName)
+	if displayModel == "" || hiddenModel == "" || hiddenModel == displayModel {
+		return text
+	}
+	return strings.ReplaceAll(text, hiddenModel, displayModel)
+}
+
 func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+	properties := task.Properties
+	taskData := task.Data
+	modelName := taskDisplayModelName(task)
+	if task.PrivateData.ModelMappingFullEnabled {
+		properties.OriginModelName = modelName
+		properties.UpstreamModelName = modelName
+		taskData = relaycommon.RewriteModelMetadataBytes(task.Data, modelName, task.Properties.UpstreamModelName)
+	}
 	return &dto.TaskDto{
 		ID:         task.ID,
 		CreatedAt:  task.CreatedAt,
 		UpdatedAt:  task.UpdatedAt,
 		TaskID:     task.TaskID,
 		RequestId:  task.RequestId,
-		ModelName:  taskDisplayModelName(task),
+		ModelName:  modelName,
 		Platform:   string(task.Platform),
 		UserId:     task.UserId,
 		Group:      task.Group,
@@ -582,14 +608,14 @@ func TaskModel2Dto(task *model.Task) *dto.TaskDto {
 		Quota:      task.Quota,
 		Action:     task.Action,
 		Status:     string(task.Status),
-		FailReason: task.FailReason,
+		FailReason: SanitizeTaskModelText(task, task.FailReason),
 		ResultURL:  task.GetResultURL(),
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,
 		Progress:   task.Progress,
-		Properties: task.Properties,
+		Properties: properties,
 		Username:   task.Username,
-		Data:       task.Data,
+		Data:       taskData,
 	}
 }

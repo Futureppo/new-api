@@ -231,7 +231,7 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 
 	model.RecordConsumeLog(ctx, relayInfo.UserId, model.RecordConsumeLogParams{
 		ChannelId:      channelId,
-		ModelName:      relayInfo.OriginModelName,
+		ModelName:      relayInfo.GetDisplayModelName(),
 		TokenName:      tokenName,
 		Quota:          feeQuota,
 		Content:        "Violation fee charged",
@@ -306,7 +306,7 @@ func ChargeTaskViolationFeeIfNeeded(ctx context.Context, task *model.Task, chann
 	other["channel_type"] = channelType
 	other["violation_fee_marker"] = CSAMViolationMarker
 	if reason != "" {
-		other["reason"] = reason
+		other["reason"] = sanitizeTaskModelText(task, reason)
 	}
 
 	model.RecordTaskBillingLog(model.RecordTaskBillingLogParams{

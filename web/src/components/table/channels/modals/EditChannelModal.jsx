@@ -182,6 +182,7 @@ const EditChannelModal = (props) => {
     base_url: '',
     other: '',
     model_mapping: '',
+    model_mapping_full_enabled: false,
     param_override: '',
     status_code_mapping: '',
     models: [],
@@ -509,6 +510,7 @@ const EditChannelModal = (props) => {
   const [channelSettings, setChannelSettings] = useState({
     force_format: false,
     thinking_to_content: false,
+    model_mapping_full_enabled: false,
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -861,6 +863,8 @@ const EditChannelModal = (props) => {
           data.force_format = parsedSettings.force_format || false;
           data.thinking_to_content =
             parsedSettings.thinking_to_content || false;
+          data.model_mapping_full_enabled =
+            parsedSettings.model_mapping_full_enabled === true;
           data.proxy = parsedSettings.proxy || '';
           data.pass_through_body_enabled =
             parsedSettings.pass_through_body_enabled || false;
@@ -885,6 +889,7 @@ const EditChannelModal = (props) => {
           console.error('解析渠道设置失败:', error);
           data.force_format = false;
           data.thinking_to_content = false;
+          data.model_mapping_full_enabled = false;
           data.proxy = '';
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
@@ -897,6 +902,7 @@ const EditChannelModal = (props) => {
       } else {
         data.force_format = false;
         data.thinking_to_content = false;
+        data.model_mapping_full_enabled = false;
         data.proxy = '';
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
@@ -1048,6 +1054,7 @@ const EditChannelModal = (props) => {
       setChannelSettings({
         force_format: data.force_format,
         thinking_to_content: data.thinking_to_content,
+        model_mapping_full_enabled: data.model_mapping_full_enabled,
         proxy: data.proxy,
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
@@ -1455,6 +1462,7 @@ const EditChannelModal = (props) => {
     setChannelSettings({
       force_format: false,
       thinking_to_content: false,
+      model_mapping_full_enabled: false,
       proxy: '',
       pass_through_body_enabled: false,
       system_prompt: '',
@@ -1832,6 +1840,8 @@ const EditChannelModal = (props) => {
     const channelExtraSettings = {
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
+      model_mapping_full_enabled:
+        localInputs.model_mapping_full_enabled === true,
       proxy: localInputs.proxy || '',
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
@@ -1977,6 +1987,7 @@ const EditChannelModal = (props) => {
     // 清理不需要发送到后端的字段
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
+    delete localInputs.model_mapping_full_enabled;
     delete localInputs.proxy;
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
@@ -4085,6 +4096,22 @@ const EditChannelModal = (props) => {
                     }}
                     extraText={t(
                       '键为请求中的模型名称，值为要替换的模型名称',
+                    )}
+                  />
+
+                  <Form.Switch
+                    field='model_mapping_full_enabled'
+                    label={t('完全重定向')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleChannelSettingsChange(
+                        'model_mapping_full_enabled',
+                        value,
+                      )
+                    }
+                    extraText={t(
+                      '开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费',
                     )}
                   />
 

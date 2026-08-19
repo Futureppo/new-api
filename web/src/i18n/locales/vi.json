@@ -4801,7 +4801,9 @@
     "最多 20 个": "Tối đa 20",
     "JSON 路径，例如 image.compressed.url": "Đường dẫn JSON, ví dụ image.compressed.url",
     "JSON 接口必须允许浏览器跨域访问。第三方图片或接口仍可看到访客 IP，请勿在地址中填写密钥。": "API JSON phải cho phép truy cập CORS từ trình duyệt. Dịch vụ bên thứ ba vẫn thấy IP của khách truy cập; không đặt khóa bí mật trong URL.",
-    "JSON 图片接口": "API ảnh JSON"
+    "JSON 图片接口": "API ảnh JSON",
+    "完全重定向": "Chuyển hướng hoàn toàn",
+    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "Khi bật, tên mô hình trong nội dung phản hồi và mọi nhật ký hiển thị ra ngoài sẽ thống nhất thành mô hình được yêu cầu trước khi chuyển hướng. Mô hình thượng nguồn thực tế chỉ được dùng cho yêu cầu nội bộ và tính phí."
   },
   "??": "T?t",
   "24h": "24 gi?",

@@ -808,7 +808,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		ChannelId:        channel.Id,
 		PromptTokens:     usage.PromptTokens,
 		CompletionTokens: usage.CompletionTokens,
-		ModelName:        info.OriginModelName,
+		ModelName:        info.GetDisplayModelName(),
 		TokenName:        "模型测试",
 		Quota:            quota,
 		Content:          "模型测试",
@@ -912,7 +912,7 @@ func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID string) map[strin
 	for key, ratio := range info.PriceData.OtherRatios {
 		other[key] = ratio
 	}
-	if info.IsModelMapped {
+	if info.ShouldExposeModelMapping() {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
@@ -1053,7 +1053,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 	}
 	model.RecordConsumeLog(c, userID, model.RecordConsumeLogParams{
 		ChannelId:      channel.Id,
-		ModelName:      info.OriginModelName,
+		ModelName:      info.GetDisplayModelName(),
 		TokenName:      "模型测试",
 		Quota:          info.PriceData.Quota,
 		Content:        "模型测试",

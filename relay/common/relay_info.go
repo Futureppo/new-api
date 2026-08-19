@@ -102,6 +102,9 @@ type RelayInfo struct {
 	UsePrice               bool
 	RelayMode              int
 	OriginModelName        string
+	ClientModelName        string
+	ModelMappingTargetName string
+	ModelMappingBypassed   bool
 	RequestURLPath         string
 	RequestHeaders         map[string]string
 	ShouldIncludeUsage     bool
@@ -226,6 +229,7 @@ func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	}
 
 	info.ChannelMeta = channelMeta
+	SetRelayInfo(c, info)
 
 	// reset some fields based on channel meta
 	// 重置某些字段，例如模型名称等
@@ -477,6 +481,7 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 		UserEmail:  common.GetContextKeyString(c, constant.ContextKeyUserEmail),
 
 		OriginModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
+		ClientModelName: common.GetContextKeyString(c, constant.ContextKeyOriginalModel),
 
 		TokenId:        common.GetContextKeyInt(c, constant.ContextKeyTokenId),
 		TokenKey:       common.GetContextKeyString(c, constant.ContextKeyTokenKey),
@@ -574,9 +579,10 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 		err = errors.New("request is not a OpenAIResponsesRequest")
 	case types.RelayFormatOpenAIResponsesCompaction:
 		if request, ok := request.(*dto.OpenAIResponsesCompactionRequest); ok {
-			return GenRelayInfoResponsesCompaction(c, request), nil
+			info = GenRelayInfoResponsesCompaction(c, request)
+			break
 		}
-		return nil, errors.New("request is not a OpenAIResponsesCompactionRequest")
+		err = errors.New("request is not a OpenAIResponsesCompactionRequest")
 	case types.RelayFormatTask:
 		info = genBaseRelayInfo(c, nil)
 		info.TaskRelayInfo = &TaskRelayInfo{}
@@ -595,7 +601,34 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 	}
 
 	info.InitRequestConversionChain()
+	SetRelayInfo(c, info)
+	InstallModelMappingResponseWriter(c)
 	return info, nil
+}
+
+func (info *RelayInfo) IsModelMappingFullActive() bool {
+	return info != nil && info.ChannelMeta != nil && info.ChannelSetting.ModelMappingFullEnabled &&
+		info.IsModelMapped && !info.ModelMappingBypassed && strings.TrimSpace(info.ClientModelName) != ""
+}
+
+func (info *RelayInfo) MarkModelMappingBypassed() {
+	if info != nil {
+		info.ModelMappingBypassed = true
+	}
+}
+
+func (info *RelayInfo) GetDisplayModelName() string {
+	if info == nil {
+		return ""
+	}
+	if info.IsModelMappingFullActive() {
+		return info.ClientModelName
+	}
+	return info.OriginModelName
+}
+
+func (info *RelayInfo) ShouldExposeModelMapping() bool {
+	return info != nil && info.IsModelMapped && !info.IsModelMappingFullActive()
 }
 
 func (info *RelayInfo) InitRequestConversionChain() {

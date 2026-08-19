@@ -373,6 +373,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	logModel := summary.ModelName
+	if relayInfo.IsModelMappingFullActive() {
+		logModel = relayInfo.GetDisplayModelName()
+	}
 	if strings.HasPrefix(logModel, "gpt-4-gizmo") {
 		logModel = "gpt-4-gizmo-*"
 		extraContent = append(extraContent, fmt.Sprintf("模型 %s", summary.ModelName))
@@ -383,6 +386,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	}
 
 	logContent := strings.Join(extraContent, ", ")
+	logContent = relaycommon.SanitizeModelText(relayInfo, logContent)
 	var other map[string]interface{}
 	if summary.IsClaudeUsageSemantic {
 		other = GenerateClaudeOtherInfo(ctx, relayInfo,
@@ -397,7 +401,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other = GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	}
 	if adminRejectReason != "" {
-		other["reject_reason"] = adminRejectReason
+		other["reject_reason"] = relaycommon.SanitizeModelText(relayInfo, adminRejectReason)
 	}
 	if summary.ImageTokens != 0 {
 		other["image"] = true

@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"path/filepath"
 	"strings"
 
@@ -170,8 +171,23 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 			info.RelayMode != relayconstant.RelayModeResponsesCompact {
 			return fmt.Sprintf("%s/v1/chat/completions", info.ChannelBaseUrl), nil
 		}
-		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, info.RequestURLPath, info.ChannelType), nil
+		requestPath := info.RequestURLPath
+		if info.RelayMode == relayconstant.RelayModeRealtime && info.IsModelMapped {
+			requestPath = realtimeRequestPathWithModel(requestPath, info.UpstreamModelName)
+		}
+		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestPath, info.ChannelType), nil
 	}
+}
+
+func realtimeRequestPathWithModel(requestPath string, modelName string) string {
+	parsed, err := url.Parse(requestPath)
+	if err != nil || strings.TrimSpace(modelName) == "" {
+		return requestPath
+	}
+	query := parsed.Query()
+	query.Set("model", modelName)
+	parsed.RawQuery = query.Encode()
+	return parsed.String()
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {

@@ -47,7 +47,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	if relayInfo.ReasoningEffort != "" {
 		other["reasoning_effort"] = relayInfo.ReasoningEffort
 	}
-	if relayInfo.IsModelMapped {
+	if relayInfo.ShouldExposeModelMapping() {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = relayInfo.UpstreamModelName
 	}
@@ -86,7 +86,11 @@ func appendParamOverrideInfo(relayInfo *relaycommon.RelayInfo, other map[string]
 	if relayInfo == nil || other == nil || len(relayInfo.ParamOverrideAudit) == 0 {
 		return
 	}
-	other["po"] = relayInfo.ParamOverrideAudit
+	audit := make([]string, len(relayInfo.ParamOverrideAudit))
+	for i, line := range relayInfo.ParamOverrideAudit {
+		audit[i] = relaycommon.SanitizeModelText(relayInfo, line)
+	}
+	other["po"] = audit
 }
 
 func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]interface{}) {
@@ -103,13 +107,13 @@ func appendStreamStatus(relayInfo *relaycommon.RelayInfo, other map[string]inter
 		"end_reason": string(ss.EndReason),
 	}
 	if ss.EndError != nil {
-		streamInfo["end_error"] = ss.EndError.Error()
+		streamInfo["end_error"] = relaycommon.SanitizeModelText(relayInfo, ss.EndError.Error())
 	}
 	if ss.ErrorCount > 0 {
 		streamInfo["error_count"] = ss.ErrorCount
 		messages := make([]string, 0, len(ss.Errors))
 		for _, e := range ss.Errors {
-			messages = append(messages, e.Message)
+			messages = append(messages, relaycommon.SanitizeModelText(relayInfo, e.Message))
 		}
 		streamInfo["errors"] = messages
 	}
@@ -277,7 +281,8 @@ func InjectTieredBillingInfo(other map[string]interface{}, relayInfo *relaycommo
 		return
 	}
 	other["billing_mode"] = "tiered_expr"
-	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(snap.ExprString))
+	expr := relaycommon.SanitizeModelText(relayInfo, snap.ExprString)
+	other["expr_b64"] = base64.StdEncoding.EncodeToString([]byte(expr))
 	if result != nil {
 		other["matched_tier"] = result.MatchedTier
 	}

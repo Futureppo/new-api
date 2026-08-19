@@ -46,13 +46,13 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo) {
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other["user_group_ratio"] = info.PriceData.GroupRatioInfo.GroupSpecialRatio
 	}
-	if info.IsModelMapped {
+	if info.ShouldExposeModelMapping() {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = info.UpstreamModelName
 	}
 	model.RecordConsumeLog(c, info.UserId, model.RecordConsumeLogParams{
 		ChannelId: info.ChannelId,
-		ModelName: info.OriginModelName,
+		ModelName: info.GetDisplayModelName(),
 		TokenName: tokenName,
 		Quota:     info.PriceData.Quota,
 		Content:   logContent,
@@ -132,7 +132,7 @@ func taskBillingOther(task *model.Task) map[string]interface{} {
 		}
 	}
 	props := task.Properties
-	if props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
+	if !task.PrivateData.ModelMappingFullEnabled && props.UpstreamModelName != "" && props.UpstreamModelName != props.OriginModelName {
 		other["is_model_mapped"] = true
 		other["upstream_model_name"] = props.UpstreamModelName
 	}
@@ -145,6 +145,18 @@ func taskModelName(task *model.Task) string {
 		return bc.OriginModelName
 	}
 	return task.Properties.OriginModelName
+}
+
+func sanitizeTaskModelText(task *model.Task, text string) string {
+	if task == nil || !task.PrivateData.ModelMappingFullEnabled || text == "" {
+		return text
+	}
+	displayModel := taskModelName(task)
+	hiddenModel := strings.TrimSpace(task.Properties.UpstreamModelName)
+	if displayModel == "" || hiddenModel == "" || hiddenModel == displayModel {
+		return text
+	}
+	return strings.ReplaceAll(text, hiddenModel, displayModel)
 }
 
 // RefundTaskQuota 统一的任务失败退款逻辑。
@@ -165,6 +177,7 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 	taskAdjustTokenQuota(ctx, task, -quota)
 
 	// 3. 记录日志
+	reason = sanitizeTaskModelText(task, reason)
 	other := taskBillingOther(task)
 	other["task_id"] = task.TaskID
 	other["reason"] = reason
@@ -191,6 +204,7 @@ func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int
 	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota
+	reason = sanitizeTaskModelText(task, reason)
 
 	if quotaDelta == 0 {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 预扣费准确（%s，%s）",

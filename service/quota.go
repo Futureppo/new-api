@@ -232,9 +232,13 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 	}
 
 	logModel := modelName
+	if relayInfo.IsModelMappingFullActive() {
+		logModel = relayInfo.GetDisplayModelName()
+	}
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
+	logContent = relaycommon.SanitizeModelText(relayInfo, logContent)
 	other := GenerateWssOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
@@ -353,9 +357,13 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 	}
 
 	logModel := relayInfo.OriginModelName
+	if relayInfo.IsModelMappingFullActive() {
+		logModel = relayInfo.GetDisplayModelName()
+	}
 	if extraContent != "" {
 		logContent += ", " + extraContent
 	}
+	logContent = relaycommon.SanitizeModelText(relayInfo, logContent)
 	other := GenerateAudioOtherInfo(ctx, relayInfo, usage, modelRatio, groupRatio,
 		completionRatio.InexactFloat64(), audioRatio.InexactFloat64(), audioCompletionRatio.InexactFloat64(), modelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	if tieredResult != nil {
