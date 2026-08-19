@@ -654,7 +654,7 @@ func GetUserModels(c *gin.Context) {
 			}
 		}
 	}
-	var models []string
+	models := make([]string, 0)
 	for group := range groups {
 		for _, g := range model.GetGroupEnabledModels(groups[group]) {
 			if !common.StringsContains(models, g) {

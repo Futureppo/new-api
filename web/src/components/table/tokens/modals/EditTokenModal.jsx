@@ -155,9 +155,12 @@ const EditTokenModal = (props) => {
   const loadModels = useCallback(
     async (selectedGroups = [], selectedModels) => {
       const requestId = ++modelRequestIdRef.current;
-      const effectiveGroups = normalizeGroupValues(selectedGroups).filter(
-        (group) => validGroupValuesRef.current.has(group),
+      const validGroups = normalizeGroupValues(selectedGroups).filter((group) =>
+        validGroupValuesRef.current.has(group),
       );
+      const effectiveGroups = validGroups.includes('auto')
+        ? ['auto']
+        : validGroups;
 
       try {
         const res = await API.get(`/api/user/models`, {
@@ -167,13 +170,15 @@ const EditTokenModal = (props) => {
         if (requestId !== modelRequestIdRef.current) return;
 
         const { success, message, data } = res.data;
-        if (!success || !Array.isArray(data)) {
+        if (!success) {
           showError(t(message || '加载模型失败'));
           return;
         }
 
+        const modelList = Array.isArray(data) ? data : [];
+
         const categories = getModelCategories(t);
-        const localModelOptions = data.map((model) => {
+        const localModelOptions = modelList.map((model) => {
           let icon = null;
           for (const [key, category] of Object.entries(categories)) {
             if (key !== 'all' && category.filter({ model_name: model })) {
@@ -196,7 +201,7 @@ const EditTokenModal = (props) => {
         const currentModelLimits = Array.isArray(selectedModels)
           ? selectedModels
           : formApiRef.current?.getValue('model_limits') || [];
-        const allowedModels = new Set(data);
+        const allowedModels = new Set(modelList);
         const filteredModelLimits = currentModelLimits.filter((model) =>
           allowedModels.has(model),
         );

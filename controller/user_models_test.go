@@ -39,17 +39,25 @@ func configureUserModelGroups(t *testing.T) {
 func seedUserModels(t *testing.T) int {
 	t.Helper()
 
-	db := setupModelListControllerTestDB(t)
-	user := model.User{Username: "playground-user", Group: "default", Status: common.UserStatusEnabled}
-	require.NoError(t, db.Create(&user).Error)
-	require.NoError(t, db.Create(&[]model.Ability{
+	return seedUserModelsWithAbilities(t, []model.Ability{
 		{Group: "default", Model: "default-only", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "shared", ChannelId: 2, Enabled: true},
 		{Group: "vip", Model: "vip-only", ChannelId: 3, Enabled: true},
 		{Group: "vip", Model: "shared", ChannelId: 4, Enabled: true},
 		{Group: "hidden", Model: "hidden-only", ChannelId: 5, Enabled: true},
 		{Group: "default", Model: "disabled", ChannelId: 6, Enabled: false},
-	}).Error)
+	})
+}
+
+func seedUserModelsWithAbilities(t *testing.T, abilities []model.Ability) int {
+	t.Helper()
+
+	db := setupModelListControllerTestDB(t)
+	user := model.User{Username: "playground-user", Group: "default", Status: common.UserStatusEnabled}
+	require.NoError(t, db.Create(&user).Error)
+	if len(abilities) > 0 {
+		require.NoError(t, db.Create(&abilities).Error)
+	}
 	return user.Id
 }
 
@@ -123,6 +131,32 @@ func TestGetUserModelsReturnsSelectedGroupUnion(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.True(t, payload.Success)
 	require.Equal(t, []string{"default-only", "shared", "vip-only"}, payload.Data)
+}
+
+func TestGetUserModelsReturnsEmptyArrayForGroupWithoutModels(t *testing.T) {
+	configureUserModelGroups(t)
+	userID := seedUserModelsWithAbilities(t, nil)
+
+	recorder, payload := requestUserModels(t, userID, "/api/user/models?group=default")
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, payload.Success)
+	require.NotNil(t, payload.Data)
+	require.Empty(t, payload.Data)
+}
+
+func TestGetUserModelsReturnsSelectedGroupUnionWhenOneGroupHasNoModels(t *testing.T) {
+	configureUserModelGroups(t)
+	userID := seedUserModelsWithAbilities(t, []model.Ability{
+		{Group: "vip", Model: "vip-only", ChannelId: 1, Enabled: true},
+	})
+	groups := url.QueryEscape(`["default","vip"]`)
+
+	recorder, payload := requestUserModels(t, userID, "/api/user/models?groups="+groups)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.True(t, payload.Success)
+	require.Equal(t, []string{"vip-only"}, payload.Data)
 }
 
 func TestGetUserModelsExplicitEmptyGroupsUsesUserGroup(t *testing.T) {
