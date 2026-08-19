@@ -10,7 +10,18 @@ import (
 	"gorm.io/gorm"
 )
 
-const userDisableUpdateChunkSize = 100
+const (
+	DefaultUserInviteRelationDepth = 2
+	userDisableUpdateChunkSize     = 100
+	userInviteQueryChunkSize       = 500
+)
+
+const (
+	InviteRelationTypeTarget  = "target"
+	InviteRelationTypeInviter = "inviter"
+	InviteRelationTypeInvitee = "invitee"
+	InviteRelationTypeRelated = "related"
+)
 
 const (
 	UserDisableUnavailableDeleted                = "deleted"
@@ -31,12 +42,16 @@ type InviteRelationUser struct {
 	DisableReason     string `json:"disable_reason,omitempty"`
 	Selectable        bool   `json:"selectable"`
 	UnavailableReason string `json:"unavailable_reason,omitempty"`
+	Depth             int    `json:"depth"`
+	RelationType      string `json:"relation_type"`
 }
 
 type UserInviteRelations struct {
-	Target   InviteRelationUser   `json:"target"`
-	Inviter  *InviteRelationUser  `json:"inviter"`
-	Invitees []InviteRelationUser `json:"invitees"`
+	Target       InviteRelationUser   `json:"target"`
+	Inviter      *InviteRelationUser  `json:"inviter"`
+	Invitees     []InviteRelationUser `json:"invitees"`
+	RelatedUsers []InviteRelationUser `json:"related_users"`
+	QueryDepth   int                  `json:"query_depth"`
 }
 
 type BatchDisableRelatedUsersResult struct {
@@ -46,9 +61,14 @@ type BatchDisableRelatedUsersResult struct {
 }
 
 type userInviteRelationSnapshot struct {
-	Target   model.User
-	Inviter  *model.User
-	Invitees []model.User
+	Target       model.User
+	RelatedUsers []userInviteRelationMember
+}
+
+type userInviteRelationMember struct {
+	User         model.User
+	Depth        int
+	RelationType string
 }
 
 func relationUserQuery(db *gorm.DB) *gorm.DB {
@@ -64,9 +84,75 @@ func relationUserQuery(db *gorm.DB) *gorm.DB {
 	)
 }
 
-func loadUserInviteRelationSnapshot(db *gorm.DB, userId int) (userInviteRelationSnapshot, error) {
+func NormalizeUserInviteRelationDepth(depth *int) (int, error) {
+	if depth == nil {
+		return DefaultUserInviteRelationDepth, nil
+	}
+	if *depth < 0 {
+		return 0, errors.New("invite relation depth cannot be negative")
+	}
+	return *depth, nil
+}
+
+func appendUsersByIds(
+	db *gorm.DB,
+	userIds []int,
+	appendUser func(model.User),
+) error {
+	for start := 0; start < len(userIds); start += userInviteQueryChunkSize {
+		end := start + userInviteQueryChunkSize
+		if end > len(userIds) {
+			end = len(userIds)
+		}
+		var users []model.User
+		if err := relationUserQuery(db).
+			Where("id IN ?", userIds[start:end]).
+			Find(&users).Error; err != nil {
+			return err
+		}
+		usersById := make(map[int]model.User, len(users))
+		for _, user := range users {
+			usersById[user.Id] = user
+		}
+		for _, userId := range userIds[start:end] {
+			if user, exists := usersById[userId]; exists {
+				appendUser(user)
+			}
+		}
+	}
+	return nil
+}
+
+func appendInviteesByInviterIds(
+	db *gorm.DB,
+	inviterIds []int,
+	appendUser func(model.User),
+) error {
+	for start := 0; start < len(inviterIds); start += userInviteQueryChunkSize {
+		end := start + userInviteQueryChunkSize
+		if end > len(inviterIds) {
+			end = len(inviterIds)
+		}
+		var users []model.User
+		if err := relationUserQuery(db).
+			Where("inviter_id IN ?", inviterIds[start:end]).
+			Order("id DESC").
+			Find(&users).Error; err != nil {
+			return err
+		}
+		for _, user := range users {
+			appendUser(user)
+		}
+	}
+	return nil
+}
+
+func loadUserInviteRelationSnapshot(db *gorm.DB, userId int, depth int) (userInviteRelationSnapshot, error) {
 	if userId <= 0 {
 		return userInviteRelationSnapshot{}, errors.New("target user id is invalid")
+	}
+	if depth < 0 {
+		return userInviteRelationSnapshot{}, errors.New("invite relation depth cannot be negative")
 	}
 
 	var target model.User
@@ -75,25 +161,76 @@ func loadUserInviteRelationSnapshot(db *gorm.DB, userId int) (userInviteRelation
 	}
 
 	snapshot := userInviteRelationSnapshot{
-		Target:   target,
-		Invitees: make([]model.User, 0),
+		Target:       target,
+		RelatedUsers: make([]userInviteRelationMember, 0),
 	}
 
-	if target.InviterId > 0 && target.InviterId != target.Id {
-		var inviter model.User
-		err := relationUserQuery(db).Where("id = ?", target.InviterId).First(&inviter).Error
-		if err == nil {
-			snapshot.Inviter = &inviter
-		} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+	visited := map[int]struct{}{target.Id: {}}
+	frontier := []model.User{target}
+
+	for currentDepth := 1; depth == 0 || currentDepth <= depth; currentDepth++ {
+		candidateUsers := make(map[int]model.User)
+		candidateIds := make([]int, 0)
+		appendCandidate := func(user model.User) {
+			if _, exists := visited[user.Id]; exists {
+				return
+			}
+			if _, exists := candidateUsers[user.Id]; exists {
+				return
+			}
+			candidateUsers[user.Id] = user
+			candidateIds = append(candidateIds, user.Id)
+		}
+
+		parentIds := make([]int, 0, len(frontier))
+		seenParentIds := make(map[int]struct{}, len(frontier))
+		frontierIds := make([]int, 0, len(frontier))
+		for _, user := range frontier {
+			frontierIds = append(frontierIds, user.Id)
+			if user.InviterId <= 0 || user.InviterId == user.Id {
+				continue
+			}
+			if _, exists := visited[user.InviterId]; exists {
+				continue
+			}
+			if _, exists := seenParentIds[user.InviterId]; exists {
+				continue
+			}
+			seenParentIds[user.InviterId] = struct{}{}
+			parentIds = append(parentIds, user.InviterId)
+		}
+
+		if err := appendUsersByIds(db, parentIds, appendCandidate); err != nil {
 			return userInviteRelationSnapshot{}, err
 		}
-	}
+		if err := appendInviteesByInviterIds(db, frontierIds, appendCandidate); err != nil {
+			return userInviteRelationSnapshot{}, err
+		}
 
-	if err := relationUserQuery(db).
-		Where("inviter_id = ? AND id <> ?", target.Id, target.Id).
-		Order("id DESC").
-		Find(&snapshot.Invitees).Error; err != nil {
-		return userInviteRelationSnapshot{}, err
+		if len(candidateIds) == 0 {
+			break
+		}
+
+		nextFrontier := make([]model.User, 0, len(candidateIds))
+		for _, candidateId := range candidateIds {
+			user := candidateUsers[candidateId]
+			relationType := InviteRelationTypeRelated
+			if currentDepth == 1 {
+				if user.Id == target.InviterId {
+					relationType = InviteRelationTypeInviter
+				} else {
+					relationType = InviteRelationTypeInvitee
+				}
+			}
+			snapshot.RelatedUsers = append(snapshot.RelatedUsers, userInviteRelationMember{
+				User:         user,
+				Depth:        currentDepth,
+				RelationType: relationType,
+			})
+			visited[user.Id] = struct{}{}
+			nextFrontier = append(nextFrontier, user)
+		}
+		frontier = nextFrontier
 	}
 
 	return snapshot, nil
@@ -121,7 +258,13 @@ func userDisableEligibility(user model.User, operatorId int, operatorRole int) (
 	return true, ""
 }
 
-func toInviteRelationUser(user model.User, operatorId int, operatorRole int) InviteRelationUser {
+func toInviteRelationUser(
+	user model.User,
+	depth int,
+	relationType string,
+	operatorId int,
+	operatorRole int,
+) InviteRelationUser {
 	selectable, unavailableReason := userDisableEligibility(user, operatorId, operatorRole)
 	return InviteRelationUser{
 		Id:                user.Id,
@@ -133,25 +276,42 @@ func toInviteRelationUser(user model.User, operatorId int, operatorRole int) Inv
 		DisableReason:     user.DisableReason,
 		Selectable:        selectable,
 		UnavailableReason: unavailableReason,
+		Depth:             depth,
+		RelationType:      relationType,
 	}
 }
 
-func GetUserInviteRelations(userId int, operatorId int, operatorRole int) (UserInviteRelations, error) {
-	snapshot, err := loadUserInviteRelationSnapshot(model.DB, userId)
+func GetUserInviteRelations(userId int, depth int, operatorId int, operatorRole int) (UserInviteRelations, error) {
+	snapshot, err := loadUserInviteRelationSnapshot(model.DB, userId, depth)
 	if err != nil {
 		return UserInviteRelations{}, err
 	}
 
 	result := UserInviteRelations{
-		Target:   toInviteRelationUser(snapshot.Target, operatorId, operatorRole),
-		Invitees: make([]InviteRelationUser, 0, len(snapshot.Invitees)),
+		Target:       toInviteRelationUser(snapshot.Target, 0, InviteRelationTypeTarget, operatorId, operatorRole),
+		Invitees:     make([]InviteRelationUser, 0),
+		RelatedUsers: make([]InviteRelationUser, 0, len(snapshot.RelatedUsers)),
+		QueryDepth:   depth,
 	}
-	if snapshot.Inviter != nil {
-		inviter := toInviteRelationUser(*snapshot.Inviter, operatorId, operatorRole)
-		result.Inviter = &inviter
-	}
-	for _, invitee := range snapshot.Invitees {
-		result.Invitees = append(result.Invitees, toInviteRelationUser(invitee, operatorId, operatorRole))
+	for _, member := range snapshot.RelatedUsers {
+		relationUser := toInviteRelationUser(
+			member.User,
+			member.Depth,
+			member.RelationType,
+			operatorId,
+			operatorRole,
+		)
+		result.RelatedUsers = append(result.RelatedUsers, relationUser)
+		if member.Depth != 1 {
+			continue
+		}
+		switch member.RelationType {
+		case InviteRelationTypeInviter:
+			inviter := relationUser
+			result.Inviter = &inviter
+		case InviteRelationTypeInvitee:
+			result.Invitees = append(result.Invitees, relationUser)
+		}
 	}
 	return result, nil
 }
@@ -171,6 +331,7 @@ func BatchDisableRelatedUsers(
 	targetId int,
 	relatedUserIds []int,
 	reason string,
+	depth int,
 	operatorId int,
 	operatorRole int,
 ) (BatchDisableRelatedUsersResult, error) {
@@ -187,17 +348,14 @@ func BatchDisableRelatedUsers(
 	disabledUsers := make(map[int]model.User)
 
 	err = model.DB.Transaction(func(tx *gorm.DB) error {
-		snapshot, err := loadUserInviteRelationSnapshot(tx, targetId)
+		snapshot, err := loadUserInviteRelationSnapshot(tx, targetId, depth)
 		if err != nil {
 			return err
 		}
 
-		allowedRelatedUsers := make(map[int]model.User, len(snapshot.Invitees)+1)
-		if snapshot.Inviter != nil {
-			allowedRelatedUsers[snapshot.Inviter.Id] = *snapshot.Inviter
-		}
-		for _, invitee := range snapshot.Invitees {
-			allowedRelatedUsers[invitee.Id] = invitee
+		allowedRelatedUsers := make(map[int]model.User, len(snapshot.RelatedUsers))
+		for _, member := range snapshot.RelatedUsers {
+			allowedRelatedUsers[member.User.Id] = member.User
 		}
 
 		orderedIds := make([]int, 0, len(relatedUserIds)+1)
@@ -222,7 +380,12 @@ func BatchDisableRelatedUsers(
 			}
 			relatedUser, exists := allowedRelatedUsers[relatedUserId]
 			if !exists {
-				return fmt.Errorf("user %d is not a direct invite relation of user %d", relatedUserId, targetId)
+				return fmt.Errorf(
+					"user %d is not within invite relation depth %d of user %d",
+					relatedUserId,
+					depth,
+					targetId,
+				)
 			}
 			appendSelectedUser(relatedUser)
 		}
@@ -267,8 +430,9 @@ func BatchDisableRelatedUsers(
 	}
 
 	adminInfo := map[string]interface{}{
-		"admin_id":             operatorId,
-		"batch_target_user_id": targetId,
+		"admin_id":              operatorId,
+		"batch_target_user_id":  targetId,
+		"invite_relation_depth": depth,
 	}
 	if adminUsername, err := model.GetUsernameById(operatorId, false); err == nil {
 		adminInfo["admin_username"] = adminUsername

@@ -114,12 +114,17 @@ const UsersTable = (usersData) => {
     setShowDemoteModal(false);
   };
 
-  const handleEnableDisableConfirm = async (reason, relatedUserIds = []) => {
+  const handleEnableDisableConfirm = async (
+    reason,
+    relatedUserIds = [],
+    depth = 2,
+  ) => {
     if (enableDisableAction === 'disable') {
       const success = await batchDisableUsers(
         modalUser.id,
         relatedUserIds,
         reason,
+        depth,
       );
       if (success) {
         setShowEnableDisableModal(false);

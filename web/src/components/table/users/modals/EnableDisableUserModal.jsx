@@ -21,6 +21,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Banner,
   Button,
+  InputNumber,
   Modal,
   Space,
   Spin,
@@ -34,6 +35,7 @@ import { API } from '../../../../helpers';
 const { Text, Paragraph } = Typography;
 
 const MAX_DISABLE_REASON_LENGTH = 255;
+const DEFAULT_INVITE_RELATION_DEPTH = 2;
 
 const getRelationTypeConfig = (relationType, t) => {
   if (relationType === 'target') {
@@ -42,7 +44,10 @@ const getRelationTypeConfig = (relationType, t) => {
   if (relationType === 'inviter') {
     return { label: t('邀请人'), color: 'orange' };
   }
-  return { label: t('被邀请用户'), color: 'green' };
+  if (relationType === 'invitee') {
+    return { label: t('被邀请用户'), color: 'green' };
+  }
+  return { label: t('多层关联'), color: 'purple' };
 };
 
 const getUnavailableReasonLabel = (unavailableReason, t) => {
@@ -79,6 +84,12 @@ const EnableDisableUserModal = ({
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [submitting, setSubmitting] = useState(false);
+  const [queryDepthInput, setQueryDepthInput] = useState(
+    DEFAULT_INVITE_RELATION_DEPTH,
+  );
+  const [appliedQueryDepth, setAppliedQueryDepth] = useState(
+    DEFAULT_INVITE_RELATION_DEPTH,
+  );
 
   useEffect(() => {
     if (visible) {
@@ -88,6 +99,11 @@ const EnableDisableUserModal = ({
       setRelationsError('');
       setSelectedRowKeys([]);
       setSubmitting(false);
+      setQueryDepthInput(DEFAULT_INVITE_RELATION_DEPTH);
+      setAppliedQueryDepth(DEFAULT_INVITE_RELATION_DEPTH);
+    } else {
+      setQueryDepthInput(DEFAULT_INVITE_RELATION_DEPTH);
+      setAppliedQueryDepth(DEFAULT_INVITE_RELATION_DEPTH);
     }
   }, [visible, isDisable, user?.id]);
 
@@ -101,7 +117,9 @@ const EnableDisableUserModal = ({
       setRelationsLoading(true);
       setRelationsError('');
       try {
-        const res = await API.get(`/api/user/${user.id}/invite-relations`);
+        const res = await API.get(
+          `/api/user/${user.id}/invite-relations?depth=${appliedQueryDepth}`,
+        );
         if (cancelled) {
           return;
         }
@@ -112,11 +130,10 @@ const EnableDisableUserModal = ({
           return;
         }
         setRelations(data);
-        const defaultSelectedIds = [
-          data?.target,
-          data?.inviter,
-          ...(data?.invitees || []),
-        ]
+        const relatedUsers = Array.isArray(data?.related_users)
+          ? data.related_users
+          : [data?.inviter, ...(data?.invitees || [])].filter(Boolean);
+        const defaultSelectedIds = [data?.target, ...relatedUsers]
           .filter((item) => item?.selectable)
           .map((item) => item.id);
         setSelectedRowKeys(defaultSelectedIds);
@@ -140,25 +157,39 @@ const EnableDisableUserModal = ({
     return () => {
       cancelled = true;
     };
-  }, [visible, isDisable, user?.id, reloadKey, t]);
+  }, [visible, isDisable, user?.id, appliedQueryDepth, reloadKey, t]);
 
   const trimmedReason = reason.trim();
+  const normalizedQueryDepth = Number(queryDepthInput);
+  const isQueryDepthValid =
+    queryDepthInput !== '' &&
+    queryDepthInput !== null &&
+    Number.isInteger(normalizedQueryDepth) &&
+    normalizedQueryDepth >= 0;
+  const queryDepthChanged =
+    !isQueryDepthValid || normalizedQueryDepth !== appliedQueryDepth;
 
   const relationRows = useMemo(() => {
     if (!relations) {
       return [];
     }
+    const relatedUsers = Array.isArray(relations.related_users)
+      ? relations.related_users
+      : [
+          relations.inviter
+            ? { ...relations.inviter, relation_type: 'inviter', depth: 1 }
+            : null,
+          ...(relations.invitees || []).map((item) => ({
+            ...item,
+            relation_type: 'invitee',
+            depth: 1,
+          })),
+        ].filter(Boolean);
     const candidates = [
       relations.target
-        ? { ...relations.target, relation_type: 'target' }
+        ? { ...relations.target, relation_type: 'target', depth: 0 }
         : null,
-      relations.inviter
-        ? { ...relations.inviter, relation_type: 'inviter' }
-        : null,
-      ...(relations.invitees || []).map((item) => ({
-        ...item,
-        relation_type: 'invitee',
-      })),
+      ...relatedUsers,
     ].filter(Boolean);
     const seenIds = new Set();
     return candidates.filter((item) => {
@@ -183,10 +214,16 @@ const EnableDisableUserModal = ({
   const selectedCounts = useMemo(() => {
     return selectedRows.reduce(
       (counts, item) => {
-        counts[item.relation_type] += 1;
+        const relationType = Object.prototype.hasOwnProperty.call(
+          counts,
+          item.relation_type,
+        )
+          ? item.relation_type
+          : 'related';
+        counts[relationType] += 1;
         return counts;
       },
-      { target: 0, inviter: 0, invitee: 0 },
+      { target: 0, inviter: 0, invitee: 0, related: 0 },
     );
   }, [selectedRows]);
 
@@ -196,8 +233,23 @@ const EnableDisableUserModal = ({
     Boolean(relations) &&
     !relationsLoading &&
     !relationsError &&
+    !queryDepthChanged &&
     targetSelectable &&
     selectedIdSet.has(relations?.target?.id);
+
+  const handleQueryRelations = () => {
+    if (!isQueryDepthValid || relationsLoading) {
+      return;
+    }
+    setSelectedRowKeys([]);
+    setRelationsError('');
+    if (normalizedQueryDepth === appliedQueryDepth) {
+      setReloadKey((key) => key + 1);
+      return;
+    }
+    setRelations(null);
+    setAppliedQueryDepth(normalizedQueryDepth);
+  };
 
   const handleSelectionChange = (keys) => {
     const selectableIds = new Set(
@@ -237,7 +289,7 @@ const EnableDisableUserModal = ({
       .filter((id) => id !== targetId);
     setSubmitting(true);
     try {
-      await onConfirm(trimmedReason, relatedUserIds);
+      await onConfirm(trimmedReason, relatedUserIds, appliedQueryDepth);
     } finally {
       setSubmitting(false);
     }
@@ -274,6 +326,12 @@ const EnableDisableUserModal = ({
             </Tag>
           );
         },
+      },
+      {
+        title: t('层级'),
+        dataIndex: 'depth',
+        width: 80,
+        render: (depth) => depth ?? 1,
       },
       {
         title: t('用户 ID'),
@@ -402,8 +460,42 @@ const EnableDisableUserModal = ({
 
   const renderDisableDetailsStep = () => (
     <Space vertical align='start' className='w-full'>
+      <div className='flex w-full flex-col gap-2 rounded-lg border border-semi-color-border p-3'>
+        <Space wrap align='end'>
+          <div className='flex flex-col gap-1'>
+            <Text strong>{t('查询层数')}</Text>
+            <InputNumber
+              value={queryDepthInput}
+              min={0}
+              precision={0}
+              onChange={setQueryDepthInput}
+              style={{ width: 160 }}
+            />
+          </div>
+          <Button
+            theme='solid'
+            onClick={handleQueryRelations}
+            loading={relationsLoading}
+            disabled={!isQueryDepthValid || relationsLoading}
+          >
+            {t('查询')}
+          </Button>
+        </Space>
+        <Text type='tertiary' size='small'>
+          {t('直接关系为第 1 层；设置为 0 时将查询整个关联网络。')}
+        </Text>
+        {!isQueryDepthValid ? (
+          <Text type='danger' size='small'>
+            {t('查询层数必须是大于等于 0 的整数')}
+          </Text>
+        ) : queryDepthChanged ? (
+          <Text type='warning' size='small'>
+            {t('层数已修改，请点击查询刷新关联账号。')}
+          </Text>
+        ) : null}
+      </div>
       <Text>
-        {t('目标用户固定选中；可封禁的直接邀请人和被邀请用户已默认选中。')}
+        {t('目标用户固定选中；查询范围内可封禁的关联用户已默认选中。')}
       </Text>
       {renderRelations()}
       <Text>{t('请填写统一禁用原因，所选用户下次登录时将看到该原因。')}</Text>
@@ -431,7 +523,7 @@ const EnableDisableUserModal = ({
           total: selectedRows.length,
         })}
       </Paragraph>
-      <div className='grid w-full grid-cols-2 gap-2 md:grid-cols-4'>
+      <div className='grid w-full grid-cols-2 gap-2 md:grid-cols-5'>
         <div className='rounded-lg border border-semi-color-border p-3'>
           <Text type='tertiary' size='small'>
             {t('合计')}
@@ -455,6 +547,12 @@ const EnableDisableUserModal = ({
             {t('被邀请用户')}
           </Text>
           <div className='text-lg font-semibold'>{selectedCounts.invitee}</div>
+        </div>
+        <div className='rounded-lg border border-semi-color-border p-3'>
+          <Text type='tertiary' size='small'>
+            {t('多层关联')}
+          </Text>
+          <div className='text-lg font-semibold'>{selectedCounts.related}</div>
         </div>
       </div>
       <div>

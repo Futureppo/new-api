@@ -331,7 +331,21 @@ func GetUserInviteRelations(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	relations, err := service.GetUserInviteRelations(id, c.GetInt("id"), c.GetInt("role"))
+	var requestedDepth *int
+	if rawDepth, exists := c.GetQuery("depth"); exists {
+		depth, err := strconv.Atoi(rawDepth)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		requestedDepth = &depth
+	}
+	depth, err := service.NormalizeUserInviteRelationDepth(requestedDepth)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	relations, err := service.GetUserInviteRelations(id, depth, c.GetInt("id"), c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -991,6 +1005,7 @@ type BatchDisableRelatedUsersRequest struct {
 	Id             int    `json:"id"`
 	RelatedUserIds []int  `json:"related_user_ids"`
 	Reason         string `json:"reason"`
+	Depth          *int   `json:"depth,omitempty"`
 }
 
 func BatchDisableRelatedUsers(c *gin.Context) {
@@ -999,10 +1014,16 @@ func BatchDisableRelatedUsers(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
+	depth, err := service.NormalizeUserInviteRelationDepth(req.Depth)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	result, err := service.BatchDisableRelatedUsers(
 		req.Id,
 		req.RelatedUserIds,
 		req.Reason,
+		depth,
 		c.GetInt("id"),
 		c.GetInt("role"),
 	)

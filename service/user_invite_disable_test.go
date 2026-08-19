@@ -73,7 +73,7 @@ func seedUserInviteDisableTestUser(
 	return user
 }
 
-func TestGetUserInviteRelationsReturnsOnlyDirectRelations(t *testing.T) {
+func TestGetUserInviteRelationsDepthOneReturnsOnlyDirectRelations(t *testing.T) {
 	db := setupUserInviteDisableTestDB(t)
 
 	inviter := seedUserInviteDisableTestUser(t, db, "relation-inviter", common.RoleCommonUser, common.UserStatusEnabled, 0)
@@ -86,13 +86,19 @@ func TestGetUserInviteRelationsReturnsOnlyDirectRelations(t *testing.T) {
 	grandchild := seedUserInviteDisableTestUser(t, db, "relation-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
 	require.NoError(t, db.Delete(&deletedInvitee).Error)
 
-	relations, err := GetUserInviteRelations(target.Id, 9999, common.RoleAdminUser)
+	relations, err := GetUserInviteRelations(target.Id, 1, 9999, common.RoleAdminUser)
 	require.NoError(t, err)
+	require.Equal(t, 1, relations.QueryDepth)
 	require.Equal(t, target.Id, relations.Target.Id)
+	require.Equal(t, 0, relations.Target.Depth)
+	require.Equal(t, InviteRelationTypeTarget, relations.Target.RelationType)
 	require.True(t, relations.Target.Selectable)
 	require.NotNil(t, relations.Inviter)
 	require.Equal(t, inviter.Id, relations.Inviter.Id)
+	require.Equal(t, 1, relations.Inviter.Depth)
+	require.Equal(t, InviteRelationTypeInviter, relations.Inviter.RelationType)
 	require.True(t, relations.Inviter.Selectable)
+	require.Len(t, relations.RelatedUsers, 5)
 
 	inviteesById := make(map[int]InviteRelationUser)
 	for _, item := range relations.Invitees {
@@ -115,6 +121,90 @@ func TestGetUserInviteRelationsReturnsOnlyDirectRelations(t *testing.T) {
 	require.Equal(t, UserDisableUnavailableInsufficientPermission, inviteesById[adminInvitee.Id].UnavailableReason)
 }
 
+func TestGetUserInviteRelationsDepthTwoExpandsBidirectionally(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	greatGrandparent := seedUserInviteDisableTestUser(t, db, "depth-great-grandparent", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	grandparent := seedUserInviteDisableTestUser(t, db, "depth-grandparent", common.RoleCommonUser, common.UserStatusEnabled, greatGrandparent.Id)
+	inviter := seedUserInviteDisableTestUser(t, db, "depth-inviter", common.RoleCommonUser, common.UserStatusEnabled, grandparent.Id)
+	target := seedUserInviteDisableTestUser(t, db, "depth-target", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	sibling := seedUserInviteDisableTestUser(t, db, "depth-sibling", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	invitee := seedUserInviteDisableTestUser(t, db, "depth-invitee", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "depth-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
+	siblingChild := seedUserInviteDisableTestUser(t, db, "depth-sibling-child", common.RoleCommonUser, common.UserStatusEnabled, sibling.Id)
+
+	relations, err := GetUserInviteRelations(target.Id, 2, 9999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.Equal(t, 2, relations.QueryDepth)
+	require.NotNil(t, relations.Inviter)
+	require.Equal(t, inviter.Id, relations.Inviter.Id)
+	require.Len(t, relations.Invitees, 1)
+	require.Equal(t, invitee.Id, relations.Invitees[0].Id)
+
+	relatedById := make(map[int]InviteRelationUser, len(relations.RelatedUsers))
+	for _, item := range relations.RelatedUsers {
+		relatedById[item.Id] = item
+	}
+	require.Len(t, relatedById, 5)
+	require.Equal(t, 1, relatedById[inviter.Id].Depth)
+	require.Equal(t, InviteRelationTypeInviter, relatedById[inviter.Id].RelationType)
+	require.Equal(t, 1, relatedById[invitee.Id].Depth)
+	require.Equal(t, InviteRelationTypeInvitee, relatedById[invitee.Id].RelationType)
+	for _, userId := range []int{grandparent.Id, sibling.Id, grandchild.Id} {
+		require.Equal(t, 2, relatedById[userId].Depth)
+		require.Equal(t, InviteRelationTypeRelated, relatedById[userId].RelationType)
+	}
+	require.NotContains(t, relatedById, greatGrandparent.Id)
+	require.NotContains(t, relatedById, siblingChild.Id)
+}
+
+func TestGetUserInviteRelationsUnlimitedTerminatesOnCycle(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	first := seedUserInviteDisableTestUser(t, db, "cycle-first", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	target := seedUserInviteDisableTestUser(t, db, "cycle-target", common.RoleCommonUser, common.UserStatusEnabled, first.Id)
+	third := seedUserInviteDisableTestUser(t, db, "cycle-third", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	fourth := seedUserInviteDisableTestUser(t, db, "cycle-fourth", common.RoleCommonUser, common.UserStatusEnabled, third.Id)
+	branch := seedUserInviteDisableTestUser(t, db, "cycle-branch", common.RoleCommonUser, common.UserStatusEnabled, fourth.Id)
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", first.Id).Update("inviter_id", fourth.Id).Error)
+
+	relations, err := GetUserInviteRelations(target.Id, 0, 9999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.Equal(t, 0, relations.QueryDepth)
+
+	relatedById := make(map[int]InviteRelationUser, len(relations.RelatedUsers))
+	for _, item := range relations.RelatedUsers {
+		require.NotEqual(t, target.Id, item.Id)
+		_, duplicate := relatedById[item.Id]
+		require.False(t, duplicate)
+		relatedById[item.Id] = item
+	}
+	require.Len(t, relatedById, 4)
+	require.Equal(t, 1, relatedById[first.Id].Depth)
+	require.Equal(t, 1, relatedById[third.Id].Depth)
+	require.Equal(t, 2, relatedById[fourth.Id].Depth)
+	require.Equal(t, 3, relatedById[branch.Id].Depth)
+}
+
+func TestGetUserInviteRelationsTraversesThroughUnavailableUser(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	target := seedUserInviteDisableTestUser(t, db, "unavailable-target", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	disabledInvitee := seedUserInviteDisableTestUser(t, db, "unavailable-disabled", common.RoleCommonUser, common.UserStatusDisabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "unavailable-grandchild", common.RoleCommonUser, common.UserStatusEnabled, disabledInvitee.Id)
+
+	relations, err := GetUserInviteRelations(target.Id, 2, 9999, common.RoleRootUser)
+	require.NoError(t, err)
+	relatedById := make(map[int]InviteRelationUser, len(relations.RelatedUsers))
+	for _, item := range relations.RelatedUsers {
+		relatedById[item.Id] = item
+	}
+	require.False(t, relatedById[disabledInvitee.Id].Selectable)
+	require.Equal(t, UserDisableUnavailableAlreadyDisabled, relatedById[disabledInvitee.Id].UnavailableReason)
+	require.True(t, relatedById[grandchild.Id].Selectable)
+	require.Equal(t, 2, relatedById[grandchild.Id].Depth)
+}
+
 func TestBatchDisableRelatedUsersDisablesSelectionAndSkipsDisabledUsers(t *testing.T) {
 	db := setupUserInviteDisableTestDB(t)
 
@@ -128,6 +218,7 @@ func TestBatchDisableRelatedUsersDisablesSelectionAndSkipsDisabledUsers(t *testi
 		target.Id,
 		[]int{inviter.Id, invitee.Id, invitee.Id, disabledInvitee.Id},
 		"  linked abuse  ",
+		1,
 		9999,
 		common.RoleRootUser,
 	)
@@ -152,6 +243,83 @@ func TestBatchDisableRelatedUsersDisablesSelectionAndSkipsDisabledUsers(t *testi
 	require.Equal(t, int64(3), logCount)
 }
 
+func TestBatchDisableRelatedUsersAllowsMultiLevelSelection(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	inviter := seedUserInviteDisableTestUser(t, db, "multi-batch-inviter", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	target := seedUserInviteDisableTestUser(t, db, "multi-batch-target", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	sibling := seedUserInviteDisableTestUser(t, db, "multi-batch-sibling", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	invitee := seedUserInviteDisableTestUser(t, db, "multi-batch-invitee", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "multi-batch-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
+
+	result, err := BatchDisableRelatedUsers(
+		target.Id,
+		[]int{sibling.Id, grandchild.Id},
+		"multi-level relation",
+		2,
+		9999,
+		common.RoleRootUser,
+	)
+	require.NoError(t, err)
+	require.Equal(t, []int{target.Id, sibling.Id, grandchild.Id}, result.DisabledIds)
+
+	for _, userId := range result.DisabledIds {
+		var user model.User
+		require.NoError(t, db.First(&user, userId).Error)
+		require.Equal(t, common.UserStatusDisabled, user.Status)
+	}
+	for _, userId := range []int{inviter.Id, invitee.Id} {
+		var user model.User
+		require.NoError(t, db.First(&user, userId).Error)
+		require.Equal(t, common.UserStatusEnabled, user.Status)
+	}
+}
+
+func TestBatchDisableRelatedUsersRejectsSelectionBeyondDepthWithoutPartialUpdate(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	target := seedUserInviteDisableTestUser(t, db, "depth-rollback-target", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	invitee := seedUserInviteDisableTestUser(t, db, "depth-rollback-invitee", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "depth-rollback-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
+	greatGrandchild := seedUserInviteDisableTestUser(t, db, "depth-rollback-great-grandchild", common.RoleCommonUser, common.UserStatusEnabled, grandchild.Id)
+
+	_, err := BatchDisableRelatedUsers(
+		target.Id,
+		[]int{grandchild.Id, greatGrandchild.Id},
+		"beyond depth",
+		2,
+		9999,
+		common.RoleRootUser,
+	)
+	require.Error(t, err)
+
+	for _, userId := range []int{target.Id, invitee.Id, grandchild.Id, greatGrandchild.Id} {
+		var user model.User
+		require.NoError(t, db.First(&user, userId).Error)
+		require.Equal(t, common.UserStatusEnabled, user.Status)
+	}
+}
+
+func TestBatchDisableRelatedUsersUnlimitedDepth(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	target := seedUserInviteDisableTestUser(t, db, "unlimited-batch-target", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	invitee := seedUserInviteDisableTestUser(t, db, "unlimited-batch-invitee", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "unlimited-batch-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
+	greatGrandchild := seedUserInviteDisableTestUser(t, db, "unlimited-batch-great-grandchild", common.RoleCommonUser, common.UserStatusEnabled, grandchild.Id)
+
+	result, err := BatchDisableRelatedUsers(
+		target.Id,
+		[]int{greatGrandchild.Id},
+		"unlimited relation",
+		0,
+		9999,
+		common.RoleRootUser,
+	)
+	require.NoError(t, err)
+	require.Equal(t, []int{target.Id, greatGrandchild.Id}, result.DisabledIds)
+}
+
 func TestBatchDisableRelatedUsersRejectsUnrelatedUserWithoutPartialUpdate(t *testing.T) {
 	db := setupUserInviteDisableTestDB(t)
 
@@ -163,6 +331,7 @@ func TestBatchDisableRelatedUsersRejectsUnrelatedUserWithoutPartialUpdate(t *tes
 		target.Id,
 		[]int{invitee.Id, unrelated.Id},
 		"invalid relation",
+		1,
 		9999,
 		common.RoleRootUser,
 	)
@@ -186,6 +355,7 @@ func TestBatchDisableRelatedUsersRejectsProtectedOrDeletedSelection(t *testing.T
 			target.Id,
 			[]int{adminInvitee.Id},
 			"protected relation",
+			1,
 			9999,
 			common.RoleAdminUser,
 		)
@@ -206,6 +376,7 @@ func TestBatchDisableRelatedUsersRejectsProtectedOrDeletedSelection(t *testing.T
 			target.Id,
 			[]int{deletedInvitee.Id},
 			"deleted relation",
+			1,
 			9999,
 			common.RoleRootUser,
 		)
@@ -227,4 +398,24 @@ func TestBatchDisableRelatedUsersValidatesReason(t *testing.T) {
 	reason, err := normalizeBatchDisableReason("  valid reason  ")
 	require.NoError(t, err)
 	require.Equal(t, "valid reason", reason)
+}
+
+func TestNormalizeUserInviteRelationDepth(t *testing.T) {
+	depth, err := NormalizeUserInviteRelationDepth(nil)
+	require.NoError(t, err)
+	require.Equal(t, DefaultUserInviteRelationDepth, depth)
+
+	unlimited := 0
+	depth, err = NormalizeUserInviteRelationDepth(&unlimited)
+	require.NoError(t, err)
+	require.Zero(t, depth)
+
+	positive := 5
+	depth, err = NormalizeUserInviteRelationDepth(&positive)
+	require.NoError(t, err)
+	require.Equal(t, positive, depth)
+
+	negative := -1
+	_, err = NormalizeUserInviteRelationDepth(&negative)
+	require.Error(t, err)
 }
