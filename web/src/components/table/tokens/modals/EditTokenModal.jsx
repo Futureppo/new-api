@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState, useContext, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+  useContext,
+  useRef,
+} from 'react';
 import {
   API,
   showError,
@@ -45,7 +51,6 @@ import {
   Form,
   Col,
   Row,
-  InputNumber,
 } from '@douyinfe/semi-ui';
 import {
   IconCreditCard,
@@ -59,32 +64,73 @@ import { StatusContext } from '../../../../context/Status';
 
 const { Text, Title } = Typography;
 
+const getTokenFormInitValues = () => ({
+  name: '',
+  remain_quota: 0,
+  remain_amount: 0,
+  expired_time: -1,
+  unlimited_quota: true,
+  model_limits_enabled: false,
+  model_limits: [],
+  allow_ips: '',
+  groups: [],
+  cross_group_retry: false,
+  tokenCount: 1,
+});
+
+const normalizeGroupValues = (values) => {
+  if (!Array.isArray(values)) return [];
+  return [
+    ...new Set(
+      values
+        .filter((value) => typeof value === 'string')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+};
+
 const EditTokenModal = (props) => {
   const { t } = useTranslation();
-  const [statusState, statusDispatch] = useContext(StatusContext);
+  const [statusState] = useContext(StatusContext);
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
   const formApiRef = useRef(null);
+  const initializationRequestIdRef = useRef(0);
   const modelRequestIdRef = useRef(0);
   const groupSelectionRef = useRef([]);
+  const validGroupValuesRef = useRef(new Set());
   const [models, setModels] = useState([]);
   const [groups, setGroups] = useState([]);
+  const [unavailableGroups, setUnavailableGroups] = useState([]);
   const [showQuotaInput, setShowQuotaInput] = useState(false);
   const isEdit = props.editingToken.id !== undefined;
 
-  const getInitValues = () => ({
-    name: '',
-    remain_quota: 0,
-    remain_amount: 0,
-    expired_time: -1,
-    unlimited_quota: true,
-    model_limits_enabled: false,
-    model_limits: [],
-    allow_ips: '',
-    groups: [],
-    cross_group_retry: false,
-    tokenCount: 1,
-  });
+  const groupOptions = [
+    ...groups,
+    ...unavailableGroups.map((group) => ({
+      label: t('已失效或不可用'),
+      value: group,
+      disabled: true,
+      unavailable: true,
+    })),
+  ];
+
+  const getValidGroups = useCallback(
+    (values) =>
+      normalizeGroupValues(values).filter((group) =>
+        validGroupValuesRef.current.has(group),
+      ),
+    [],
+  );
+
+  const getRequestErrorMessage = useCallback(
+    (error, fallback) => {
+      const message = error?.response?.data?.message || error?.message;
+      return message ? t(message) : fallback;
+    },
+    [t],
+  );
 
   const handleCancel = () => {
     props.handleClose();
@@ -106,130 +152,202 @@ const EditTokenModal = (props) => {
     }
   };
 
-  const loadModels = async (selectedGroups = [], selectedModels) => {
-    const requestId = ++modelRequestIdRef.current;
-    let res = await API.get(`/api/user/models`, {
-      params: { groups: JSON.stringify(selectedGroups || []) },
-    });
-    const { success, message, data } = res.data;
-    if (requestId !== modelRequestIdRef.current) return;
-    if (success) {
-      const categories = getModelCategories(t);
-      let localModelOptions = data.map((model) => {
-        let icon = null;
-        for (const [key, category] of Object.entries(categories)) {
-          if (key !== 'all' && category.filter({ model_name: model })) {
-            icon = category.icon;
-            break;
+  const loadModels = useCallback(
+    async (selectedGroups = [], selectedModels) => {
+      const requestId = ++modelRequestIdRef.current;
+      const effectiveGroups = normalizeGroupValues(selectedGroups).filter(
+        (group) => validGroupValuesRef.current.has(group),
+      );
+
+      try {
+        const res = await API.get(`/api/user/models`, {
+          params: { groups: JSON.stringify(effectiveGroups) },
+          skipErrorHandler: true,
+        });
+        if (requestId !== modelRequestIdRef.current) return;
+
+        const { success, message, data } = res.data;
+        if (!success || !Array.isArray(data)) {
+          showError(t(message || '加载模型失败'));
+          return;
+        }
+
+        const categories = getModelCategories(t);
+        const localModelOptions = data.map((model) => {
+          let icon = null;
+          for (const [key, category] of Object.entries(categories)) {
+            if (key !== 'all' && category.filter({ model_name: model })) {
+              icon = category.icon;
+              break;
+            }
           }
+          return {
+            label: (
+              <span className='flex items-center gap-1'>
+                {icon}
+                {model}
+              </span>
+            ),
+            value: model,
+          };
+        });
+        setModels(localModelOptions);
+
+        const currentModelLimits = Array.isArray(selectedModels)
+          ? selectedModels
+          : formApiRef.current?.getValue('model_limits') || [];
+        const allowedModels = new Set(data);
+        const filteredModelLimits = currentModelLimits.filter((model) =>
+          allowedModels.has(model),
+        );
+        if (filteredModelLimits.length !== currentModelLimits.length) {
+          formApiRef.current?.setValue('model_limits', filteredModelLimits);
         }
-        return {
-          label: (
-            <span className='flex items-center gap-1'>
-              {icon}
-              {model}
-            </span>
-          ),
-          value: model,
-        };
-      });
-      setModels(localModelOptions);
-
-      const currentModelLimits = Array.isArray(selectedModels)
-        ? selectedModels
-        : formApiRef.current?.getValue('model_limits') || [];
-      const allowedModels = new Set(data);
-      const filteredModelLimits = currentModelLimits.filter((model) =>
-        allowedModels.has(model),
-      );
-      if (filteredModelLimits.length !== currentModelLimits.length) {
-        formApiRef.current?.setValue('model_limits', filteredModelLimits);
+      } catch (error) {
+        if (requestId !== modelRequestIdRef.current) return;
+        showError(getRequestErrorMessage(error, t('加载模型失败')));
       }
-    } else {
-      showError(t(message));
-    }
-  };
-
-  const loadGroups = async () => {
-    let res = await API.get(`/api/user/self/groups`);
-    const { success, message, data } = res.data;
-    if (success) {
-      let localGroupOptions = Object.entries(data).map(([group, info]) => ({
-        label: info.desc,
-        value: group,
-        ratio: info.ratio,
-      }));
-      if (statusState?.status?.default_use_auto_group) {
-        if (localGroupOptions.some((group) => group.value === 'auto')) {
-          localGroupOptions.sort((a, b) => (a.value === 'auto' ? -1 : 1));
-        }
-      }
-      setGroups(localGroupOptions);
-      // if (statusState?.status?.default_use_auto_group && formApiRef.current) {
-      //   formApiRef.current.setValue('group', 'auto');
-      // }
-    } else {
-      showError(t(message));
-    }
-  };
-
-  const loadToken = async () => {
-    setLoading(true);
-    let res = await API.get(`/api/token/${props.editingToken.id}`);
-    const { success, message, data } = res.data;
-    if (success) {
-      if (data.expired_time !== -1) {
-        data.expired_time = timestamp2string(data.expired_time);
-      }
-      if (data.model_limits !== '') {
-        data.model_limits = data.model_limits.split(',');
-      } else {
-        data.model_limits = [];
-      }
-      data.remain_amount = Number(
-        quotaToDisplayAmount(data.remain_quota || 0).toFixed(6),
-      );
-      data.groups = Array.isArray(data.groups)
-        ? data.groups
-        : data.group
-          ? [data.group]
-          : [];
-      groupSelectionRef.current = data.groups;
-      if (formApiRef.current) {
-        formApiRef.current.setValues({ ...getInitValues(), ...data });
-      }
-      await loadModels(data.groups, data.model_limits);
-    } else {
-      showError(message);
-    }
-    setLoading(false);
-  };
+    },
+    [getRequestErrorMessage, t],
+  );
 
   useEffect(() => {
-    if (formApiRef.current) {
-      if (!isEdit) {
-        groupSelectionRef.current = [];
-        formApiRef.current.setValues(getInitValues());
-      }
-    }
-    if (!isEdit) {
-      loadModels([]);
-    }
-    loadGroups();
-  }, [props.editingToken.id]);
+    const requestId = ++initializationRequestIdRef.current;
+    modelRequestIdRef.current += 1;
 
-  useEffect(() => {
-    if (props.visiable) {
-      if (isEdit) {
-        loadToken();
-      } else {
-        groupSelectionRef.current = [];
-        formApiRef.current?.setValues(getInitValues());
-      }
-    } else {
+    if (!props.visiable) {
+      setLoading(false);
+      setModels([]);
+      setGroups([]);
+      setUnavailableGroups([]);
+      validGroupValuesRef.current = new Set();
+      groupSelectionRef.current = [];
       formApiRef.current?.reset();
+      return undefined;
     }
-  }, [props.visiable, props.editingToken.id]);
+
+    const initializeForm = async () => {
+      setLoading(true);
+      setModels([]);
+      setGroups([]);
+      setUnavailableGroups([]);
+      validGroupValuesRef.current = new Set();
+      groupSelectionRef.current = [];
+      formApiRef.current?.setValues(getTokenFormInitValues());
+
+      try {
+        const groupRequest = API.get(`/api/user/self/groups`, {
+          skipErrorHandler: true,
+        });
+        const tokenRequest = isEdit
+          ? API.get(`/api/token/${props.editingToken.id}`, {
+              skipErrorHandler: true,
+            })
+          : Promise.resolve(null);
+        const [groupResponse, tokenResponse] = await Promise.all([
+          groupRequest,
+          tokenRequest,
+        ]);
+        if (requestId !== initializationRequestIdRef.current) return;
+
+        const groupPayload = groupResponse?.data;
+        if (!groupPayload?.success || !groupPayload.data) {
+          throw new Error(t(groupPayload?.message || '加载分组失败'));
+        }
+
+        const localGroupOptions = Object.entries(groupPayload.data).map(
+          ([group, info]) => ({
+            label: info.desc,
+            value: group,
+            ratio: info.ratio,
+          }),
+        );
+        if (
+          statusState?.status?.default_use_auto_group &&
+          localGroupOptions.some((group) => group.value === 'auto')
+        ) {
+          localGroupOptions.sort((a, b) => {
+            if (a.value === 'auto') return -1;
+            if (b.value === 'auto') return 1;
+            return 0;
+          });
+        }
+
+        const validGroupValues = new Set(
+          localGroupOptions.map((group) => group.value),
+        );
+        validGroupValuesRef.current = validGroupValues;
+        setGroups(localGroupOptions);
+
+        if (!isEdit) {
+          formApiRef.current?.setValues(getTokenFormInitValues());
+          await loadModels([]);
+          return;
+        }
+
+        const tokenPayload = tokenResponse?.data;
+        if (!tokenPayload?.success || !tokenPayload.data) {
+          throw new Error(t(tokenPayload?.message || '加载令牌失败'));
+        }
+
+        const tokenData = { ...tokenPayload.data };
+        if (tokenData.expired_time !== -1) {
+          tokenData.expired_time = timestamp2string(tokenData.expired_time);
+        }
+        tokenData.model_limits =
+          typeof tokenData.model_limits === 'string' &&
+          tokenData.model_limits !== ''
+            ? tokenData.model_limits.split(',').filter(Boolean)
+            : [];
+        tokenData.remain_amount = Number(
+          quotaToDisplayAmount(tokenData.remain_quota || 0).toFixed(6),
+        );
+        tokenData.groups = normalizeGroupValues(
+          Array.isArray(tokenData.groups)
+            ? tokenData.groups
+            : tokenData.group
+              ? [tokenData.group]
+              : [],
+        );
+
+        const invalidGroups = tokenData.groups.filter(
+          (group) => !validGroupValues.has(group),
+        );
+        const effectiveGroups = tokenData.groups.filter((group) =>
+          validGroupValues.has(group),
+        );
+        setUnavailableGroups(invalidGroups);
+        groupSelectionRef.current = tokenData.groups;
+        formApiRef.current?.setValues({
+          ...getTokenFormInitValues(),
+          ...tokenData,
+        });
+        await loadModels(effectiveGroups, tokenData.model_limits);
+      } catch (error) {
+        if (requestId !== initializationRequestIdRef.current) return;
+        showError(getRequestErrorMessage(error, t('操作失败，请重试')));
+      } finally {
+        if (requestId === initializationRequestIdRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeForm();
+
+    return () => {
+      initializationRequestIdRef.current += 1;
+      modelRequestIdRef.current += 1;
+    };
+  }, [
+    getRequestErrorMessage,
+    isEdit,
+    loadModels,
+    props.editingToken.id,
+    props.visiable,
+    statusState?.status?.default_use_auto_group,
+    t,
+  ]);
 
   const generateRandomSuffix = () => {
     const characters =
@@ -244,115 +362,140 @@ const EditTokenModal = (props) => {
   };
 
   const handleGroupChange = (value) => {
-    const previousGroups = groupSelectionRef.current;
-    const rawGroups = Array.isArray(value) ? [...new Set(value)] : [];
+    const previousGroups = normalizeGroupValues(groupSelectionRef.current);
+    const rawGroups = normalizeGroupValues(value);
     let nextGroups = [
       ...previousGroups.filter((group) => rawGroups.includes(group)),
       ...rawGroups.filter((group) => !previousGroups.includes(group)),
     ];
-    if (nextGroups.includes('auto') && nextGroups.length > 1) {
-      nextGroups = previousGroups.includes('auto')
-        ? nextGroups.filter((group) => group !== 'auto')
-        : ['auto'];
+
+    const previousValidGroups = getValidGroups(previousGroups);
+    const nextValidGroups = getValidGroups(nextGroups);
+    if (nextValidGroups.includes('auto') && nextValidGroups.length > 1) {
+      const keepAuto = !previousValidGroups.includes('auto');
+      nextGroups = nextGroups.filter((group) => {
+        if (!validGroupValuesRef.current.has(group)) return true;
+        return keepAuto ? group === 'auto' : group !== 'auto';
+      });
     }
+
+    const effectiveGroups = getValidGroups(nextGroups);
     groupSelectionRef.current = nextGroups;
+    setUnavailableGroups((current) =>
+      current.filter((group) => nextGroups.includes(group)),
+    );
     formApiRef.current?.setValue('groups', nextGroups);
-    loadModels(nextGroups);
+    loadModels(effectiveGroups);
   };
 
   const submit = async (values) => {
+    const selectedGroups = normalizeGroupValues(values.groups);
+    const invalidGroups = selectedGroups.filter(
+      (group) => !validGroupValuesRef.current.has(group),
+    );
+    if (invalidGroups.length > 0) {
+      showError(
+        t('该令牌包含已失效或不可用的分组，请先移除后再提交：{{groups}}', {
+          groups: invalidGroups.join(', '),
+        }),
+      );
+      return;
+    }
+
     setLoading(true);
-    if (isEdit) {
-      let { tokenCount: _tc, ...localInputs } = values;
-      localInputs.groups = Array.isArray(localInputs.groups)
-        ? localInputs.groups
-        : [];
-      localInputs.group = localInputs.groups[0] || '';
-      localInputs.remain_quota = localInputs.unlimited_quota
-        ? 0
-        : displayAmountToQuota(localInputs.remain_amount);
-      if (!localInputs.unlimited_quota && localInputs.remain_quota <= 0) {
-        showError(t('请输入金额'));
-        setLoading(false);
-        return;
-      }
-      if (localInputs.expired_time !== -1) {
-        let time = Date.parse(localInputs.expired_time);
-        if (isNaN(time)) {
-          showError(t('过期时间格式错误！'));
-          setLoading(false);
-          return;
-        }
-        localInputs.expired_time = Math.ceil(time / 1000);
-      }
-      localInputs.model_limits = localInputs.model_limits.join(',');
-      localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
-      let res = await API.put(`/api/token/`, {
-        ...localInputs,
-        id: parseInt(props.editingToken.id),
-      });
-      const { success, message } = res.data;
-      if (success) {
-        showSuccess(t('令牌更新成功！'));
-        props.refresh();
-        props.handleClose();
-      } else {
-        showError(t(message));
-      }
-    } else {
-      const count = parseInt(values.tokenCount, 10) || 1;
-      let successCount = 0;
-      for (let i = 0; i < count; i++) {
+    try {
+      if (isEdit) {
         let { tokenCount: _tc, ...localInputs } = values;
-        localInputs.groups = Array.isArray(localInputs.groups)
-          ? localInputs.groups
-          : [];
+        localInputs.groups = selectedGroups;
         localInputs.group = localInputs.groups[0] || '';
-        const baseName =
-          values.name.trim() === '' ? 'default' : values.name.trim();
-        if (i !== 0 || values.name.trim() === '') {
-          localInputs.name = `${baseName}-${generateRandomSuffix()}`;
-        } else {
-          localInputs.name = baseName;
-        }
         localInputs.remain_quota = localInputs.unlimited_quota
           ? 0
           : displayAmountToQuota(localInputs.remain_amount);
         if (!localInputs.unlimited_quota && localInputs.remain_quota <= 0) {
           showError(t('请输入金额'));
-          setLoading(false);
-          break;
+          return;
         }
-
         if (localInputs.expired_time !== -1) {
           let time = Date.parse(localInputs.expired_time);
           if (isNaN(time)) {
             showError(t('过期时间格式错误！'));
-            setLoading(false);
-            break;
+            return;
           }
           localInputs.expired_time = Math.ceil(time / 1000);
         }
         localInputs.model_limits = localInputs.model_limits.join(',');
         localInputs.model_limits_enabled = localInputs.model_limits.length > 0;
-        let res = await API.post(`/api/token/`, localInputs);
+        const res = await API.put(
+          `/api/token/`,
+          {
+            ...localInputs,
+            id: parseInt(props.editingToken.id),
+          },
+          { skipErrorHandler: true },
+        );
         const { success, message } = res.data;
         if (success) {
-          successCount++;
+          showSuccess(t('令牌更新成功！'));
+          props.refresh();
+          props.handleClose();
         } else {
           showError(t(message));
-          break;
+        }
+      } else {
+        const count = parseInt(values.tokenCount, 10) || 1;
+        let successCount = 0;
+        for (let i = 0; i < count; i++) {
+          let { tokenCount: _tc, ...localInputs } = values;
+          localInputs.groups = selectedGroups;
+          localInputs.group = localInputs.groups[0] || '';
+          const baseName =
+            values.name.trim() === '' ? 'default' : values.name.trim();
+          if (i !== 0 || values.name.trim() === '') {
+            localInputs.name = `${baseName}-${generateRandomSuffix()}`;
+          } else {
+            localInputs.name = baseName;
+          }
+          localInputs.remain_quota = localInputs.unlimited_quota
+            ? 0
+            : displayAmountToQuota(localInputs.remain_amount);
+          if (!localInputs.unlimited_quota && localInputs.remain_quota <= 0) {
+            showError(t('请输入金额'));
+            break;
+          }
+
+          if (localInputs.expired_time !== -1) {
+            let time = Date.parse(localInputs.expired_time);
+            if (isNaN(time)) {
+              showError(t('过期时间格式错误！'));
+              break;
+            }
+            localInputs.expired_time = Math.ceil(time / 1000);
+          }
+          localInputs.model_limits = localInputs.model_limits.join(',');
+          localInputs.model_limits_enabled =
+            localInputs.model_limits.length > 0;
+          const res = await API.post(`/api/token/`, localInputs, {
+            skipErrorHandler: true,
+          });
+          const { success, message } = res.data;
+          if (success) {
+            successCount++;
+          } else {
+            showError(t(message));
+            break;
+          }
+        }
+        if (successCount > 0) {
+          showSuccess(t('令牌创建成功，请在列表页面点击复制获取令牌！'));
+          props.refresh();
+          props.handleClose();
         }
       }
-      if (successCount > 0) {
-        showSuccess(t('令牌创建成功，请在列表页面点击复制获取令牌！'));
-        props.refresh();
-        props.handleClose();
-      }
+    } catch (error) {
+      showError(getRequestErrorMessage(error, t('操作失败，请重试')));
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    groupSelectionRef.current = [];
-    formApiRef.current?.setValues(getInitValues());
   };
 
   return (
@@ -407,7 +550,7 @@ const EditTokenModal = (props) => {
       <Spin spinning={loading}>
         <Form
           key={isEdit ? 'edit' : 'new'}
-          initValues={getInitValues()}
+          initValues={getTokenFormInitValues()}
           getFormApi={(api) => (formApiRef.current = api)}
           onSubmit={submit}
         >
@@ -437,14 +580,41 @@ const EditTokenModal = (props) => {
                     />
                   </Col>
                   <Col span={24}>
-                    {groups.length > 0 ? (
+                    {groupOptions.length > 0 ? (
                       <Form.Select
                         field='groups'
                         label={t('令牌分组')}
                         placeholder={t('令牌分组，默认为用户的分组')}
-                        optionList={groups}
+                        optionList={groupOptions}
                         multiple
                         renderOptionItem={renderGroupOption}
+                        renderSelectedItem={(optionNode, multipleProps) => {
+                          if (!optionNode?.unavailable) {
+                            return {
+                              isRenderInTag: true,
+                              content: optionNode?.label || optionNode?.value,
+                            };
+                          }
+                          return {
+                            isRenderInTag: false,
+                            content: (
+                              <Tag
+                                color='red'
+                                type='light'
+                                size='large'
+                                closable
+                                aria-label={t('移除失效分组 {{group}}', {
+                                  group: optionNode.value,
+                                })}
+                                onClose={(content, event) =>
+                                  multipleProps.onClose(content, event)
+                                }
+                              >
+                                {optionNode.value} · {t('已失效或不可用')}
+                              </Tag>
+                            ),
+                          };
+                        }}
                         filter={(input, option) => {
                           const q = input.toLowerCase();
                           return (
@@ -456,6 +626,14 @@ const EditTokenModal = (props) => {
                         onChange={handleGroupChange}
                         autoClearSearchValue={false}
                         showClear
+                        extraText={
+                          unavailableGroups.length > 0
+                            ? t(
+                                '该令牌包含已失效或不可用的分组，请先移除后再提交：{{groups}}',
+                                { groups: unavailableGroups.join(', ') },
+                              )
+                            : undefined
+                        }
                         style={{ width: '100%' }}
                       />
                     ) : (
@@ -471,8 +649,8 @@ const EditTokenModal = (props) => {
                     span={24}
                     style={{
                       display:
-                        values.groups?.includes('auto') ||
-                        values.groups?.length > 1
+                        getValidGroups(values.groups).includes('auto') ||
+                        getValidGroups(values.groups).length > 1
                           ? 'block'
                           : 'none',
                     }}

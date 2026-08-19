@@ -1,5 +1,9 @@
 {
   "translation": {
+    "该令牌包含已失效或不可用的分组，请先移除后再提交：{{groups}}": "Token này chứa các nhóm đã hết hiệu lực hoặc không khả dụng. Hãy xóa chúng trước khi gửi: {{groups}}",
+    "加载令牌失败": "Không thể tải token",
+    "移除失效分组 {{group}}": "Xóa nhóm không khả dụng {{group}}",
+    "已失效或不可用": "Đã hết hiệu lực hoặc không khả dụng",
     "内置工具": "Công cụ tích hợp",
     "启用代码解释器": "Bật trình thông dịch mã",
     "启用高级网页搜索": "Bật tìm kiếm web nâng cao",

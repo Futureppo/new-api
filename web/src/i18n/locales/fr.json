@@ -1,5 +1,9 @@
 {
   "translation": {
+    "该令牌包含已失效或不可用的分组，请先移除后再提交：{{groups}}": "Ce jeton contient des groupes expirés ou indisponibles. Supprimez-les avant de valider : {{groups}}",
+    "加载令牌失败": "Échec du chargement du jeton",
+    "移除失效分组 {{group}}": "Supprimer le groupe indisponible {{group}}",
+    "已失效或不可用": "Expiré ou indisponible",
     "内置工具": "Outils intégrés",
     "启用代码解释器": "Activer l’interpréteur de code",
     "启用高级网页搜索": "Activer la recherche web avancée",

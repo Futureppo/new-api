@@ -1,5 +1,9 @@
 {
   "translation": {
+    "该令牌包含已失效或不可用的分组，请先移除后再提交：{{groups}}": "This token contains expired or unavailable groups. Remove them before submitting: {{groups}}",
+    "加载令牌失败": "Failed to load token",
+    "移除失效分组 {{group}}": "Remove unavailable group {{group}}",
+    "已失效或不可用": "Expired or unavailable",
     "内置工具": "Built-in tools",
     "启用代码解释器": "Enable code interpreter",
     "启用高级网页搜索": "Enable premium web search",
