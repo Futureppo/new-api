@@ -220,7 +220,13 @@ export const useUsersData = () => {
     setLoading(false);
   };
 
-  const batchDisableUsers = async (userId, relatedUserIds, reason, depth) => {
+  const batchDisableUsers = async (
+    userId,
+    relatedUserIds,
+    reason,
+    depth,
+    selectAllRelated,
+  ) => {
     setLoading(true);
     try {
       const res = await API.post('/api/user/batch-disable', {
@@ -228,6 +234,7 @@ export const useUsersData = () => {
         related_user_ids: relatedUserIds,
         reason,
         depth,
+        select_all_related: selectAllRelated,
       });
       const { success, message, data } = res.data;
       if (!success) {

@@ -83,6 +83,7 @@ const EnableDisableUserModal = ({
   const [relationsError, setRelationsError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [selectionModified, setSelectionModified] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [queryDepthInput, setQueryDepthInput] = useState(
     DEFAULT_INVITE_RELATION_DEPTH,
@@ -98,6 +99,7 @@ const EnableDisableUserModal = ({
       setRelations(null);
       setRelationsError('');
       setSelectedRowKeys([]);
+      setSelectionModified(false);
       setSubmitting(false);
       setQueryDepthInput(DEFAULT_INVITE_RELATION_DEPTH);
       setAppliedQueryDepth(DEFAULT_INVITE_RELATION_DEPTH);
@@ -137,6 +139,7 @@ const EnableDisableUserModal = ({
           .filter((item) => item?.selectable)
           .map((item) => item.id);
         setSelectedRowKeys(defaultSelectedIds);
+        setSelectionModified(false);
       } catch (error) {
         if (!cancelled) {
           setRelations(null);
@@ -211,8 +214,21 @@ const EnableDisableUserModal = ({
     [relationRows, selectedIdSet],
   );
 
+  const effectiveSelectedRows = useMemo(
+    () =>
+      selectionModified
+        ? selectedRows
+        : relationRows.filter((item) => item.selectable),
+    [relationRows, selectedRows, selectionModified],
+  );
+
+  const effectiveSelectedIdSet = useMemo(
+    () => new Set(effectiveSelectedRows.map((item) => item.id)),
+    [effectiveSelectedRows],
+  );
+
   const selectedCounts = useMemo(() => {
-    return selectedRows.reduce(
+    return effectiveSelectedRows.reduce(
       (counts, item) => {
         const relationType = Object.prototype.hasOwnProperty.call(
           counts,
@@ -225,7 +241,7 @@ const EnableDisableUserModal = ({
       },
       { target: 0, inviter: 0, invitee: 0, related: 0 },
     );
-  }, [selectedRows]);
+  }, [effectiveSelectedRows]);
 
   const targetSelectable = Boolean(relations?.target?.selectable);
   const canContinue =
@@ -235,13 +251,14 @@ const EnableDisableUserModal = ({
     !relationsError &&
     !queryDepthChanged &&
     targetSelectable &&
-    selectedIdSet.has(relations?.target?.id);
+    effectiveSelectedIdSet.has(relations?.target?.id);
 
   const handleQueryRelations = () => {
     if (!isQueryDepthValid || relationsLoading) {
       return;
     }
     setSelectedRowKeys([]);
+    setSelectionModified(false);
     setRelationsError('');
     if (normalizedQueryDepth === appliedQueryDepth) {
       setReloadKey((key) => key + 1);
@@ -263,6 +280,7 @@ const EnableDisableUserModal = ({
       nextIds.unshift(targetId);
     }
     setSelectedRowKeys(nextIds);
+    setSelectionModified(true);
   };
 
   const handleOk = async () => {
@@ -284,12 +302,17 @@ const EnableDisableUserModal = ({
       return;
     }
     const targetId = relations?.target?.id;
-    const relatedUserIds = selectedRowKeys
-      .map((id) => Number(id))
+    const relatedUserIds = effectiveSelectedRows
+      .map((item) => item.id)
       .filter((id) => id !== targetId);
     setSubmitting(true);
     try {
-      await onConfirm(trimmedReason, relatedUserIds, appliedQueryDepth);
+      await onConfirm(
+        trimmedReason,
+        relatedUserIds,
+        appliedQueryDepth,
+        !selectionModified,
+      );
     } finally {
       setSubmitting(false);
     }
@@ -520,7 +543,7 @@ const EnableDisableUserModal = ({
     <Space vertical align='start' className='w-full'>
       <Paragraph>
         {t('本次将禁用 {{total}} 个用户，请确认选择范围和禁用原因。', {
-          total: selectedRows.length,
+          total: effectiveSelectedRows.length,
         })}
       </Paragraph>
       <div className='grid w-full grid-cols-2 gap-2 md:grid-cols-5'>
@@ -528,7 +551,9 @@ const EnableDisableUserModal = ({
           <Text type='tertiary' size='small'>
             {t('合计')}
           </Text>
-          <div className='text-lg font-semibold'>{selectedRows.length}</div>
+          <div className='text-lg font-semibold'>
+            {effectiveSelectedRows.length}
+          </div>
         </div>
         <div className='rounded-lg border border-semi-color-border p-3'>
           <Text type='tertiary' size='small'>
@@ -577,7 +602,9 @@ const EnableDisableUserModal = ({
         disabled:
           submitting ||
           (isDisable && step === 'details' && !canContinue) ||
-          (isDisable && step === 'confirm' && selectedRows.length === 0),
+          (isDisable &&
+            step === 'confirm' &&
+            effectiveSelectedRows.length === 0),
       }}
     >
       {isDisable

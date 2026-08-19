@@ -1002,10 +1002,11 @@ type ManageRequest struct {
 }
 
 type BatchDisableRelatedUsersRequest struct {
-	Id             int    `json:"id"`
-	RelatedUserIds []int  `json:"related_user_ids"`
-	Reason         string `json:"reason"`
-	Depth          *int   `json:"depth,omitempty"`
+	Id               int    `json:"id"`
+	RelatedUserIds   []int  `json:"related_user_ids"`
+	Reason           string `json:"reason"`
+	Depth            *int   `json:"depth,omitempty"`
+	SelectAllRelated *bool  `json:"select_all_related,omitempty"`
 }
 
 func BatchDisableRelatedUsers(c *gin.Context) {
@@ -1024,6 +1025,7 @@ func BatchDisableRelatedUsers(c *gin.Context) {
 		req.RelatedUserIds,
 		req.Reason,
 		depth,
+		req.SelectAllRelated != nil && *req.SelectAllRelated,
 		c.GetInt("id"),
 		c.GetInt("role"),
 	)

@@ -219,6 +219,7 @@ func TestBatchDisableRelatedUsersDisablesSelectionAndSkipsDisabledUsers(t *testi
 		[]int{inviter.Id, invitee.Id, invitee.Id, disabledInvitee.Id},
 		"  linked abuse  ",
 		1,
+		false,
 		9999,
 		common.RoleRootUser,
 	)
@@ -257,6 +258,7 @@ func TestBatchDisableRelatedUsersAllowsMultiLevelSelection(t *testing.T) {
 		[]int{sibling.Id, grandchild.Id},
 		"multi-level relation",
 		2,
+		false,
 		9999,
 		common.RoleRootUser,
 	)
@@ -275,6 +277,50 @@ func TestBatchDisableRelatedUsersAllowsMultiLevelSelection(t *testing.T) {
 	}
 }
 
+func TestBatchDisableRelatedUsersSelectsAllEligibleRelationsServerSide(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+
+	inviter := seedUserInviteDisableTestUser(t, db, "select-all-inviter", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	target := seedUserInviteDisableTestUser(t, db, "select-all-target", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	sibling := seedUserInviteDisableTestUser(t, db, "select-all-sibling", common.RoleCommonUser, common.UserStatusEnabled, inviter.Id)
+	invitee := seedUserInviteDisableTestUser(t, db, "select-all-invitee", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	grandchild := seedUserInviteDisableTestUser(t, db, "select-all-grandchild", common.RoleCommonUser, common.UserStatusEnabled, invitee.Id)
+	disabledInvitee := seedUserInviteDisableTestUser(t, db, "select-all-disabled", common.RoleCommonUser, common.UserStatusDisabled, target.Id)
+	adminInvitee := seedUserInviteDisableTestUser(t, db, "select-all-admin", common.RoleAdminUser, common.UserStatusEnabled, target.Id)
+
+	result, err := BatchDisableRelatedUsers(
+		target.Id,
+		nil,
+		"select every eligible relation",
+		2,
+		true,
+		9999,
+		common.RoleAdminUser,
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(
+		t,
+		[]int{target.Id, inviter.Id, sibling.Id, invitee.Id, grandchild.Id},
+		result.DisabledIds,
+	)
+	require.Empty(t, result.AlreadyDisabledIds)
+
+	for _, userId := range result.DisabledIds {
+		var user model.User
+		require.NoError(t, db.First(&user, userId).Error)
+		require.Equal(t, common.UserStatusDisabled, user.Status)
+	}
+	for _, userId := range []int{disabledInvitee.Id, adminInvitee.Id} {
+		var user model.User
+		require.NoError(t, db.First(&user, userId).Error)
+		if userId == disabledInvitee.Id {
+			require.Equal(t, common.UserStatusDisabled, user.Status)
+		} else {
+			require.Equal(t, common.UserStatusEnabled, user.Status)
+		}
+	}
+}
+
 func TestBatchDisableRelatedUsersRejectsSelectionBeyondDepthWithoutPartialUpdate(t *testing.T) {
 	db := setupUserInviteDisableTestDB(t)
 
@@ -288,6 +334,7 @@ func TestBatchDisableRelatedUsersRejectsSelectionBeyondDepthWithoutPartialUpdate
 		[]int{grandchild.Id, greatGrandchild.Id},
 		"beyond depth",
 		2,
+		false,
 		9999,
 		common.RoleRootUser,
 	)
@@ -313,6 +360,7 @@ func TestBatchDisableRelatedUsersUnlimitedDepth(t *testing.T) {
 		[]int{greatGrandchild.Id},
 		"unlimited relation",
 		0,
+		false,
 		9999,
 		common.RoleRootUser,
 	)
@@ -332,6 +380,7 @@ func TestBatchDisableRelatedUsersRejectsUnrelatedUserWithoutPartialUpdate(t *tes
 		[]int{invitee.Id, unrelated.Id},
 		"invalid relation",
 		1,
+		false,
 		9999,
 		common.RoleRootUser,
 	)
@@ -356,6 +405,7 @@ func TestBatchDisableRelatedUsersRejectsProtectedOrDeletedSelection(t *testing.T
 			[]int{adminInvitee.Id},
 			"protected relation",
 			1,
+			false,
 			9999,
 			common.RoleAdminUser,
 		)
@@ -377,6 +427,7 @@ func TestBatchDisableRelatedUsersRejectsProtectedOrDeletedSelection(t *testing.T
 			[]int{deletedInvitee.Id},
 			"deleted relation",
 			1,
+			false,
 			9999,
 			common.RoleRootUser,
 		)

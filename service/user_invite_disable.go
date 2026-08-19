@@ -332,6 +332,7 @@ func BatchDisableRelatedUsers(
 	relatedUserIds []int,
 	reason string,
 	depth int,
+	selectAllRelated bool,
 	operatorId int,
 	operatorRole int,
 ) (BatchDisableRelatedUsersResult, error) {
@@ -371,23 +372,32 @@ func BatchDisableRelatedUsers(
 		}
 
 		appendSelectedUser(snapshot.Target)
-		for _, relatedUserId := range relatedUserIds {
-			if relatedUserId <= 0 {
-				return fmt.Errorf("related user id %d is invalid", relatedUserId)
+		if selectAllRelated {
+			for _, member := range snapshot.RelatedUsers {
+				selectable, _ := userDisableEligibility(member.User, operatorId, operatorRole)
+				if selectable {
+					appendSelectedUser(member.User)
+				}
 			}
-			if relatedUserId == snapshot.Target.Id {
-				continue
+		} else {
+			for _, relatedUserId := range relatedUserIds {
+				if relatedUserId <= 0 {
+					return fmt.Errorf("related user id %d is invalid", relatedUserId)
+				}
+				if relatedUserId == snapshot.Target.Id {
+					continue
+				}
+				relatedUser, exists := allowedRelatedUsers[relatedUserId]
+				if !exists {
+					return fmt.Errorf(
+						"user %d is not within invite relation depth %d of user %d",
+						relatedUserId,
+						depth,
+						targetId,
+					)
+				}
+				appendSelectedUser(relatedUser)
 			}
-			relatedUser, exists := allowedRelatedUsers[relatedUserId]
-			if !exists {
-				return fmt.Errorf(
-					"user %d is not within invite relation depth %d of user %d",
-					relatedUserId,
-					depth,
-					targetId,
-				)
-			}
-			appendSelectedUser(relatedUser)
 		}
 
 		for _, userId := range orderedIds {
@@ -433,6 +443,7 @@ func BatchDisableRelatedUsers(
 		"admin_id":              operatorId,
 		"batch_target_user_id":  targetId,
 		"invite_relation_depth": depth,
+		"select_all_related":    selectAllRelated,
 	}
 	if adminUsername, err := model.GetUsernameById(operatorId, false); err == nil {
 		adminInfo["admin_username"] = adminUsername
