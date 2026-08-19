@@ -18,6 +18,7 @@ type TaskData interface {
 }
 
 const TaskSuccessCode = "success"
+const TaskFailureCode = "task_failed"
 
 type TaskResponse[T TaskData] struct {
 	Code    string `json:"code"`

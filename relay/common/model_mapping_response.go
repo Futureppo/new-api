@@ -9,12 +9,14 @@ import (
 
 	basecommon "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/dto"
 	"github.com/gin-gonic/gin"
 )
 
-type modelMappingResponseWriter struct {
+type relayResponseWriter struct {
 	gin.ResponseWriter
-	context *gin.Context
+	context       *gin.Context
+	sseEventError bool
 }
 
 func SetRelayInfo(c *gin.Context, info *RelayInfo) {
@@ -32,39 +34,51 @@ func GetRelayInfo(c *gin.Context) *RelayInfo {
 	return info
 }
 
-func InstallModelMappingResponseWriter(c *gin.Context) {
+func InstallRelayResponseWriter(c *gin.Context) {
 	if c == nil || c.Writer == nil {
 		return
 	}
-	if _, ok := c.Writer.(*modelMappingResponseWriter); ok {
+	if _, ok := c.Writer.(*relayResponseWriter); ok {
 		return
 	}
-	c.Writer = &modelMappingResponseWriter{ResponseWriter: c.Writer, context: c}
+	c.Writer = &relayResponseWriter{ResponseWriter: c.Writer, context: c}
 }
 
-func (w *modelMappingResponseWriter) WriteHeader(code int) {
-	if info := GetRelayInfo(w.context); info != nil && info.IsModelMappingFullActive() {
+// InstallModelMappingResponseWriter is kept as a compatibility alias for callers
+// that only need model mapping. The installed writer now also enforces channel
+// error-detail privacy.
+func InstallModelMappingResponseWriter(c *gin.Context) {
+	InstallRelayResponseWriter(c)
+}
+
+func (w *relayResponseWriter) WriteHeader(code int) {
+	info := GetRelayInfo(w.context)
+	if (info != nil && info.IsModelMappingFullActive()) || (code >= 400 && shouldHideChannelErrorDetails(w.context)) {
 		w.Header().Del("Content-Length")
 	}
 	w.ResponseWriter.WriteHeader(code)
 }
 
-func (w *modelMappingResponseWriter) WriteHeaderNow() {
-	if info := GetRelayInfo(w.context); info != nil && info.IsModelMappingFullActive() {
+func (w *relayResponseWriter) WriteHeaderNow() {
+	info := GetRelayInfo(w.context)
+	if (info != nil && info.IsModelMappingFullActive()) ||
+		(w.ResponseWriter.Status() >= 400 && shouldHideChannelErrorDetails(w.context)) {
 		w.Header().Del("Content-Length")
 	}
 	w.ResponseWriter.WriteHeaderNow()
 }
 
-func (w *modelMappingResponseWriter) Flush() {
-	if info := GetRelayInfo(w.context); info != nil && info.IsModelMappingFullActive() {
+func (w *relayResponseWriter) Flush() {
+	info := GetRelayInfo(w.context)
+	if (info != nil && info.IsModelMappingFullActive()) ||
+		(w.ResponseWriter.Status() >= 400 && shouldHideChannelErrorDetails(w.context)) {
 		w.Header().Del("Content-Length")
 	}
 	w.ResponseWriter.Flush()
 }
 
-func (w *modelMappingResponseWriter) Write(data []byte) (int, error) {
-	rewritten := RewriteClientResponseBytes(w.context, data)
+func (w *relayResponseWriter) Write(data []byte) (int, error) {
+	rewritten := rewriteClientResponseBytes(w.context, data, &w.sseEventError)
 	n, err := w.ResponseWriter.Write(rewritten)
 	if err == nil && n == len(rewritten) {
 		return len(data), nil
@@ -72,8 +86,8 @@ func (w *modelMappingResponseWriter) Write(data []byte) (int, error) {
 	return n, err
 }
 
-func (w *modelMappingResponseWriter) WriteString(data string) (int, error) {
-	rewritten := string(RewriteClientResponseBytes(w.context, []byte(data)))
+func (w *relayResponseWriter) WriteString(data string) (int, error) {
+	rewritten := string(rewriteClientResponseBytes(w.context, []byte(data), &w.sseEventError))
 	n, err := w.ResponseWriter.WriteString(rewritten)
 	if err == nil && n == len(rewritten) {
 		return len(data), nil
@@ -82,11 +96,334 @@ func (w *modelMappingResponseWriter) WriteString(data string) (int, error) {
 }
 
 func RewriteClientResponseBytes(c *gin.Context, data []byte) []byte {
+	return rewriteClientResponseBytes(c, data, nil)
+}
+
+func rewriteClientResponseBytes(c *gin.Context, data []byte, sseEventError *bool) []byte {
+	rewritten := rewriteClientErrorDetailsBytes(c, data, sseEventError)
 	info := GetRelayInfo(c)
-	if info == nil || !info.IsModelMappingFullActive() || len(data) == 0 {
+	if info == nil || !info.IsModelMappingFullActive() || len(rewritten) == 0 {
+		return rewritten
+	}
+	return RewriteModelMappingBytes(rewritten, info.ClientModelName, hiddenModelNames(info), responseIsError(c))
+}
+
+func rewriteClientErrorDetailsBytes(c *gin.Context, data []byte, sseEventError *bool) []byte {
+	if c == nil || len(data) == 0 {
 		return data
 	}
-	return RewriteModelMappingBytes(data, info.ClientModelName, hiddenModelNames(info), responseIsError(c))
+	if !shouldHideChannelErrorDetails(c) {
+		return data
+	}
+
+	forceError := responseIsError(c)
+	if looksLikeJSON(data) {
+		if rewritten, changed, err := rewriteErrorJSONValue(data, forceError, false, "", 0); err == nil {
+			if changed {
+				return rewritten
+			}
+			return data
+		}
+	}
+	rewritten := rewriteErrorSSEPayloads(data, forceError, sseEventError)
+	if forceError && bytes.Equal(rewritten, data) && !bytes.Contains(data, []byte("data:")) {
+		return []byte("upstream_error")
+	}
+	return rewritten
+}
+
+func looksLikeJSON(data []byte) bool {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return false
+	}
+	first := trimmed[0]
+	return first == '{' || first == '[' || first == '"' || first == '-' ||
+		(first >= '0' && first <= '9') || first == 't' || first == 'f' || first == 'n'
+}
+
+func shouldHideChannelErrorDetails(c *gin.Context) bool {
+	channelSetting, ok := basecommon.GetContextKeyType[dto.ChannelSettings](c, constant.ContextKeyChannelSetting)
+	return ok && !channelSetting.ShowErrorDetails
+}
+
+func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallbackCode string, depth int) ([]byte, bool, error) {
+	if depth > 64 {
+		return data, false, nil
+	}
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return data, false, nil
+	}
+
+	switch trimmed[0] {
+	case '{':
+		var object map[string]json.RawMessage
+		if err := basecommon.Unmarshal(trimmed, &object); err != nil {
+			return data, false, err
+		}
+		objectIsError := forceError || insideError || isErrorEventObject(object)
+		code := errorCodeForObject(object, fallbackCode)
+		changed := false
+
+		for key, raw := range object {
+			normalized := normalizeModelKey(key)
+			if objectIsError && isErrorDetailContainerKey(normalized) {
+				delete(object, key)
+				changed = true
+				continue
+			}
+
+			childInsideError := false
+			if normalized == "error" || normalized == "errors" {
+				if isJSONNull(raw) {
+					continue
+				}
+				childInsideError = true
+			}
+
+			if objectIsError {
+				switch {
+				case normalized == "code" && rawScalarString(raw) == "":
+					replacement, err := basecommon.Marshal(code)
+					if err != nil {
+						return data, false, err
+					}
+					object[key] = replacement
+					changed = true
+					continue
+				case isErrorMessageKey(normalized):
+					replacement, err := basecommon.Marshal(code)
+					if err != nil {
+						return data, false, err
+					}
+					if !bytes.Equal(bytes.TrimSpace(raw), replacement) {
+						object[key] = replacement
+						changed = true
+					}
+					continue
+				case normalized == "param":
+					replacement := json.RawMessage(`""`)
+					if !bytes.Equal(bytes.TrimSpace(raw), replacement) {
+						object[key] = replacement
+						changed = true
+					}
+					continue
+				case normalized == "type" && hasExplicitErrorCode(object) && !rawStringEquals(raw, "error"):
+					replacement := json.RawMessage(`"upstream_error"`)
+					if !bytes.Equal(bytes.TrimSpace(raw), replacement) {
+						object[key] = replacement
+						changed = true
+					}
+					continue
+				}
+			}
+
+			rewritten, childChanged, err := rewriteErrorJSONValue(raw, false, childInsideError, code, depth+1)
+			if err != nil {
+				return data, false, err
+			}
+			if childChanged {
+				object[key] = rewritten
+				changed = true
+			}
+		}
+
+		if !changed {
+			return data, false, nil
+		}
+		out, err := basecommon.Marshal(object)
+		return out, err == nil, err
+	case '[':
+		var array []json.RawMessage
+		if err := basecommon.Unmarshal(trimmed, &array); err != nil {
+			return data, false, err
+		}
+		changed := false
+		for i, raw := range array {
+			rewritten, childChanged, err := rewriteErrorJSONValue(raw, forceError, insideError, fallbackCode, depth+1)
+			if err != nil {
+				return data, false, err
+			}
+			if childChanged {
+				array[i] = rewritten
+				changed = true
+			}
+		}
+		if !changed {
+			return data, false, nil
+		}
+		out, err := basecommon.Marshal(array)
+		return out, err == nil, err
+	case '"':
+		if !insideError && !forceError {
+			return data, false, nil
+		}
+		code := fallbackCode
+		if code == "" {
+			code = "upstream_error"
+		}
+		out, err := basecommon.Marshal(code)
+		return out, err == nil && !bytes.Equal(trimmed, out), err
+	default:
+		return data, false, nil
+	}
+}
+
+func rewriteErrorSSEPayloads(data []byte, forceError bool, sseEventError *bool) []byte {
+	lines := bytes.SplitAfter(data, []byte("\n"))
+	changed := false
+	eventIsError := forceError
+	if sseEventError != nil && *sseEventError {
+		eventIsError = true
+	}
+	for i, line := range lines {
+		lineEnding := []byte{}
+		body := line
+		if bytes.HasSuffix(body, []byte("\n")) {
+			lineEnding = []byte("\n")
+			body = body[:len(body)-1]
+		}
+		trimmed := bytes.TrimLeft(body, " \t\r")
+		if len(trimmed) == 0 {
+			if len(line) > 0 {
+				eventIsError = forceError
+			}
+			continue
+		}
+		if bytes.HasPrefix(trimmed, []byte("event:")) {
+			eventType := strings.TrimSpace(string(trimmed[len("event:"):]))
+			eventIsError = forceError || isErrorEventType(eventType)
+			continue
+		}
+		if !bytes.HasPrefix(trimmed, []byte("data:")) {
+			continue
+		}
+
+		prefixLen := len(body) - len(trimmed) + len("data:")
+		payloadStart := prefixLen
+		for payloadStart < len(body) && (body[payloadStart] == ' ' || body[payloadStart] == '\t') {
+			payloadStart++
+		}
+		payload := body[payloadStart:]
+		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
+			continue
+		}
+
+		var rewritten []byte
+		payloadChanged := false
+		if looksLikeJSON(payload) {
+			var err error
+			rewritten, payloadChanged, err = rewriteErrorJSONValue(payload, eventIsError, false, "", 0)
+			if err == nil && !payloadChanged {
+				continue
+			}
+			if err != nil && !eventIsError {
+				continue
+			}
+		} else if !eventIsError {
+			continue
+		}
+		if !payloadChanged {
+			rewritten = []byte("upstream_error")
+			payloadChanged = !bytes.Equal(payload, rewritten)
+		}
+		if !payloadChanged {
+			continue
+		}
+		lines[i] = append(append(append([]byte{}, body[:payloadStart]...), rewritten...), lineEnding...)
+		changed = true
+	}
+	if sseEventError != nil {
+		*sseEventError = eventIsError
+	}
+	if !changed {
+		return data
+	}
+	return bytes.Join(lines, nil)
+}
+
+func isErrorEventObject(object map[string]json.RawMessage) bool {
+	for _, key := range []string{"type", "event"} {
+		if value := rawScalarString(object[key]); isErrorEventType(value) {
+			return true
+		}
+	}
+	status := strings.ToLower(rawScalarString(object["status"]))
+	if status == "failed" || status == "failure" || status == "error" {
+		return true
+	}
+	if raw, ok := object["error"]; ok && !isJSONNull(raw) {
+		return true
+	}
+	code := strings.ToLower(rawScalarString(object["code"]))
+	_, hasMessage := object["message"]
+	_, hasDescription := object["description"]
+	return code != "" && code != "0" && code != "200" && code != "success" && (hasMessage || hasDescription)
+}
+
+func isErrorEventType(value string) bool {
+	value = strings.ToLower(strings.TrimSpace(value))
+	return value == "error" || value == "failed" || value == "failure" ||
+		strings.HasSuffix(value, ".error") || strings.HasSuffix(value, "_error") ||
+		strings.HasSuffix(value, ".failed") || strings.HasSuffix(value, "_failed")
+}
+
+func errorCodeForObject(object map[string]json.RawMessage, fallback string) string {
+	for _, key := range []string{"code", "status"} {
+		if value := rawScalarString(object[key]); value != "" {
+			return value
+		}
+	}
+	if value := rawScalarString(object["type"]); value != "" && !strings.EqualFold(value, "error") {
+		return value
+	}
+	if fallback != "" {
+		return fallback
+	}
+	return "upstream_error"
+}
+
+func hasExplicitErrorCode(object map[string]json.RawMessage) bool {
+	return rawScalarString(object["code"]) != "" || rawScalarString(object["status"]) != ""
+}
+
+func rawScalarString(raw json.RawMessage) string {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		return ""
+	}
+	if trimmed[0] == '"' {
+		var value string
+		if err := basecommon.Unmarshal(trimmed, &value); err != nil {
+			return ""
+		}
+		return strings.TrimSpace(value)
+	}
+	return string(trimmed)
+}
+
+func isJSONNull(raw json.RawMessage) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null"))
+}
+
+func isErrorMessageKey(key string) bool {
+	switch key {
+	case "message", "description", "detail", "errormessage", "failreason", "failurereason":
+		return true
+	default:
+		return false
+	}
+}
+
+func isErrorDetailContainerKey(key string) bool {
+	switch key {
+	case "metadata", "details", "data", "properties", "result", "responsebody", "debug", "stack", "trace":
+		return true
+	default:
+		return false
+	}
 }
 
 func RewriteModelMappingBytes(data []byte, displayModel string, hiddenModels []string, rewriteErrors bool) []byte {

@@ -29,6 +29,7 @@ type ChannelSettings struct {
 	ForceFormat             bool                          `json:"force_format,omitempty"`
 	ThinkingToContent       bool                          `json:"thinking_to_content,omitempty"`
 	ModelMappingFullEnabled bool                          `json:"model_mapping_full_enabled,omitempty"`
+	ShowErrorDetails        bool                          `json:"show_error_details,omitempty"`
 	Proxy                   string                        `json:"proxy"`
 	PassThroughBodyEnabled  bool                          `json:"pass_through_body_enabled,omitempty"`
 	SystemPrompt            string                        `json:"system_prompt,omitempty"`

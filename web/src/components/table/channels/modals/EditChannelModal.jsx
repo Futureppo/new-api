@@ -202,6 +202,7 @@ const EditChannelModal = (props) => {
     // 渠道额外设置的默认值
     force_format: false,
     thinking_to_content: false,
+    show_error_details: false,
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -511,6 +512,7 @@ const EditChannelModal = (props) => {
     force_format: false,
     thinking_to_content: false,
     model_mapping_full_enabled: false,
+    show_error_details: false,
     proxy: '',
     pass_through_body_enabled: false,
     system_prompt: '',
@@ -865,6 +867,8 @@ const EditChannelModal = (props) => {
             parsedSettings.thinking_to_content || false;
           data.model_mapping_full_enabled =
             parsedSettings.model_mapping_full_enabled === true;
+          data.show_error_details =
+            parsedSettings.show_error_details === true;
           data.proxy = parsedSettings.proxy || '';
           data.pass_through_body_enabled =
             parsedSettings.pass_through_body_enabled || false;
@@ -890,6 +894,7 @@ const EditChannelModal = (props) => {
           data.force_format = false;
           data.thinking_to_content = false;
           data.model_mapping_full_enabled = false;
+          data.show_error_details = false;
           data.proxy = '';
           data.pass_through_body_enabled = false;
           data.system_prompt = '';
@@ -903,6 +908,7 @@ const EditChannelModal = (props) => {
         data.force_format = false;
         data.thinking_to_content = false;
         data.model_mapping_full_enabled = false;
+        data.show_error_details = false;
         data.proxy = '';
         data.pass_through_body_enabled = false;
         data.system_prompt = '';
@@ -1055,6 +1061,7 @@ const EditChannelModal = (props) => {
         force_format: data.force_format,
         thinking_to_content: data.thinking_to_content,
         model_mapping_full_enabled: data.model_mapping_full_enabled,
+        show_error_details: data.show_error_details,
         proxy: data.proxy,
         pass_through_body_enabled: data.pass_through_body_enabled,
         system_prompt: data.system_prompt,
@@ -1463,6 +1470,7 @@ const EditChannelModal = (props) => {
       force_format: false,
       thinking_to_content: false,
       model_mapping_full_enabled: false,
+      show_error_details: false,
       proxy: '',
       pass_through_body_enabled: false,
       system_prompt: '',
@@ -1842,6 +1850,7 @@ const EditChannelModal = (props) => {
       thinking_to_content: localInputs.thinking_to_content || false,
       model_mapping_full_enabled:
         localInputs.model_mapping_full_enabled === true,
+      show_error_details: localInputs.show_error_details === true,
       proxy: localInputs.proxy || '',
       pass_through_body_enabled: localInputs.pass_through_body_enabled || false,
       system_prompt: localInputs.system_prompt || '',
@@ -1988,6 +1997,7 @@ const EditChannelModal = (props) => {
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
     delete localInputs.model_mapping_full_enabled;
+    delete localInputs.show_error_details;
     delete localInputs.proxy;
     delete localInputs.pass_through_body_enabled;
     delete localInputs.system_prompt;
@@ -2961,6 +2971,7 @@ const EditChannelModal = (props) => {
                   )}
 
                   <Form.Switch field='thinking_to_content' label={t('思考内容转换')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('thinking_to_content', value)} extraText={t('将 reasoning_content 转换为 <think> 标签拼接到内容中')} />
+                  <Form.Switch field='show_error_details' label={t('显示详细错误信息')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('show_error_details', value)} extraText={t('默认关闭。关闭后客户端仅收到错误码，避免泄露渠道或上游信息；原始错误仍保留在系统日志中。')} />
                   <Form.Switch field='pass_through_body_enabled' label={t('透传请求体')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelSettingsChange('pass_through_body_enabled', value)} extraText={t('启用请求体透传功能')} />
                   {isRoot() && (
                     <Form.Switch field='conversation_log_enabled' label={t('完整对话采集')} checkedText={t('开')} uncheckedText={t('关')} onChange={(value) => handleChannelOtherSettingsChange('conversation_log_enabled', value)} extraText={t('开启后将保存成功文本对话的请求体和响应体，用于蒸馏数据集导出。')} />

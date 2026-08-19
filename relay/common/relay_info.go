@@ -602,7 +602,7 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 
 	info.InitRequestConversionChain()
 	SetRelayInfo(c, info)
-	InstallModelMappingResponseWriter(c)
+	InstallRelayResponseWriter(c)
 	return info, nil
 }
 

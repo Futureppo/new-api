@@ -410,3 +410,41 @@ func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {
 	require.True(t, resp.Success, resp.Message)
 	require.Equal(t, []string{"custom/model-a", "custom/model-b"}, resp.Data)
 }
+
+func TestUserTaskViewsRespectChannelErrorDetailSetting(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+
+	hiddenChannel := model.Channel{Name: "hidden-errors", Key: "key", Models: "task-model", Group: "default"}
+	hiddenChannel.SetSetting(dto.ChannelSettings{})
+	require.NoError(t, db.Create(&hiddenChannel).Error)
+	visibleChannel := model.Channel{Name: "visible-errors", Key: "key", Models: "task-model", Group: "default"}
+	visibleChannel.SetSetting(dto.ChannelSettings{ShowErrorDetails: true})
+	require.NoError(t, db.Create(&visibleChannel).Error)
+
+	tasks := []*model.Task{
+		{ChannelId: hiddenChannel.Id, Status: model.TaskStatusFailure, FailReason: "hidden provider detail", Data: []byte(`{"secret":true}`)},
+		{ChannelId: visibleChannel.Id, Status: model.TaskStatusFailure, FailReason: "visible provider detail", Data: []byte(`{"secret":true}`)},
+		{ChannelId: 999999, Status: model.TaskStatusFailure, FailReason: "deleted channel detail", Data: []byte(`{"secret":true}`)},
+	}
+	userTasks := tasksToDto(tasks, false, true)
+	require.Equal(t, dto.TaskFailureCode, userTasks[0].FailReason)
+	require.Nil(t, userTasks[0].Data)
+	require.Equal(t, "visible provider detail", userTasks[1].FailReason)
+	require.NotNil(t, userTasks[1].Data)
+	require.Equal(t, dto.TaskFailureCode, userTasks[2].FailReason)
+
+	adminTasks := tasksToDto(tasks, false, false)
+	require.Equal(t, "hidden provider detail", adminTasks[0].FailReason)
+	require.NotNil(t, adminTasks[0].Data)
+
+	midjourneyTasks := []*model.Midjourney{
+		{ChannelId: hiddenChannel.Id, Status: "FAILURE", FailReason: "hidden mj detail", Description: "hidden description", Properties: `{"secret":true}`},
+		{ChannelId: visibleChannel.Id, Status: "FAILURE", FailReason: "visible mj detail", Description: "visible description", Properties: `{"secret":true}`},
+	}
+	userMidjourneyTasks := sanitizeMidjourneyTasksForUser(midjourneyTasks)
+	require.Equal(t, dto.TaskFailureCode, userMidjourneyTasks[0].FailReason)
+	require.Equal(t, dto.TaskFailureCode, userMidjourneyTasks[0].Description)
+	require.Empty(t, userMidjourneyTasks[0].Properties)
+	require.Equal(t, "visible mj detail", userMidjourneyTasks[1].FailReason)
+	require.Equal(t, "hidden mj detail", midjourneyTasks[0].FailReason)
+}

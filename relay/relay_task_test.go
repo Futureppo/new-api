@@ -91,6 +91,24 @@ func TestTaskModel2DtoPreservesLegacyMappingDetailsWhenFullRedirectDisabled(t *t
 	require.JSONEq(t, `{"model":"upstream-video-model"}`, string(got.Data))
 }
 
+func TestTaskModel2DtoHidesFailedTaskDetailsForClient(t *testing.T) {
+	task := &model.Task{
+		Status:     model.TaskStatusFailure,
+		FailReason: "provider account and endpoint leaked",
+		Data:       json.RawMessage(`{"error":{"message":"provider secret"}}`),
+	}
+
+	hidden := TaskModel2Dto(task, false)
+	require.Equal(t, dto.TaskFailureCode, hidden.FailReason)
+	require.Nil(t, hidden.Data)
+	require.Equal(t, "provider account and endpoint leaked", task.FailReason)
+	require.NotNil(t, task.Data)
+
+	visible := TaskModel2Dto(task, true)
+	require.Equal(t, task.FailReason, visible.FailReason)
+	require.Equal(t, task.Data, visible.Data)
+}
+
 func TestInitTaskPersistsFullRedirectStateOnlyWhenActive(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		OriginModelName:        "video-alias",

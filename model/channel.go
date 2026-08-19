@@ -959,6 +959,31 @@ func (channel *Channel) GetSetting() dto.ChannelSettings {
 	return setting
 }
 
+// GetChannelErrorDetailsVisibility resolves the current privacy setting once
+// per unique channel. Missing or deleted channels fail closed.
+func GetChannelErrorDetailsVisibility(channelIDs []int) map[int]bool {
+	visibility := make(map[int]bool, len(channelIDs))
+	for _, channelID := range channelIDs {
+		if channelID <= 0 {
+			continue
+		}
+		if _, ok := visibility[channelID]; ok {
+			continue
+		}
+
+		channel, err := CacheGetChannel(channelID)
+		if err != nil || channel == nil {
+			channel, err = GetChannelById(channelID, true)
+		}
+		visibility[channelID] = err == nil && channel != nil && channel.GetSetting().ShowErrorDetails
+	}
+	return visibility
+}
+
+func ShouldShowChannelErrorDetails(channelID int) bool {
+	return GetChannelErrorDetailsVisibility([]int{channelID})[channelID]
+}
+
 func (channel *Channel) SetSetting(setting dto.ChannelSettings) {
 	settingBytes, err := common.Marshal(setting)
 	if err != nil {

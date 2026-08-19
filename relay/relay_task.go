@@ -334,8 +334,9 @@ func sunoFetchRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dto.Ta
 			taskResp = service.TaskErrorWrapper(err, "get_tasks_failed", http.StatusInternalServerError)
 			return
 		}
+		visibility := taskErrorDetailsVisibility(taskModels)
 		for _, task := range taskModels {
-			tasks = append(tasks, TaskModel2Dto(task))
+			tasks = append(tasks, TaskModel2Dto(task, visibility[task.ChannelId]))
 		}
 	} else {
 		tasks = make([]any, 0)
@@ -363,7 +364,7 @@ func sunoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *dt
 
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: TaskModel2Dto(originTask, model.ShouldShowChannelErrorDetails(originTask.ChannelId)),
 	})
 	return
 }
@@ -407,7 +408,8 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
-			openAIVideoData, err := converter.ConvertToOpenAIVideo(originTask)
+			clientTask := taskModelForClient(originTask, model.ShouldShowChannelErrorDetails(originTask.ChannelId))
+			openAIVideoData, err := converter.ConvertToOpenAIVideo(clientTask)
 			if err != nil {
 				taskResp = service.TaskErrorWrapper(err, "convert_to_openai_video_failed", http.StatusInternalServerError)
 				return
@@ -422,7 +424,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	// 通用 TaskDto 格式
 	respBody, err = common.Marshal(dto.TaskResponse[any]{
 		Code: "success",
-		Data: TaskModel2Dto(originTask),
+		Data: TaskModel2Dto(originTask, model.ShouldShowChannelErrorDetails(originTask.ChannelId)),
 	})
 	if err != nil {
 		taskResp = service.TaskErrorWrapper(err, "marshal_response_failed", http.StatusInternalServerError)
@@ -585,7 +587,32 @@ func SanitizeTaskModelText(task *model.Task, text string) string {
 	return strings.ReplaceAll(text, hiddenModel, displayModel)
 }
 
-func TaskModel2Dto(task *model.Task) *dto.TaskDto {
+func taskErrorDetailsVisibility(tasks []*model.Task) map[int]bool {
+	channelIDs := make([]int, 0, len(tasks))
+	for _, task := range tasks {
+		if task != nil {
+			channelIDs = append(channelIDs, task.ChannelId)
+		}
+	}
+	return model.GetChannelErrorDetailsVisibility(channelIDs)
+}
+
+func taskModelForClient(task *model.Task, showErrorDetails bool) *model.Task {
+	if task == nil || showErrorDetails || (task.Status != model.TaskStatusFailure && strings.TrimSpace(task.FailReason) == "") {
+		return task
+	}
+	clientTask := *task
+	clientTask.FailReason = dto.TaskFailureCode
+	clientTask.Data = nil
+	return &clientTask
+}
+
+func TaskModel2Dto(task *model.Task, showErrorDetails ...bool) *dto.TaskDto {
+	showDetails := true
+	if len(showErrorDetails) > 0 {
+		showDetails = showErrorDetails[0]
+	}
+	task = taskModelForClient(task, showDetails)
 	properties := task.Properties
 	taskData := task.Data
 	modelName := taskDisplayModelName(task)

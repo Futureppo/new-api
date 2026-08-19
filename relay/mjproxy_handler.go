@@ -200,7 +200,30 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 			midjourneyTask.Properties = &properties
 		}
 	}
+	if !showMidjourneyErrorDetails(c, originTask.ChannelId) &&
+		(strings.EqualFold(originTask.Status, "FAILURE") || strings.TrimSpace(originTask.FailReason) != "") {
+		midjourneyTask.FailReason = dto.TaskFailureCode
+		midjourneyTask.Description = dto.TaskFailureCode
+		midjourneyTask.Properties = nil
+	}
 	return
+}
+
+const midjourneyErrorVisibilityContextKey = "midjourney_error_details_visibility"
+
+func showMidjourneyErrorDetails(c *gin.Context, channelID int) bool {
+	visibility, _ := c.Get(midjourneyErrorVisibilityContextKey)
+	visibilityMap, _ := visibility.(map[int]bool)
+	if visibilityMap == nil {
+		visibilityMap = map[int]bool{}
+	}
+	if show, ok := visibilityMap[channelID]; ok {
+		return show
+	}
+	show := model.ShouldShowChannelErrorDetails(channelID)
+	visibilityMap[channelID] = show
+	c.Set(midjourneyErrorVisibilityContextKey, visibilityMap)
+	return show
 }
 
 func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyResponse {

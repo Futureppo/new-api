@@ -12,8 +12,21 @@ func TestChannelSettingsRPMProtectionBackwardCompatibility(t *testing.T) {
 	var settings dto.ChannelSettings
 	require.NoError(t, common.Unmarshal([]byte(`{"force_format":true}`), &settings))
 	require.True(t, settings.ForceFormat)
+	require.False(t, settings.ShowErrorDetails)
 	require.Nil(t, settings.RPMProtection)
 	require.NoError(t, settings.Validate())
+}
+
+func TestChannelSettingsShowErrorDetailsJSONRoundTrip(t *testing.T) {
+	want := dto.ChannelSettings{ShowErrorDetails: true}
+
+	data, err := common.Marshal(want)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"proxy":"","show_error_details":true}`, string(data))
+
+	var got dto.ChannelSettings
+	require.NoError(t, common.Unmarshal(data, &got))
+	require.True(t, got.ShowErrorDetails)
 }
 
 func TestChannelSettingsRPMProtectionJSONRoundTrip(t *testing.T) {
