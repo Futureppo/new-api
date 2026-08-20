@@ -771,6 +771,7 @@
     "分组管理": "Group Management",
     "分组价格": "Giá nhóm",
     "分组描述": "Group Description",
+    "描述会独立保存，不受「用户可选」状态影响": "Mô tả được lưu độc lập và được giữ lại bất kể cài đặt người dùng có thể chọn",
     "分组名": "Group",
     "分组名称": "Group Name",
     "分组名称到倍率的映射": "Mapping of group names to ratios",

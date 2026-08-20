@@ -699,6 +699,7 @@
     "分组管理": "Group Management",
     "分组价格": "Prix de groupe",
     "分组描述": "Group Description",
+    "描述会独立保存，不受「用户可选」状态影响": "Les descriptions sont enregistrées séparément et conservées quel que soit le réglage de sélection par l’utilisateur",
     "分组名": "Group",
     "分组名称": "Group Name",
     "分组名称到倍率的映射": "Mapping of group names to ratios",

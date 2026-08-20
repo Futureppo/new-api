@@ -59,6 +59,7 @@ const { Text, Title, Paragraph } = Typography;
 const OPTION_KEYS = [
   'GroupRatio',
   'UserUsableGroups',
+  'GroupDescriptions',
   'GroupGroupRatio',
   'group_ratio_setting.group_display',
   'group_ratio_setting.group_special_usable_group',
@@ -99,6 +100,7 @@ export default function GroupRatioSettings(props) {
   const [inputs, setInputs] = useState({
     GroupRatio: '',
     UserUsableGroups: '',
+    GroupDescriptions: '',
     GroupGroupRatio: '',
     'group_ratio_setting.group_display': '',
     'group_ratio_setting.group_special_usable_group': '',
@@ -179,12 +181,14 @@ export default function GroupRatioSettings(props) {
     ({
       GroupRatio,
       UserUsableGroups,
+      GroupDescriptions,
       'group_ratio_setting.group_display': groupDisplay,
     }) => {
       setInputs((prev) => ({
         ...prev,
         GroupRatio,
         UserUsableGroups,
+        GroupDescriptions,
         'group_ratio_setting.group_display': groupDisplay,
       }));
     },
@@ -219,11 +223,14 @@ export default function GroupRatioSettings(props) {
           {t(
             '倍率用于计费乘数，勾选「用户可选」后用户可在创建令牌时选择该分组',
           )}
+          <br />
+          {t('描述会独立保存，不受「用户可选」状态影响')}
         </Text>
         <GroupTable
           key={`gt_${dv}`}
           groupRatio={inputs.GroupRatio}
           userUsableGroups={inputs.UserUsableGroups}
+          groupDescriptions={inputs.GroupDescriptions}
           groupDisplay={inputs['group_ratio_setting.group_display']}
           onChange={handleGroupTableChange}
         />
@@ -342,6 +349,28 @@ export default function GroupRatioSettings(props) {
               ]}
               onChange={(value) =>
                 setInputs((prev) => ({ ...prev, GroupRatio: value }))
+              }
+            />
+          </Col>
+        </Row>
+        <Row gutter={16}>
+          <Col xs={24} sm={16}>
+            <Form.TextArea
+              label={t('分组描述')}
+              placeholder={t('为一个 JSON 文本，键为分组名称，值为分组描述')}
+              extraText={t('描述会独立保存，不受「用户可选」状态影响')}
+              field={'GroupDescriptions'}
+              autosize={{ minRows: 6, maxRows: 12 }}
+              trigger='blur'
+              stopValidateWithError
+              rules={[
+                {
+                  validator: (rule, value) => verifyJSON(value),
+                  message: t('不是合法的 JSON 字符串'),
+                },
+              ]}
+              onChange={(value) =>
+                setInputs((prev) => ({ ...prev, GroupDescriptions: value }))
               }
             />
           </Col>
