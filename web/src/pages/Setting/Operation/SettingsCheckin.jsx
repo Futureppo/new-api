@@ -46,7 +46,14 @@ const defaultInputs = {
   'checkin_setting.special_enabled': false,
   'checkin_setting.special_weekday': '1',
   'checkin_setting.special_quota': 0,
+  'checkin_setting.expire_enabled': false,
+  'checkin_setting.expire_mode': 'unused',
 };
+
+const expireModeOptions = [
+  { value: 'unused', label: '仅回收当日未消耗的部分' },
+  { value: 'all', label: '次日全额回收' },
+];
 
 const weekdayOptions = [
   { value: '1', label: '周一' },
@@ -264,6 +271,48 @@ export default function SettingsCheckin(props) {
                     !inputs['checkin_setting.special_enabled']
                   }
                 />
+              </Col>
+            </Row>
+            <Typography.Text
+              strong
+              style={{ marginTop: 8, marginBottom: 8, display: 'block' }}
+            >
+              {t('签到额度有效期')}
+            </Typography.Text>
+            <Typography.Text
+              type='tertiary'
+              style={{ marginBottom: 16, display: 'block' }}
+            >
+              {t(
+                '启用后签到额度仅当日有效，次日清算时回收。回收永不会使余额变为负数；功能开启前已积压的历史签到不会被追溯扣减',
+              )}
+            </Typography.Text>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'checkin_setting.expire_enabled'}
+                  label={t('签到额度当日有效')}
+                  size='default'
+                  onChange={handleFieldChange('checkin_setting.expire_enabled')}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
+              </Col>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Select
+                  field={'checkin_setting.expire_mode'}
+                  label={t('回收方式')}
+                  onChange={handleFieldChange('checkin_setting.expire_mode')}
+                  disabled={
+                    !inputs['checkin_setting.enabled'] ||
+                    !inputs['checkin_setting.expire_enabled']
+                  }
+                >
+                  {expireModeOptions.map((item) => (
+                    <Form.Select.Option key={item.value} value={item.value}>
+                      {t(item.label)}
+                    </Form.Select.Option>
+                  ))}
+                </Form.Select>
               </Col>
             </Row>
             <Row>

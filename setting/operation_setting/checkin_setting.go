@@ -7,14 +7,24 @@ import (
 	"github.com/QuantumNous/new-api/setting/config"
 )
 
+// 签到额度过期回收模式
+const (
+	// CheckinExpireModeUnused 仅回收当日签到未消耗的部分（签到额度优先消耗）
+	CheckinExpireModeUnused = "unused"
+	// CheckinExpireModeAll 次日全额回收当日签到发放，无论是否消耗
+	CheckinExpireModeAll = "all"
+)
+
 // CheckinSetting 签到功能配置
 type CheckinSetting struct {
-	Enabled        bool `json:"enabled"`         // 是否启用签到功能
-	MinQuota       int  `json:"min_quota"`       // 签到最小额度奖励
-	MaxQuota       int  `json:"max_quota"`       // 签到最大额度奖励
-	SpecialEnabled bool `json:"special_enabled"` // 是否启用特殊星期签到奖励
-	SpecialWeekday int  `json:"special_weekday"` // 特殊星期，1=周一，7=周日
-	SpecialQuota   int  `json:"special_quota"`   // 特殊星期固定额度奖励
+	Enabled        bool   `json:"enabled"`         // 是否启用签到功能
+	MinQuota       int    `json:"min_quota"`       // 签到最小额度奖励
+	MaxQuota       int    `json:"max_quota"`       // 签到最大额度奖励
+	SpecialEnabled bool   `json:"special_enabled"` // 是否启用特殊星期签到奖励
+	SpecialWeekday int    `json:"special_weekday"` // 特殊星期，1=周一，7=周日
+	SpecialQuota   int    `json:"special_quota"`   // 特殊星期固定额度奖励
+	ExpireEnabled  bool   `json:"expire_enabled"`  // 是否启用签到额度当日有效（次日回收）
+	ExpireMode     string `json:"expire_mode"`     // 回收模式，见 CheckinExpireMode*
 }
 
 // 默认配置
@@ -25,6 +35,8 @@ var checkinSetting = CheckinSetting{
 	SpecialEnabled: false,
 	SpecialWeekday: 1,
 	SpecialQuota:   0,
+	ExpireEnabled:  false, // 默认关闭，保持既有站点行为不变
+	ExpireMode:     CheckinExpireModeUnused,
 }
 
 func init() {
@@ -62,6 +74,19 @@ func (setting CheckinSetting) IsSpecialRewardDay(now time.Time) bool {
 		setting.SpecialWeekday >= 1 &&
 		setting.SpecialWeekday <= 7 &&
 		setting.SpecialWeekday == CheckinWeekday(now)
+}
+
+// IsExpireEnabled 是否启用签到额度当日有效。签到功能本身关闭时该开关无意义。
+func (setting CheckinSetting) IsExpireEnabled() bool {
+	return setting.Enabled && setting.ExpireEnabled
+}
+
+// NormalizedExpireMode 返回归一化后的回收模式，未识别的值一律按 unused 处理。
+func (setting CheckinSetting) NormalizedExpireMode() string {
+	if setting.ExpireMode == CheckinExpireModeAll {
+		return CheckinExpireModeAll
+	}
+	return CheckinExpireModeUnused
 }
 
 // RewardQuota 获取指定时间的签到奖励额度，特殊星期命中时覆盖随机奖励。

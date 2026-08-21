@@ -91,3 +91,27 @@ func TestCheckinRewardQuotaSpecialRules(t *testing.T) {
 		})
 	}
 }
+
+func TestCheckinIsExpireEnabledRequiresCheckinEnabled(t *testing.T) {
+	require.False(t, CheckinSetting{Enabled: false, ExpireEnabled: true}.IsExpireEnabled(),
+		"签到功能关闭时过期开关应无效")
+	require.False(t, CheckinSetting{Enabled: true, ExpireEnabled: false}.IsExpireEnabled())
+	require.True(t, CheckinSetting{Enabled: true, ExpireEnabled: true}.IsExpireEnabled())
+}
+
+func TestCheckinNormalizedExpireMode(t *testing.T) {
+	require.Equal(t, CheckinExpireModeAll,
+		CheckinSetting{ExpireMode: CheckinExpireModeAll}.NormalizedExpireMode())
+	require.Equal(t, CheckinExpireModeUnused,
+		CheckinSetting{ExpireMode: CheckinExpireModeUnused}.NormalizedExpireMode())
+	// 空值与非法值一律回落到更保守的 unused
+	require.Equal(t, CheckinExpireModeUnused, CheckinSetting{}.NormalizedExpireMode())
+	require.Equal(t, CheckinExpireModeUnused,
+		CheckinSetting{ExpireMode: "bogus"}.NormalizedExpireMode())
+}
+
+func TestCheckinExpireDefaultsAreOff(t *testing.T) {
+	// 默认必须关闭，避免升级后既有站点行为突变
+	require.False(t, checkinSetting.ExpireEnabled)
+	require.Equal(t, CheckinExpireModeUnused, checkinSetting.NormalizedExpireMode())
+}
