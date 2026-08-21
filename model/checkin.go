@@ -368,3 +368,42 @@ func WriteOffCheckinDate(date string, limit int) (int, error) {
 	}
 	return int(res.RowsAffected), nil
 }
+
+// RecentCheckinTimestamps 返回该用户最近 limit 次签到的时间戳，用于行为特征分析。
+// 调用发生在本次签到写入之前，因此返回的都是历史记录。
+func RecentCheckinTimestamps(userId int, limit int) ([]int64, error) {
+	if limit <= 0 {
+		limit = 14
+	}
+	var timestamps []int64
+	err := DB.Model(&Checkin{}).
+		Where("user_id = ? AND created_at > 0", userId).
+		Order("created_at desc").
+		Limit(limit).
+		Pluck("created_at", &timestamps).Error
+	return timestamps, err
+}
+
+// UserHasConsumptionSince 用户在给定时间点之后是否产生过实际消费。
+func UserHasConsumptionSince(userId int, since int64) (bool, error) {
+	var count int64
+	err := LOG_DB.Model(&Log{}).
+		Where("user_id = ? AND type = ? AND created_at >= ?", userId, LogTypeConsume, since).
+		Limit(1).
+		Count(&count).Error
+	return count > 0, err
+}
+
+// FirstCheckinTimestamp 返回该用户最早一次签到的时间戳，0 表示从未签到。
+// 用于判断账号是否「太新以至于没有可分析的行为历史」。
+func FirstCheckinTimestamp(userId int) (int64, error) {
+	var timestamps []int64
+	err := DB.Model(&Checkin{}).
+		Where("user_id = ? AND created_at > 0", userId).
+		Order("created_at asc").Limit(1).
+		Pluck("created_at", &timestamps).Error
+	if err != nil || len(timestamps) == 0 {
+		return 0, err
+	}
+	return timestamps[0], nil
+}

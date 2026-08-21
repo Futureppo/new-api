@@ -56,7 +56,7 @@ func DoCheckin(c *gin.Context) {
 
 	// 非浏览器环境只会拿到区间下沿的奖励，而不是被拒绝：
 	// 拒绝等于告诉对方风控命中了，压低额度则不提供任何可用于验证绕过的反馈。
-	clientScore := service.CheckinClientScore(c)
+	clientScore := service.CheckinClientScore(c, userId)
 	checkin, err := model.UserCheckinWithClientScore(userId, clientScore)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
