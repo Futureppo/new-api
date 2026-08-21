@@ -48,6 +48,7 @@ const defaultInputs = {
   'checkin_setting.special_quota': 0,
   'checkin_setting.expire_enabled': false,
   'checkin_setting.expire_mode': 'unused',
+  'checkin_setting.client_check_enabled': false,
 };
 
 const expireModeOptions = [
@@ -313,6 +314,33 @@ export default function SettingsCheckin(props) {
                     </Form.Select.Option>
                   ))}
                 </Form.Select>
+              </Col>
+            </Row>
+            <Typography.Text
+              strong
+              style={{ marginTop: 8, marginBottom: 8, display: 'block' }}
+            >
+              {t('脚本签到抑制')}
+            </Typography.Text>
+            <Typography.Text
+              type='tertiary'
+              style={{ marginBottom: 16, display: 'block' }}
+            >
+              {t(
+                '启用后会根据请求特征判断是否来自真实浏览器，非浏览器环境的签到奖励会被压低到接近最小金额，而不是被拒绝。由于结果仍落在正常区间内，对方无法判断是否被识别，也就无从针对性绕过。建议把最小金额设得足够低',
+              )}
+            </Typography.Text>
+            <Row gutter={16}>
+              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+                <Form.Switch
+                  field={'checkin_setting.client_check_enabled'}
+                  label={t('抑制非浏览器环境签到')}
+                  size='default'
+                  onChange={handleFieldChange(
+                    'checkin_setting.client_check_enabled',
+                  )}
+                  disabled={!inputs['checkin_setting.enabled']}
+                />
               </Col>
             </Row>
             <Row>

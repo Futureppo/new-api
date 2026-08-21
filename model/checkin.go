@@ -53,10 +53,16 @@ func HasCheckedInToday(userId int) (bool, error) {
 	return count > 0, err
 }
 
-// UserCheckin 执行用户签到
+// UserCheckin 执行用户签到，不做客户端环境判定。
+func UserCheckin(userId int) (*Checkin, error) {
+	return UserCheckinWithClientScore(userId, 100)
+}
+
+// UserCheckinWithClientScore 执行用户签到，clientScore（0-100）用于压制
+// 非浏览器环境拿到的奖励，详见 CheckinSetting.ApplyClientScore。
 // MySQL 和 PostgreSQL 使用事务保证原子性
 // SQLite 不支持嵌套事务，使用顺序操作 + 手动回滚
-func UserCheckin(userId int) (*Checkin, error) {
+func UserCheckinWithClientScore(userId int, clientScore int) (*Checkin, error) {
 	setting := operation_setting.GetCheckinSetting()
 	if !setting.Enabled {
 		return nil, errors.New("签到功能未启用")
@@ -72,7 +78,7 @@ func UserCheckin(userId int) (*Checkin, error) {
 	}
 
 	now := time.Now()
-	quotaAwarded := setting.RewardQuota(now)
+	quotaAwarded := setting.ApplyClientScore(setting.RewardQuota(now), clientScore)
 	today := now.Format("2006-01-02")
 	checkin := &Checkin{
 		UserId:       userId,
