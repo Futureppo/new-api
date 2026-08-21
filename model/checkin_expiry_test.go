@@ -220,3 +220,46 @@ func TestSettleCheckinDateOnlyCountsSameDayConsumption(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(100), reclaimed)
 }
+
+// 特殊星期奖励与当日有效需要能组合使用：
+// 周四发放固定大额，次日清算只回收当天没花掉的部分。
+func TestSpecialWeekdayGrantIsSettledLikeAnyOtherCheckin(t *testing.T) {
+	truncateTables(t)
+
+	setting := operation_setting.GetCheckinSetting()
+	old := *setting
+	now := time.Now()
+	setting.Enabled = true
+	setting.MinQuota = 100
+	setting.MaxQuota = 100
+	setting.SpecialEnabled = true
+	setting.SpecialWeekday = operation_setting.CheckinWeekday(now)
+	setting.SpecialQuota = 25000
+	setting.ExpireEnabled = true
+	setting.ExpireMode = operation_setting.CheckinExpireModeUnused
+	t.Cleanup(func() { *setting = old })
+
+	seedCheckinUser(t, 610, 0)
+
+	// 走真实签到路径，确认拿到的是特殊星期的固定额度而非随机额度
+	checkin, err := UserCheckin(610)
+	require.NoError(t, err)
+	require.Equal(t, 25000, checkin.QuotaAwarded)
+	require.Equal(t, 25000, userQuota(t, 610))
+
+	// 把这条签到挪到昨天，模拟跨天后进入清算
+	date := yesterday()
+	start, _, err := checkinDateRange(date)
+	require.NoError(t, err)
+	require.NoError(t, DB.Model(&Checkin{}).Where("id = ?", checkin.Id).
+		Updates(map[string]interface{}{"checkin_date": date, "created_at": start + 3600}).Error)
+
+	// 当天只用掉 4000，剩下的 21000 应被回收
+	seedConsumeLog(t, 610, date, 4000)
+
+	settled, reclaimed, err := SettleCheckinDate(date, setting.NormalizedExpireMode(), 100)
+	require.NoError(t, err)
+	require.Equal(t, 1, settled)
+	require.Equal(t, int64(21000), reclaimed)
+	require.Equal(t, 4000, userQuota(t, 610), "用户只保留当天真正花掉的部分")
+}
