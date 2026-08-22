@@ -40,7 +40,10 @@ import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
 import SiteBackground from './SiteBackground';
-import { SITE_BACKGROUND_GLASS_FILTER_ID } from './SiteBackgroundGlassFilter';
+import {
+  darkVariantFilterId,
+  SITE_BACKGROUND_GLASS_FILTER_ID,
+} from './SiteBackgroundGlassFilter';
 import {
   normalizeSiteBackgroundConfig,
   resolveSiteBackgroundGlassVeil,
@@ -76,10 +79,14 @@ const PageLayout = () => {
         '--site-background-glass-veil': `${resolveSiteBackgroundGlassVeil(
           siteBackgroundConfig.glass_opacity,
         )}%`,
-        // 折射强度为 0 时不设该变量，CSS 侧回落到无折射写法
+        // 明暗两套滤镜由 CSS 按主题挑选；折射强度为 0 时两个变量都不下发，
+        // CSS 侧回落到无折射写法。
         ...(siteBackgroundConfig.glass_refraction > 0
           ? {
-              '--site-background-glass-refract': `url(#${SITE_BACKGROUND_GLASS_FILTER_ID})`,
+              '--site-background-glass-refract-light': `url(#${SITE_BACKGROUND_GLASS_FILTER_ID})`,
+              '--site-background-glass-refract-dark': `url(#${darkVariantFilterId(
+                SITE_BACKGROUND_GLASS_FILTER_ID,
+              )})`,
             }
           : {}),
       }

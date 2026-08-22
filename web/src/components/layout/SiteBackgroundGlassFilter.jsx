@@ -26,6 +26,15 @@ export const SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID =
   'site-background-glass-refract-preview';
 
 /*
+ * 暗色需要单独一套滤镜。色散是把 R/G/B 分别偏移再叠加，亮色下基底亮、通道之间
+ * 的差异被压住；暗色下完全敞开，背景里任何高对比边缘都会被拆成刺眼的霓虹条纹。
+ * 所以暗色单独渲染一份色散大幅削弱的滤镜，由 CSS 按主题选择用哪一份。
+ */
+export const DARK_DISPERSION_RATIO = 0.3;
+
+export const darkVariantFilterId = (filterId) => `${filterId}-dark`;
+
+/*
  * 液态玻璃的折射层。
  *
  * backdrop-filter: blur() 只是把背景漫射掉，那是磨砂塑料的物理行为；玻璃真正
@@ -121,11 +130,64 @@ const SiteBackgroundGlassFilter = ({
 
   if (optics.scale <= 0) return null;
 
-  const channels = [
-    { key: 'r', scale: optics.scale * (1 + optics.dispersion) },
-    { key: 'g', scale: optics.scale },
-    { key: 'b', scale: optics.scale * (1 - optics.dispersion) },
-  ];
+  const renderFilter = (id, dispersion) => (
+    <filter
+      key={id}
+      id={id}
+      filterUnits='objectBoundingBox'
+      primitiveUnits='objectBoundingBox'
+      x='0'
+      y='0'
+      width='1'
+      height='1'
+      colorInterpolationFilters='sRGB'
+    >
+      <feImage
+        href={lensMap}
+        result='lensMap'
+        preserveAspectRatio='none'
+        x='0'
+        y='0'
+        width='1'
+        height='1'
+      />
+
+      {[
+        { key: 'r', scale: optics.scale * (1 + dispersion) },
+        { key: 'g', scale: optics.scale },
+        { key: 'b', scale: optics.scale * (1 - dispersion) },
+      ].map(({ key, scale }) => (
+        <feDisplacementMap
+          key={key}
+          in='SourceGraphic'
+          in2='lensMap'
+          scale={scale}
+          xChannelSelector='R'
+          yChannelSelector='G'
+          result={`${key}Displaced`}
+        />
+      ))}
+
+      {/* 各取一个通道再叠回去，位移量的差异就成了色散 */}
+      <feColorMatrix
+        in='rDisplaced'
+        values='1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'
+        result='rOnly'
+      />
+      <feColorMatrix
+        in='gDisplaced'
+        values='0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0'
+        result='gOnly'
+      />
+      <feColorMatrix
+        in='bDisplaced'
+        values='0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'
+        result='bOnly'
+      />
+      <feBlend in='rOnly' in2='gOnly' mode='screen' result='rgMerged' />
+      <feBlend in='rgMerged' in2='bOnly' mode='screen' />
+    </filter>
+  );
 
   return (
     <svg
@@ -136,57 +198,11 @@ const SiteBackgroundGlassFilter = ({
       focusable='false'
     >
       <defs>
-        <filter
-          id={filterId}
-          filterUnits='objectBoundingBox'
-          primitiveUnits='objectBoundingBox'
-          x='0'
-          y='0'
-          width='1'
-          height='1'
-          colorInterpolationFilters='sRGB'
-        >
-          <feImage
-            href={lensMap}
-            result='lensMap'
-            preserveAspectRatio='none'
-            x='0'
-            y='0'
-            width='1'
-            height='1'
-          />
-
-          {channels.map(({ key, scale }) => (
-            <feDisplacementMap
-              key={key}
-              in='SourceGraphic'
-              in2='lensMap'
-              scale={scale}
-              xChannelSelector='R'
-              yChannelSelector='G'
-              result={`${key}Displaced`}
-            />
-          ))}
-
-          {/* 各取一个通道再叠回去，位移量的差异就成了色散 */}
-          <feColorMatrix
-            in='rDisplaced'
-            values='1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'
-            result='rOnly'
-          />
-          <feColorMatrix
-            in='gDisplaced'
-            values='0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0'
-            result='gOnly'
-          />
-          <feColorMatrix
-            in='bDisplaced'
-            values='0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'
-            result='bOnly'
-          />
-          <feBlend in='rOnly' in2='gOnly' mode='screen' result='rgMerged' />
-          <feBlend in='rgMerged' in2='bOnly' mode='screen' />
-        </filter>
+        {renderFilter(filterId, optics.dispersion)}
+        {renderFilter(
+          darkVariantFilterId(filterId),
+          optics.dispersion * DARK_DISPERSION_RATIO,
+        )}
       </defs>
     </svg>
   );

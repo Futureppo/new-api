@@ -45,6 +45,7 @@ import {
   SITE_BACKGROUND_SOURCE_TYPES,
 } from '../../services/siteBackground';
 import SiteBackgroundGlassFilter, {
+  darkVariantFilterId,
   SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID,
 } from '../layout/SiteBackgroundGlassFilter';
 
@@ -552,7 +553,10 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
                         )}%`,
                         ...(Number(draft.glass_refraction) > 0
                           ? {
-                              '--site-background-glass-refract': `url(#${SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID})`,
+                              '--site-background-glass-refract-light': `url(#${SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID})`,
+                              '--site-background-glass-refract-dark': `url(#${darkVariantFilterId(
+                                SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID,
+                              )})`,
                             }
                           : {}),
                       }}

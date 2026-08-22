@@ -109,13 +109,24 @@ body[theme-mode='dark'] .site-background-overlay {
   /* 折射面的底色只留很薄一层，否则会把折射整个盖掉。
      实际值由 PageLayout 依据 glass_opacity 换算后覆盖。 */
   --site-background-glass-veil: 25%;
+  /* 明暗各有一份滤镜，在这里按主题选定，backdrop-filter 只认这一个变量。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
   --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
   --site-background-fade-surface: rgba(255, 255, 255, 0.22);
 }
 
 body[theme-mode='dark'] .site-background-glass {
-  --site-background-glass-brightness: 97%;
+  /* 暗色用色散削弱版，否则背景里的高对比边缘会被拆成霓虹条纹。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
+  );
+  /* 不要压暗：底色本来就是深色薄膜，再降亮度整块会发闷。 */
+  --site-background-glass-brightness: 102%;
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
   --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
@@ -230,13 +241,15 @@ body[theme-mode='dark'] .site-background-glass .app-sider,
 body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.32),
-    0 24px 56px -20px rgba(0, 0, 0, 0.48),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.32),
-    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.14),
-    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.06),
-    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.11),
-    inset 0 0 14px -8px rgba(255, 255, 255, 0.14);
+    0 24px 56px -20px rgba(0, 0, 0, 0.55),
+    /* 折射暗带在暗色下要用真正的暗色，用白色会把这条对比线抹掉 */
+      inset 0 0 0 1px rgba(8, 12, 28, 0.45),
+    /* 亮边反射的是环境光，不因为主题变暗而变暗——把它调暗正是暗色下
+       玻璃感消失的主因 */ inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.42),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.18),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.34),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
 }
 
 body[theme-mode='dark'] .site-background-glass .semi-card::after,
@@ -244,11 +257,11 @@ body[theme-mode='dark'] .site-background-glass .pricing-sidebar::after,
 body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
   background: linear-gradient(
     124deg,
-    rgba(255, 255, 255, 0.18) 0%,
-    rgba(255, 255, 255, 0.05) 14%,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.1) 14%,
     rgba(255, 255, 255, 0) 34%,
     rgba(255, 255, 255, 0) 70%,
-    rgba(255, 255, 255, 0.12) 100%
+    rgba(255, 255, 255, 0.2) 100%
   );
 }
 
@@ -455,6 +468,14 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
 }
 
 .site-background-preview-glass {
+  /* 必须在预览元素自身上重新解析：祖先 .site-background-glass 已经把
+     --site-background-glass-refract 算成了主滤镜的引用，继承下来的是结果而不是
+     表达式，光在这里设 -light/-dark 不会生效。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
+
   position: absolute;
   top: 50%;
   left: 50%;
@@ -505,15 +526,20 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
 }
 
 body[theme-mode='dark'] .site-background-preview-glass {
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
+  );
+
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.32),
-    0 20px 48px -18px rgba(0, 0, 0, 0.48),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.32),
-    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.14),
-    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.06),
-    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.11),
-    inset 0 0 14px -8px rgba(255, 255, 255, 0.14);
+    0 20px 48px -18px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(8, 12, 28, 0.45),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.42),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.18),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.34),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
   -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(97%);
   backdrop-filter: var(--site-background-glass-refract, opacity(1)) blur(2px)
     saturate(165%) brightness(97%);
