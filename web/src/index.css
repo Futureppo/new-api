@@ -171,16 +171,18 @@ body[theme-mode='dark'] .site-background-glass {
   box-shadow:
     /* 接触阴影 + 环境投影：玻璃是浮在背景上的，不是贴上去的 */
     0 2px 4px rgba(16, 24, 64, 0.1),
-    0 30px 70px -22px rgba(31, 38, 135, 0.42),
-    /* 折射暗带：亮边内侧的一圈极淡暗线，玻璃边缘的关键特征 */ inset 0 0 0 1px
-      rgba(130, 150, 205, 0.16),
-    /* 方向性亮边：左上受光强、右下弱 */ inset 0 4px 2px -2px
-      rgba(255, 255, 255, 1),
-    inset 4px 0 2px -2px rgba(255, 255, 255, 0.8),
-    inset -4px 0 2px -2px rgba(255, 255, 255, 0.42),
-    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.7),
-    /* 内缘聚光：玻璃厚度带来的边缘辉光 */ inset 0 0 40px -6px
-      rgba(255, 255, 255, 0.55);
+    0 24px 56px -20px rgba(31, 38, 135, 0.34),
+    /* 折射暗带：亮边内侧的一圈极淡暗线，玻璃边缘的关键特征。
+       再深就会在亮边旁边读成一条黑边。 */ inset 0 0 0 1px
+      rgba(130, 150, 205, 0.1),
+    /* 方向性亮边：左上受光强、右下弱。必须是细线——加宽会在四周糊出一圈
+       白雾，既盖掉透光也把圆角的曲线填平，看上去像方角。 */ inset 0 1.5px 1px
+      -1px rgba(255, 255, 255, 0.95),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.3),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.5),
+    /* 内缘聚光：玻璃厚度带来的边缘辉光，同样必须克制 */ inset 0 0 14px -8px
+      rgba(255, 255, 255, 0.45);
 }
 
 /* 折射只给卡片，不给顶栏/侧栏/页脚，有两个原因：
@@ -210,11 +212,11 @@ body[theme-mode='dark'] .site-background-glass {
   content: '';
   background: linear-gradient(
     124deg,
-    rgba(255, 255, 255, 0.75) 0%,
-    rgba(255, 255, 255, 0.22) 14%,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.1) 14%,
     rgba(255, 255, 255, 0) 34%,
     rgba(255, 255, 255, 0) 70%,
-    rgba(255, 255, 255, 0.3) 100%
+    rgba(255, 255, 255, 0.16) 100%
   );
   border-radius: inherit;
   mix-blend-mode: soft-light;
@@ -228,13 +230,13 @@ body[theme-mode='dark'] .site-background-glass .app-sider,
 body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.32),
-    0 30px 70px -22px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 0 4px 2px -2px rgba(255, 255, 255, 0.34),
-    inset 4px 0 2px -2px rgba(255, 255, 255, 0.16),
-    inset -4px 0 2px -2px rgba(255, 255, 255, 0.07),
-    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.12),
-    inset 0 0 40px -6px rgba(255, 255, 255, 0.16);
+    0 24px 56px -20px rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.32),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.14),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.06),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.11),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.14);
 }
 
 body[theme-mode='dark'] .site-background-glass .semi-card::after,
@@ -242,8 +244,8 @@ body[theme-mode='dark'] .site-background-glass .pricing-sidebar::after,
 body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
   background: linear-gradient(
     124deg,
-    rgba(255, 255, 255, 0.3) 0%,
-    rgba(255, 255, 255, 0.08) 14%,
+    rgba(255, 255, 255, 0.18) 0%,
+    rgba(255, 255, 255, 0.05) 14%,
     rgba(255, 255, 255, 0) 34%,
     rgba(255, 255, 255, 0) 70%,
     rgba(255, 255, 255, 0.12) 100%
@@ -489,13 +491,13 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
   border-radius: 18px;
   box-shadow:
     0 2px 4px rgba(16, 24, 64, 0.1),
-    0 24px 56px -20px rgba(31, 38, 135, 0.42),
-    inset 0 0 0 1px rgba(130, 150, 205, 0.16),
-    inset 0 4px 2px -2px rgba(255, 255, 255, 1),
-    inset 4px 0 2px -2px rgba(255, 255, 255, 0.8),
-    inset -4px 0 2px -2px rgba(255, 255, 255, 0.42),
-    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.7),
-    inset 0 0 40px -6px rgba(255, 255, 255, 0.55);
+    0 20px 48px -18px rgba(31, 38, 135, 0.34),
+    inset 0 0 0 1px rgba(130, 150, 205, 0.1),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.95),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.3),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.5),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.45);
   transform: translate(-50%, -50%);
   -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(106%);
   backdrop-filter: var(--site-background-glass-refract, opacity(1)) blur(2px)
@@ -505,13 +507,13 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
 body[theme-mode='dark'] .site-background-preview-glass {
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.32),
-    0 24px 56px -20px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 0 4px 2px -2px rgba(255, 255, 255, 0.34),
-    inset 4px 0 2px -2px rgba(255, 255, 255, 0.16),
-    inset -4px 0 2px -2px rgba(255, 255, 255, 0.07),
-    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.12),
-    inset 0 0 40px -6px rgba(255, 255, 255, 0.16);
+    0 20px 48px -18px rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.32),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.14),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.06),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.11),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.14);
   -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(97%);
   backdrop-filter: var(--site-background-glass-refract, opacity(1)) blur(2px)
     saturate(165%) brightness(97%);
