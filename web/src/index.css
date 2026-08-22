@@ -99,12 +99,14 @@ body[theme-mode='dark'] .site-background-overlay {
 }
 
 .site-background-glass {
-  /* 折射为主、模糊为辅。blur() 是漫射，那是磨砂塑料的物理行为；
-     玻璃的观感来自折射与边缘光学，所以这里只保留很低的模糊。 */
+  /* 卡片走折射，模糊只做辅助。blur() 是漫射，那是磨砂塑料的物理行为；
+     玻璃的观感来自折射与边缘光学。 */
   --site-background-glass-blur: 2px;
+  /* 顶栏/侧栏/页脚不折射（原因见下），靠模糊维持可读性。 */
+  --site-background-glass-shell-blur: 6px;
   --site-background-glass-saturation: 165%;
   --site-background-glass-brightness: 106%;
-  /* 玻璃本体只留很薄一层底色。质感由光学产生，而不是靠这层白纱盖住背景。
+  /* 折射面的底色只留很薄一层，否则会把折射整个盖掉。
      实际值由 PageLayout 依据 glass_opacity 换算后覆盖。 */
   --site-background-glass-veil: 25%;
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
@@ -119,6 +121,8 @@ body[theme-mode='dark'] .site-background-glass {
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
 }
 
+/* 所有玻璃表面共用的光学：厚度梯度底色、方向性边缘、接触阴影 + 环境投影。
+   这一层是纯 CSS，没有折射开销，Safari/Firefox 也完整生效。 */
 .site-background-glass .semi-card,
 .site-background-glass .pricing-sidebar,
 .site-background-glass .pricing-search-header,
@@ -126,24 +130,31 @@ body[theme-mode='dark'] .site-background-glass {
 .site-background-glass .app-sider,
 .site-background-glass .semi-layout-footer {
   position: relative;
+  /* 默认按原有厚度取色；下面折射面会把这个变量覆盖成更薄的值。 */
+  --site-background-glass-surface-veil: var(
+    --site-background-glass-opacity,
+    72%
+  );
   /* 厚度梯度（上薄下厚）。平铺单色是贴纸，真玻璃的透光度随厚度变化。 */
   background: linear-gradient(
     158deg,
     color-mix(
         in srgb,
-        var(--semi-color-bg-0) calc(var(--site-background-glass-veil) * 0.35),
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-surface-veil) * 0.35),
         transparent
       )
       0%,
     color-mix(
         in srgb,
-        var(--semi-color-bg-0) var(--site-background-glass-veil),
+        var(--semi-color-bg-0) var(--site-background-glass-surface-veil),
         transparent
       )
       52%,
     color-mix(
         in srgb,
-        var(--semi-color-bg-0) calc(var(--site-background-glass-veil) * 1.55),
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-surface-veil) * 1.55),
         transparent
       )
       100%
@@ -151,12 +162,10 @@ body[theme-mode='dark'] .site-background-glass {
   /* 边缘交给下面的方向性 inset 亮边处理，四边等亮的描边正是注塑塑料件的轮廓
      特征。这里只清掉颜色而不动 border-width，避免给 border-0 的卡片撑出位移。 */
   border-color: transparent !important;
-  /* Safari/Firefox 不支持 backdrop-filter: url()，这里退化为无折射版本。 */
-  -webkit-backdrop-filter: blur(var(--site-background-glass-blur))
+  -webkit-backdrop-filter: blur(var(--site-background-glass-shell-blur))
     saturate(var(--site-background-glass-saturation))
     brightness(var(--site-background-glass-brightness));
-  backdrop-filter: var(--site-background-glass-refract, opacity(1))
-    blur(var(--site-background-glass-blur))
+  backdrop-filter: blur(var(--site-background-glass-shell-blur))
     saturate(var(--site-background-glass-saturation))
     brightness(var(--site-background-glass-brightness));
   box-shadow:
@@ -172,6 +181,22 @@ body[theme-mode='dark'] .site-background-glass {
     inset 0 -4px 2px -2px rgba(255, 255, 255, 0.7),
     /* 内缘聚光：玻璃厚度带来的边缘辉光 */ inset 0 0 40px -6px
       rgba(255, 255, 255, 0.55);
+}
+
+/* 折射只给卡片，不给顶栏/侧栏/页脚，有两个原因：
+   1. 滤镜用 objectBoundingBox 单位，透镜带宽按元素尺寸比例展开。顶栏这种
+      1440x64 的极端宽高比会让横向折射带铺满整条，把内容糊掉。
+   2. 折射开销随元素数量线性增长，而这几个是每页常驻的大面积表面。
+   Safari/Firefox 不支持 backdrop-filter: url()，会退回上面的无折射版本。 */
+.site-background-glass .semi-card {
+  --site-background-glass-surface-veil: var(--site-background-glass-veil, 25%);
+  -webkit-backdrop-filter: blur(var(--site-background-glass-blur))
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness));
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(var(--site-background-glass-blur))
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness));
 }
 
 /* 镜面反射。玻璃必然反射环境光，纯 backdrop-filter 做不出这一层。 */
@@ -509,9 +534,23 @@ body[theme-mode='dark'] .site-background-preview-overlay {
 
 @media (max-width: 767px) {
   .site-background-glass {
-    /* 移动端 GPU 预算有限：收窄折射带并略提模糊，视觉退化优于掉帧。 */
-    --site-background-glass-blur: 4px;
     --site-background-glass-saturation: 150%;
+  }
+
+  /* 移动端 GPU 预算有限，而折射开销随卡片数量线性增长，长列表页很容易掉帧。
+     这里整体退回无折射版本；梯度底色、方向性边缘、双层阴影、镜面反射这些纯
+     CSS 光学照常保留，观感仍明显优于单纯的 blur。 */
+  .site-background-glass .semi-card {
+    --site-background-glass-surface-veil: var(
+      --site-background-glass-opacity,
+      72%
+    );
+    -webkit-backdrop-filter: blur(var(--site-background-glass-shell-blur))
+      saturate(var(--site-background-glass-saturation))
+      brightness(var(--site-background-glass-brightness));
+    backdrop-filter: blur(var(--site-background-glass-shell-blur))
+      saturate(var(--site-background-glass-saturation))
+      brightness(var(--site-background-glass-brightness));
   }
 
   .site-background-setting-grid {

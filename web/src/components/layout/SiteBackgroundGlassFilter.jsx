@@ -33,9 +33,13 @@ export const SITE_BACKGROUND_GLASS_PREVIEW_FILTER_ID =
  * 色散。这里用 feDisplacementMap 做位移，用 R/G/B 三条位移量略有差异的链路再
  * 合成来得到色散。
  *
- * 位移贴图是两张线性渐变：横向那张把 R 通道从 0 → 128 → 255，纵向那张把 G
- * 通道做同样的事，中性值 128 表示不位移。渐变不是线性的，而是按透镜曲线在最
- * 外缘急弯、向内快速衰减到中性，这样折射集中在边缘，中心保持通透。
+ * 位移贴图的 R 通道编码横向位移、G 通道编码纵向位移，128 为中性（不位移）。
+ * 两个方向合并进同一张图是关键的性能决策：如果拆成两张图、串联两次
+ * feDisplacementMap，第二次要吃第一次的输出，会强制产生中间缓冲并且每帧多解一
+ * 张贴图，实测在卡片密集页会把帧率打到个位数。合并之后每个通道只需一次位移。
+ *
+ * 渐变不是线性的，而是按透镜曲线在最外缘急弯、向内快速衰减到中性，这样折射集
+ * 中在边缘，中心保持通透。
  */
 
 // 透镜曲线采样点：[到边缘的相对距离, 向中性值收敛的比例]
@@ -52,39 +56,45 @@ const LENS_PROFILE = [
 
 const NEUTRAL = 128;
 
-const buildDisplacementMap = (horizontal, band) => {
+const buildGradientStops = (band, horizontal) => {
   const edge = band / 100;
   const stops = [];
 
   LENS_PROFILE.forEach(([distance, converge]) => {
-    const offset = distance * edge;
-    const value = Math.round(NEUTRAL * converge);
-    stops.push([offset, value]);
+    stops.push([distance * edge, Math.round(NEUTRAL * converge)]);
   });
   LENS_PROFILE.slice()
     .reverse()
     .forEach(([distance, converge]) => {
-      const offset = 1 - distance * edge;
-      const value = Math.round(255 - (255 - NEUTRAL) * converge);
-      stops.push([offset, value]);
+      stops.push([
+        1 - distance * edge,
+        Math.round(255 - (255 - NEUTRAL) * converge),
+      ]);
     });
 
-  const gradientStops = stops
+  return stops
     .map(([offset, value]) => {
+      // 横向渐变只写 R（外加恒定的 B），纵向渐变只写 G，下面用 screen 叠加时
+      // 各通道互不干扰：screen 为 1-(1-a)(1-b)，与 0 相叠等于保留原值。
       const color = horizontal
-        ? `rgb(${value},${NEUTRAL},${NEUTRAL})`
-        : `rgb(${NEUTRAL},${value},${NEUTRAL})`;
+        ? `rgb(${value},0,${NEUTRAL})`
+        : `rgb(0,${value},0)`;
       return `<stop offset="${offset.toFixed(4)}" stop-color="${color}"/>`;
     })
     .join('');
-  const direction = horizontal
-    ? 'x1="0" y1="0" x2="1" y2="0"'
-    : 'x1="0" y1="0" x2="0" y2="1"';
+};
 
+// 一张贴图同时编码两个方向：R = 横向位移，G = 纵向位移，B 恒为中性。
+const buildLensMap = (band) => {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" preserveAspectRatio="none">' +
-    `<defs><linearGradient id="g" ${direction}>${gradientStops}</linearGradient></defs>` +
-    '<rect width="400" height="400" fill="url(#g)"/></svg>';
+    '<defs>' +
+    `<linearGradient id="h" x1="0" y1="0" x2="1" y2="0">${buildGradientStops(band, true)}</linearGradient>` +
+    `<linearGradient id="v" x1="0" y1="0" x2="0" y2="1">${buildGradientStops(band, false)}</linearGradient>` +
+    '</defs>' +
+    '<rect width="400" height="400" fill="url(#h)"/>' +
+    '<rect width="400" height="400" fill="url(#v)" style="mix-blend-mode:screen"/>' +
+    '</svg>';
 
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 };
@@ -107,17 +117,10 @@ const SiteBackgroundGlassFilter = ({
   filterId = SITE_BACKGROUND_GLASS_FILTER_ID,
 }) => {
   const optics = useMemo(() => resolveOptics(refraction), [refraction]);
-  const maps = useMemo(
-    () => ({
-      horizontal: buildDisplacementMap(true, optics.band),
-      vertical: buildDisplacementMap(false, optics.band),
-    }),
-    [optics.band],
-  );
+  const lensMap = useMemo(() => buildLensMap(optics.band), [optics.band]);
 
   if (optics.scale <= 0) return null;
 
-  // 每个通道先做横向位移再做纵向位移；B 通道恒为 128，用来占位表示该轴不位移。
   const channels = [
     { key: 'r', scale: optics.scale * (1 + optics.dispersion) },
     { key: 'g', scale: optics.scale },
@@ -144,17 +147,8 @@ const SiteBackgroundGlassFilter = ({
           colorInterpolationFilters='sRGB'
         >
           <feImage
-            href={maps.horizontal}
-            result='mapX'
-            preserveAspectRatio='none'
-            x='0'
-            y='0'
-            width='1'
-            height='1'
-          />
-          <feImage
-            href={maps.vertical}
-            result='mapY'
+            href={lensMap}
+            result='lensMap'
             preserveAspectRatio='none'
             x='0'
             y='0'
@@ -163,39 +157,30 @@ const SiteBackgroundGlassFilter = ({
           />
 
           {channels.map(({ key, scale }) => (
-            <React.Fragment key={key}>
-              <feDisplacementMap
-                in='SourceGraphic'
-                in2='mapX'
-                scale={scale}
-                xChannelSelector='R'
-                yChannelSelector='B'
-                result={`${key}X`}
-              />
-              <feDisplacementMap
-                in={`${key}X`}
-                in2='mapY'
-                scale={scale}
-                xChannelSelector='B'
-                yChannelSelector='G'
-                result={`${key}XY`}
-              />
-            </React.Fragment>
+            <feDisplacementMap
+              key={key}
+              in='SourceGraphic'
+              in2='lensMap'
+              scale={scale}
+              xChannelSelector='R'
+              yChannelSelector='G'
+              result={`${key}Displaced`}
+            />
           ))}
 
           {/* 各取一个通道再叠回去，位移量的差异就成了色散 */}
           <feColorMatrix
-            in='rXY'
+            in='rDisplaced'
             values='1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0'
             result='rOnly'
           />
           <feColorMatrix
-            in='gXY'
+            in='gDisplaced'
             values='0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0'
             result='gOnly'
           />
           <feColorMatrix
-            in='bXY'
+            in='bDisplaced'
             values='0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0'
             result='bOnly'
           />
