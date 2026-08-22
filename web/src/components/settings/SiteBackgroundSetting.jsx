@@ -39,6 +39,7 @@ import {
   isAllowedSiteBackgroundURL,
   resolveSiteBackground,
   SITE_BACKGROUND_FIT_MODES,
+  SITE_BACKGROUND_GLASS_RENDERERS,
   SITE_BACKGROUND_MAX_SOURCES,
   SITE_BACKGROUND_OPTION_KEY,
   SITE_BACKGROUND_SOURCE_TYPES,
@@ -79,6 +80,12 @@ const parseDraftConfig = (value) => {
   const opacity = Number(parsed.overlay_opacity);
   const glassOpacity = Number(parsed.glass_opacity);
   const glassRefraction = Number(parsed.glass_refraction);
+  const clampGlassPercent = (raw, fallback) => {
+    const parsedValue = Number(raw);
+    return Number.isFinite(parsedValue)
+      ? Math.min(100, Math.max(0, Math.round(parsedValue)))
+      : fallback;
+  };
   return {
     enabled: parsed.enabled === true,
     fit: SITE_BACKGROUND_FIT_MODES.includes(parsed.fit)
@@ -94,6 +101,23 @@ const parseDraftConfig = (value) => {
     glass_refraction: Number.isFinite(glassRefraction)
       ? Math.min(100, Math.max(0, Math.round(glassRefraction)))
       : DEFAULT_SITE_BACKGROUND_CONFIG.glass_refraction,
+    glass_renderer: SITE_BACKGROUND_GLASS_RENDERERS.includes(
+      parsed.glass_renderer,
+    )
+      ? parsed.glass_renderer
+      : DEFAULT_SITE_BACKGROUND_CONFIG.glass_renderer,
+    glass_edge_clarity: clampGlassPercent(
+      parsed.glass_edge_clarity,
+      DEFAULT_SITE_BACKGROUND_CONFIG.glass_edge_clarity,
+    ),
+    glass_dispersion: clampGlassPercent(
+      parsed.glass_dispersion,
+      DEFAULT_SITE_BACKGROUND_CONFIG.glass_dispersion,
+    ),
+    glass_edge_light: clampGlassPercent(
+      parsed.glass_edge_light,
+      DEFAULT_SITE_BACKGROUND_CONFIG.glass_edge_light,
+    ),
     sources: Array.isArray(parsed.sources)
       ? parsed.sources
           .slice(0, SITE_BACKGROUND_MAX_SOURCES)
@@ -109,6 +133,10 @@ const cleanDraftConfig = (draft) => ({
   glass_enabled: draft.glass_enabled === true,
   glass_opacity: Number(draft.glass_opacity),
   glass_refraction: Number(draft.glass_refraction),
+  glass_renderer: draft.glass_renderer,
+  glass_edge_clarity: Number(draft.glass_edge_clarity),
+  glass_dispersion: Number(draft.glass_dispersion),
+  glass_edge_light: Number(draft.glass_edge_light),
   sources: draft.sources.map((source) => ({
     type: source.type,
     url: source.url.trim(),
@@ -144,6 +172,30 @@ const validateDraftConfig = (config, t) => {
     config.glass_refraction > 100
   ) {
     return t('玻璃折射强度必须是 0 到 100 之间的整数');
+  }
+  if (!SITE_BACKGROUND_GLASS_RENDERERS.includes(config.glass_renderer)) {
+    return t('请选择有效的玻璃渲染器');
+  }
+  if (
+    !Number.isInteger(config.glass_edge_clarity) ||
+    config.glass_edge_clarity < 0 ||
+    config.glass_edge_clarity > 100
+  ) {
+    return t('玻璃边缘清晰度必须是 0 到 100 之间的整数');
+  }
+  if (
+    !Number.isInteger(config.glass_dispersion) ||
+    config.glass_dispersion < 0 ||
+    config.glass_dispersion > 100
+  ) {
+    return t('玻璃色散必须是 0 到 100 之间的整数');
+  }
+  if (
+    !Number.isInteger(config.glass_edge_light) ||
+    config.glass_edge_light < 0 ||
+    config.glass_edge_light > 100
+  ) {
+    return t('玻璃边缘光必须是 0 到 100 之间的整数');
   }
   if (config.sources.length > SITE_BACKGROUND_MAX_SOURCES) {
     return t('背景图片来源不能超过 20 个');
@@ -415,7 +467,89 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
           />
           <Typography.Text type='tertiary'>
             {t(
-              '边缘弯折背景的程度，默认关闭。折射依赖 SVG 滤镜，会让整个玻璃层脱离 GPU 合成路径改由 CPU 逐帧计算，开销随卡片数量与屏幕像素增长，在卡片密集的页面上可能明显掉帧——这一点与强度大小无关，只要不为 0 就会发生。建议从较低数值开始，并在自己的机器上确认帧率。Safari 与 Firefox 不支持，会自动退回无折射版本',
+              '边缘弯折背景的程度，默认关闭。CSS 渲染器下折射依赖 SVG 滤镜，会让整个玻璃层脱离 GPU 合成路径改由 CPU 逐帧计算，在卡片密集的页面上可能明显掉帧（与强度大小无关，Safari 与 Firefox 不支持）；WebGL 渲染器没有这个开销，折射在着色器里完成，推荐搭配使用',
+            )}
+          </Typography.Text>
+        </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('玻璃渲染器')}</Typography.Text>
+          <Select
+            value={draft.glass_renderer}
+            aria-label={t('玻璃渲染器')}
+            disabled={!draft.glass_enabled}
+            onChange={(glassRenderer) =>
+              updateDraft({ glass_renderer: glassRenderer })
+            }
+            style={{ width: '100%' }}
+            optionList={[
+              { value: 'css', label: t('CSS 滤镜（兼容优先）') },
+              { value: 'webgl', label: t('WebGL（性能优先，支持色散）') },
+            ]}
+          />
+          <Typography.Text type='tertiary'>
+            {t(
+              'WebGL 渲染器把背景模糊预先烘焙成纹理，滚动时只有 2 个 draw call，静止时零开销；设备不支持或图源跨域受限时自动退回 CSS。预览区仅展示 CSS 效果，WebGL 参数保存后到站点页面查看',
+            )}
+          </Typography.Text>
+        </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('边缘清晰度（WebGL）')}</Typography.Text>
+          <InputNumber
+            value={draft.glass_edge_clarity}
+            aria-label={t('边缘清晰度（WebGL）')}
+            min={0}
+            max={100}
+            step={1}
+            suffix='%'
+            disabled={!draft.glass_enabled || draft.glass_renderer !== 'webgl'}
+            onChange={(glassEdgeClarity) =>
+              updateDraft({ glass_edge_clarity: glassEdgeClarity })
+            }
+            style={{ width: '100%' }}
+          />
+          <Typography.Text type='tertiary'>
+            {t(
+              '折射带内把背景还原清晰的程度；0 时边缘同样磨砂，折射几乎不可见',
+            )}
+          </Typography.Text>
+        </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('色散（WebGL）')}</Typography.Text>
+          <InputNumber
+            value={draft.glass_dispersion}
+            aria-label={t('色散（WebGL）')}
+            min={0}
+            max={100}
+            step={1}
+            suffix='%'
+            disabled={!draft.glass_enabled || draft.glass_renderer !== 'webgl'}
+            onChange={(glassDispersion) =>
+              updateDraft({ glass_dispersion: glassDispersion })
+            }
+            style={{ width: '100%' }}
+          />
+          <Typography.Text type='tertiary'>
+            {t('边缘彩虹色的强度，R/B 通道沿折射方向反向错开')}
+          </Typography.Text>
+        </div>
+        <div className='site-background-setting-control'>
+          <Typography.Text strong>{t('边缘光（WebGL）')}</Typography.Text>
+          <InputNumber
+            value={draft.glass_edge_light}
+            aria-label={t('边缘光（WebGL）')}
+            min={0}
+            max={100}
+            step={1}
+            suffix='%'
+            disabled={!draft.glass_enabled || draft.glass_renderer !== 'webgl'}
+            onChange={(glassEdgeLight) =>
+              updateDraft({ glass_edge_light: glassEdgeLight })
+            }
+            style={{ width: '100%' }}
+          />
+          <Typography.Text type='tertiary'>
+            {t(
+              '左上光源的边缘高光与顶亮底暗内描边，与 CSS 高光叠加，过量会发白',
             )}
           </Typography.Text>
         </div>

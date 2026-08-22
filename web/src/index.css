@@ -190,6 +190,28 @@ body[theme-mode='dark'] .site-background-glass {
       rgba(255, 255, 255, 0.45);
 }
 
+/* WebGL 渲染路径：磨砂与折射由画布提供，DOM 侧关掉 backdrop-filter，
+   其余分层（渐变底色、阴影、镜面反射）原样保留，两条路径视觉分层一致。 */
+.site-background-glass-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body.site-background-glass-webgl .site-background-glass .semi-card,
+body.site-background-glass-webgl .site-background-glass .pricing-sidebar,
+body.site-background-glass-webgl .site-background-glass .pricing-search-header,
+body.site-background-glass-webgl
+  .site-background-glass
+  .semi-layout-header
+  > header,
+body.site-background-glass-webgl .site-background-glass .app-sider,
+body.site-background-glass-webgl .site-background-glass .semi-layout-footer {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 /* 镜面反射。玻璃必然反射环境光，纯 backdrop-filter 做不出这一层。 */
 .site-background-glass .semi-card::after,
 .site-background-glass .pricing-sidebar::after,
