@@ -74,7 +74,7 @@ func DefaultSiteBackgroundSettings() SiteBackgroundSettings {
 		OverlayOpacity:  25,
 		GlassEnabled:    false,
 		GlassOpacity:    72,
-		GlassRefraction: 70,
+		GlassRefraction: 0,
 		Sources:         []SiteBackgroundSource{},
 	}
 }

@@ -34,7 +34,7 @@ export const DEFAULT_SITE_BACKGROUND_CONFIG = Object.freeze({
   overlay_opacity: 25,
   glass_enabled: false,
   glass_opacity: 72,
-  glass_refraction: 70,
+  glass_refraction: 0,
   sources: [],
 });
 

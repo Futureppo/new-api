@@ -415,7 +415,9 @@ const SiteBackgroundSetting = ({ value, onSaved }) => {
             style={{ width: '100%' }}
           />
           <Typography.Text type='tertiary'>
-            {t('边缘弯折背景的程度，0 为关闭折射；Safari 与 Firefox 暂不支持')}
+            {t(
+              '边缘弯折背景的程度。默认关闭：折射开销随卡片数量线性增长，在卡片密集的页面上可能明显掉帧，开启前请在自己的机器上确认帧率。Safari 与 Firefox 不支持，会自动退回无折射版本',
+            )}
           </Typography.Text>
         </div>
       </div>
