@@ -52,6 +52,15 @@ body {
   background: var(--semi-color-bg-0);
 }
 
+/* 折射滤镜只提供 <filter> 定义，本身不参与布局与绘制。 */
+.site-background-glass-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .site-background-image {
   position: absolute;
   inset: 0;
@@ -97,6 +106,11 @@ body[theme-mode='dark'] .site-background-overlay {
   --site-background-glass-saturation: 115%;
   --site-background-glass-brightness: 104%;
   --site-background-glass-contrast: 88%;
+  /* 明暗各一份折射滤镜，在这里按主题选定；未启用折射时回落到恒等函数。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
   --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
   --site-background-fade-surface: rgba(255, 255, 255, 0.22);
@@ -106,6 +120,11 @@ body[theme-mode='dark'] .site-background-glass {
   /* 不要压暗：底色本身就是深色薄膜，再降亮度整块会发闷。 */
   --site-background-glass-brightness: 102%;
   --site-background-glass-contrast: 90%;
+  /* 暗色用色散削弱版，否则背景里的高对比边缘会被拆成霓虹条纹。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
+  );
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
   --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
@@ -149,7 +168,8 @@ body[theme-mode='dark'] .site-background-glass {
     saturate(var(--site-background-glass-saturation))
     brightness(var(--site-background-glass-brightness))
     contrast(var(--site-background-glass-contrast));
-  backdrop-filter: blur(var(--site-background-glass-blur))
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(var(--site-background-glass-blur))
     saturate(var(--site-background-glass-saturation))
     brightness(var(--site-background-glass-brightness))
     contrast(var(--site-background-glass-contrast));
@@ -426,6 +446,13 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
 }
 
 .site-background-preview-glass {
+  /* 必须在预览元素自身上重新解析：祖先已把该变量算成主滤镜的引用，继承下来的
+     是结果而不是表达式，光在这里设 -light/-dark 不会生效。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
+
   position: absolute;
   top: 50%;
   left: 50%;
@@ -472,10 +499,16 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
   transform: translate(-50%, -50%);
   -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(104%)
     contrast(88%);
-  backdrop-filter: blur(26px) saturate(115%) brightness(104%) contrast(88%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(26px) saturate(115%) brightness(104%) contrast(88%);
 }
 
 body[theme-mode='dark'] .site-background-preview-glass {
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
+  );
+
   box-shadow:
     0 2px 4px rgba(0, 0, 0, 0.32),
     0 20px 48px -18px rgba(0, 0, 0, 0.55),
@@ -487,7 +520,8 @@ body[theme-mode='dark'] .site-background-preview-glass {
     inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
   -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(102%)
     contrast(90%);
-  backdrop-filter: blur(26px) saturate(115%) brightness(102%) contrast(90%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(26px) saturate(115%) brightness(102%) contrast(90%);
 }
 
 body[theme-mode='dark'] .site-background-preview-overlay {
