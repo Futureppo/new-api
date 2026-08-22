@@ -90,9 +90,13 @@ body[theme-mode='dark'] .site-background-overlay {
 }
 
 .site-background-glass {
-  --site-background-glass-blur: 6px;
-  --site-background-glass-saturation: 165%;
-  --site-background-glass-brightness: 106%;
+  /* 可读性的关键在于销毁背景的高频细节，而不是提高对比度——实测各档参数下
+     文字对比度都在 11:1 以上，远超 WCAG AAA，真正让人看不清的是背景纹理在跟
+     笔画抢。所以模糊要足、饱和度要收、再用 contrast 压缩背景的明暗跨度。 */
+  --site-background-glass-blur: 26px;
+  --site-background-glass-saturation: 115%;
+  --site-background-glass-brightness: 104%;
+  --site-background-glass-contrast: 88%;
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
   --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
   --site-background-fade-surface: rgba(255, 255, 255, 0.22);
@@ -101,6 +105,7 @@ body[theme-mode='dark'] .site-background-overlay {
 body[theme-mode='dark'] .site-background-glass {
   /* 不要压暗：底色本身就是深色薄膜，再降亮度整块会发闷。 */
   --site-background-glass-brightness: 102%;
+  --site-background-glass-contrast: 90%;
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
   --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
@@ -142,10 +147,12 @@ body[theme-mode='dark'] .site-background-glass {
   border-color: transparent !important;
   -webkit-backdrop-filter: blur(var(--site-background-glass-blur))
     saturate(var(--site-background-glass-saturation))
-    brightness(var(--site-background-glass-brightness));
+    brightness(var(--site-background-glass-brightness))
+    contrast(var(--site-background-glass-contrast));
   backdrop-filter: blur(var(--site-background-glass-blur))
     saturate(var(--site-background-glass-saturation))
-    brightness(var(--site-background-glass-brightness));
+    brightness(var(--site-background-glass-brightness))
+    contrast(var(--site-background-glass-contrast));
   box-shadow:
     /* 接触阴影 + 环境投影：玻璃是浮在背景上的，不是贴上去的 */
     0 2px 4px rgba(16, 24, 64, 0.1),
@@ -463,8 +470,9 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
     inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.5),
     inset 0 0 14px -8px rgba(255, 255, 255, 0.45);
   transform: translate(-50%, -50%);
-  -webkit-backdrop-filter: blur(6px) saturate(165%) brightness(106%);
-  backdrop-filter: blur(6px) saturate(165%) brightness(106%);
+  -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(104%)
+    contrast(88%);
+  backdrop-filter: blur(26px) saturate(115%) brightness(104%) contrast(88%);
 }
 
 body[theme-mode='dark'] .site-background-preview-glass {
@@ -477,8 +485,9 @@ body[theme-mode='dark'] .site-background-preview-glass {
     inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.18),
     inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.34),
     inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
-  -webkit-backdrop-filter: blur(6px) saturate(165%) brightness(102%);
-  backdrop-filter: blur(6px) saturate(165%) brightness(102%);
+  -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(102%)
+    contrast(90%);
+  backdrop-filter: blur(26px) saturate(115%) brightness(102%) contrast(90%);
 }
 
 body[theme-mode='dark'] .site-background-preview-overlay {
@@ -498,8 +507,8 @@ body[theme-mode='dark'] .site-background-preview-overlay {
 
 @media (max-width: 767px) {
   .site-background-glass {
-    --site-background-glass-blur: 12px;
-    --site-background-glass-saturation: 130%;
+    --site-background-glass-blur: 18px;
+    --site-background-glass-saturation: 115%;
   }
 
   .site-background-setting-grid {
