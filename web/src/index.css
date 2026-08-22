@@ -52,6 +52,15 @@ body {
   background: var(--semi-color-bg-0);
 }
 
+/* 折射滤镜只提供 <filter> 定义，本身不参与布局与绘制。 */
+.site-background-glass-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .site-background-image {
   position: absolute;
   inset: 0;
@@ -90,14 +99,21 @@ body[theme-mode='dark'] .site-background-overlay {
 }
 
 .site-background-glass {
-  --site-background-glass-blur: 18px;
-  --site-background-glass-saturation: 145%;
+  /* 折射为主、模糊为辅。blur() 是漫射，那是磨砂塑料的物理行为；
+     玻璃的观感来自折射与边缘光学，所以这里只保留很低的模糊。 */
+  --site-background-glass-blur: 2px;
+  --site-background-glass-saturation: 165%;
+  --site-background-glass-brightness: 106%;
+  /* 玻璃本体只留很薄一层底色。质感由光学产生，而不是靠这层白纱盖住背景。
+     实际值由 PageLayout 依据 glass_opacity 换算后覆盖。 */
+  --site-background-glass-veil: 25%;
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
   --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
   --site-background-fade-surface: rgba(255, 255, 255, 0.22);
 }
 
 body[theme-mode='dark'] .site-background-glass {
+  --site-background-glass-brightness: 97%;
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
   --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
@@ -109,25 +125,74 @@ body[theme-mode='dark'] .site-background-glass {
 .site-background-glass .semi-layout-header > header,
 .site-background-glass .app-sider,
 .site-background-glass .semi-layout-footer {
-  background: rgba(255, 255, 255, 0.72) !important;
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+  position: relative;
+  /* 厚度梯度（上薄下厚）。平铺单色是贴纸，真玻璃的透光度随厚度变化。 */
+  background: linear-gradient(
+    158deg,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) calc(var(--site-background-glass-veil) * 0.35),
+        transparent
+      )
+      0%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) var(--site-background-glass-veil),
+        transparent
+      )
+      52%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) calc(var(--site-background-glass-veil) * 1.55),
+        transparent
+      )
+      100%
   ) !important;
-  border-color: rgba(255, 255, 255, 0.48) !important;
-  border-color: color-mix(
-    in srgb,
-    white 48%,
-    transparent
-  ) !important;
-  box-shadow:
-    0 12px 36px rgba(31, 38, 135, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  /* 边缘交给下面的方向性 inset 亮边处理，四边等亮的描边正是注塑塑料件的轮廓
+     特征。这里只清掉颜色而不动 border-width，避免给 border-0 的卡片撑出位移。 */
+  border-color: transparent !important;
+  /* Safari/Firefox 不支持 backdrop-filter: url()，这里退化为无折射版本。 */
   -webkit-backdrop-filter: blur(var(--site-background-glass-blur))
-    saturate(var(--site-background-glass-saturation));
-  backdrop-filter: blur(var(--site-background-glass-blur))
-    saturate(var(--site-background-glass-saturation));
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness));
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(var(--site-background-glass-blur))
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness));
+  box-shadow:
+    /* 接触阴影 + 环境投影：玻璃是浮在背景上的，不是贴上去的 */
+    0 2px 4px rgba(16, 24, 64, 0.1),
+    0 30px 70px -22px rgba(31, 38, 135, 0.42),
+    /* 折射暗带：亮边内侧的一圈极淡暗线，玻璃边缘的关键特征 */ inset 0 0 0 1px
+      rgba(130, 150, 205, 0.16),
+    /* 方向性亮边：左上受光强、右下弱 */ inset 0 4px 2px -2px
+      rgba(255, 255, 255, 1),
+    inset 4px 0 2px -2px rgba(255, 255, 255, 0.8),
+    inset -4px 0 2px -2px rgba(255, 255, 255, 0.42),
+    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.7),
+    /* 内缘聚光：玻璃厚度带来的边缘辉光 */ inset 0 0 40px -6px
+      rgba(255, 255, 255, 0.55);
+}
+
+/* 镜面反射。玻璃必然反射环境光，纯 backdrop-filter 做不出这一层。 */
+.site-background-glass .semi-card::after,
+.site-background-glass .pricing-sidebar::after,
+.site-background-glass .pricing-search-header::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    124deg,
+    rgba(255, 255, 255, 0.75) 0%,
+    rgba(255, 255, 255, 0.22) 14%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.3) 100%
+  );
+  border-radius: inherit;
+  mix-blend-mode: soft-light;
 }
 
 body[theme-mode='dark'] .site-background-glass .semi-card,
@@ -136,16 +201,28 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header,
 body[theme-mode='dark'] .site-background-glass .semi-layout-header > header,
 body[theme-mode='dark'] .site-background-glass .app-sider,
 body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
-  background: rgba(24, 24, 27, 0.72) !important;
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
-  ) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
   box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 2px 4px rgba(0, 0, 0, 0.32),
+    0 30px 70px -22px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 4px 2px -2px rgba(255, 255, 255, 0.34),
+    inset 4px 0 2px -2px rgba(255, 255, 255, 0.16),
+    inset -4px 0 2px -2px rgba(255, 255, 255, 0.07),
+    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.12),
+    inset 0 0 40px -6px rgba(255, 255, 255, 0.16);
+}
+
+body[theme-mode='dark'] .site-background-glass .semi-card::after,
+body[theme-mode='dark'] .site-background-glass .pricing-sidebar::after,
+body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
+  background: linear-gradient(
+    124deg,
+    rgba(255, 255, 255, 0.3) 0%,
+    rgba(255, 255, 255, 0.08) 14%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.12) 100%
+  );
 }
 
 .site-background-glass .sidebar-container,
@@ -359,33 +436,60 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   color: var(--semi-color-text-0);
   font-weight: 600;
   text-align: center;
-  background: rgba(255, 255, 255, 0.72);
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+  background: rgba(255, 255, 255, 0.25);
+  background: linear-gradient(
+    158deg,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-veil, 25%) * 0.35),
+        transparent
+      )
+      0%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) var(--site-background-glass-veil, 25%),
+        transparent
+      )
+      52%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-veil, 25%) * 1.55),
+        transparent
+      )
+      100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.48);
+  border: 1px solid transparent;
   border-radius: 18px;
   box-shadow:
-    0 12px 36px rgba(31, 38, 135, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+    0 2px 4px rgba(16, 24, 64, 0.1),
+    0 24px 56px -20px rgba(31, 38, 135, 0.42),
+    inset 0 0 0 1px rgba(130, 150, 205, 0.16),
+    inset 0 4px 2px -2px rgba(255, 255, 255, 1),
+    inset 4px 0 2px -2px rgba(255, 255, 255, 0.8),
+    inset -4px 0 2px -2px rgba(255, 255, 255, 0.42),
+    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.7),
+    inset 0 0 40px -6px rgba(255, 255, 255, 0.55);
   transform: translate(-50%, -50%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
-  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(106%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1)) blur(2px)
+    saturate(165%) brightness(106%);
 }
 
 body[theme-mode='dark'] .site-background-preview-glass {
-  background: rgba(24, 24, 27, 0.72);
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
-  );
-  border-color: rgba(255, 255, 255, 0.14);
   box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 2px 4px rgba(0, 0, 0, 0.32),
+    0 24px 56px -20px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    inset 0 4px 2px -2px rgba(255, 255, 255, 0.34),
+    inset 4px 0 2px -2px rgba(255, 255, 255, 0.16),
+    inset -4px 0 2px -2px rgba(255, 255, 255, 0.07),
+    inset 0 -4px 2px -2px rgba(255, 255, 255, 0.12),
+    inset 0 0 40px -6px rgba(255, 255, 255, 0.16);
+  -webkit-backdrop-filter: blur(2px) saturate(165%) brightness(97%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1)) blur(2px)
+    saturate(165%) brightness(97%);
 }
 
 body[theme-mode='dark'] .site-background-preview-overlay {
@@ -405,8 +509,9 @@ body[theme-mode='dark'] .site-background-preview-overlay {
 
 @media (max-width: 767px) {
   .site-background-glass {
-    --site-background-glass-blur: 12px;
-    --site-background-glass-saturation: 130%;
+    /* 移动端 GPU 预算有限：收窄折射带并略提模糊，视觉退化优于掉帧。 */
+    --site-background-glass-blur: 4px;
+    --site-background-glass-saturation: 150%;
   }
 
   .site-background-setting-grid {

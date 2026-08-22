@@ -46,12 +46,13 @@ func (source *SiteBackgroundSource) UnmarshalJSON(data []byte) error {
 }
 
 type SiteBackgroundSettings struct {
-	Enabled        bool                   `json:"enabled"`
-	Fit            string                 `json:"fit"`
-	OverlayOpacity int                    `json:"overlay_opacity"`
-	GlassEnabled   bool                   `json:"glass_enabled"`
-	GlassOpacity   int                    `json:"glass_opacity"`
-	Sources        []SiteBackgroundSource `json:"sources"`
+	Enabled         bool                   `json:"enabled"`
+	Fit             string                 `json:"fit"`
+	OverlayOpacity  int                    `json:"overlay_opacity"`
+	GlassEnabled    bool                   `json:"glass_enabled"`
+	GlassOpacity    int                    `json:"glass_opacity"`
+	GlassRefraction int                    `json:"glass_refraction"`
+	Sources         []SiteBackgroundSource `json:"sources"`
 }
 
 type siteBackgroundConfig struct {
@@ -68,12 +69,13 @@ func init() {
 
 func DefaultSiteBackgroundSettings() SiteBackgroundSettings {
 	return SiteBackgroundSettings{
-		Enabled:        false,
-		Fit:            SiteBackgroundFitCover,
-		OverlayOpacity: 25,
-		GlassEnabled:   false,
-		GlassOpacity:   72,
-		Sources:        []SiteBackgroundSource{},
+		Enabled:         false,
+		Fit:             SiteBackgroundFitCover,
+		OverlayOpacity:  25,
+		GlassEnabled:    false,
+		GlassOpacity:    72,
+		GlassRefraction: 70,
+		Sources:         []SiteBackgroundSource{},
 	}
 }
 
@@ -89,6 +91,9 @@ func (settings *SiteBackgroundSettings) UnmarshalJSON(data []byte) error {
 	}
 	if _, exists := fields["glass_opacity"]; !exists {
 		decoded.GlassOpacity = DefaultSiteBackgroundSettings().GlassOpacity
+	}
+	if _, exists := fields["glass_refraction"]; !exists {
+		decoded.GlassRefraction = DefaultSiteBackgroundSettings().GlassRefraction
 	}
 	*settings = SiteBackgroundSettings(decoded)
 	return nil
@@ -123,6 +128,9 @@ func ValidateSiteBackgroundSettings(settings SiteBackgroundSettings) error {
 	}
 	if settings.GlassOpacity < 0 || settings.GlassOpacity > 100 {
 		return fmt.Errorf("液态玻璃不透明度必须在 0 到 100 之间")
+	}
+	if settings.GlassRefraction < 0 || settings.GlassRefraction > 100 {
+		return fmt.Errorf("液态玻璃折射强度必须在 0 到 100 之间")
 	}
 
 	if len(settings.Sources) > MaxSiteBackgroundSources {

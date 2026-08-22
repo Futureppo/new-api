@@ -22,6 +22,7 @@ import {
   normalizeSiteBackgroundConfig,
   resolveSiteBackground,
 } from '../../services/siteBackground';
+import SiteBackgroundGlassFilter from './SiteBackgroundGlassFilter';
 
 const SiteBackground = ({ config }) => {
   const normalizedConfig = useMemo(
@@ -59,6 +60,11 @@ const SiteBackground = ({ config }) => {
 
   return (
     <div className='site-background-layer' aria-hidden='true'>
+      {normalizedConfig.glass_enabled && (
+        <SiteBackgroundGlassFilter
+          refraction={normalizedConfig.glass_refraction}
+        />
+      )}
       {imageURL && (
         <img
           className='site-background-image site-background-image-loaded'

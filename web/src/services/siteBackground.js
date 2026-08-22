@@ -34,6 +34,7 @@ export const DEFAULT_SITE_BACKGROUND_CONFIG = Object.freeze({
   overlay_opacity: 25,
   glass_enabled: false,
   glass_opacity: 72,
+  glass_refraction: 70,
   sources: [],
 });
 
@@ -108,6 +109,10 @@ export const normalizeSiteBackgroundConfig = (value) => {
   const glassOpacity = Number.isFinite(parsedGlassOpacity)
     ? Math.min(100, Math.max(0, Math.round(parsedGlassOpacity)))
     : DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity;
+  const parsedGlassRefraction = Number(parsed.glass_refraction);
+  const glassRefraction = Number.isFinite(parsedGlassRefraction)
+    ? Math.min(100, Math.max(0, Math.round(parsedGlassRefraction)))
+    : DEFAULT_SITE_BACKGROUND_CONFIG.glass_refraction;
   const sources = Array.isArray(parsed.sources)
     ? parsed.sources
         .slice(0, SITE_BACKGROUND_MAX_SOURCES)
@@ -122,8 +127,28 @@ export const normalizeSiteBackgroundConfig = (value) => {
     overlay_opacity: overlayOpacity,
     glass_enabled: parsed.glass_enabled === true,
     glass_opacity: glassOpacity,
+    glass_refraction: glassRefraction,
     sources,
   };
+};
+
+/*
+ * glass_opacity 是管理员感知的"玻璃厚度"，但新的玻璃模型里质感来自折射与边缘
+ * 光学，底色只能留很薄一层——直接把滑块值当成填充不透明度会把折射整个盖掉，
+ * 那正是旧实现看起来像磨砂塑料的原因。这里按比例压缩到一个远更透的区间，
+ * 同时保留"数值越大越厚"的直觉。
+ */
+export const SITE_BACKGROUND_GLASS_VEIL_RATIO = 0.35;
+
+export const resolveSiteBackgroundGlassVeil = (glassOpacity) => {
+  const value = Number(glassOpacity);
+  if (!Number.isFinite(value)) {
+    return (
+      DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity *
+      SITE_BACKGROUND_GLASS_VEIL_RATIO
+    );
+  }
+  return Math.min(100, Math.max(0, value)) * SITE_BACKGROUND_GLASS_VEIL_RATIO;
 };
 
 export const orderSiteBackgroundSources = (
