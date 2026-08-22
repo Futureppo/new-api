@@ -96,6 +96,11 @@ func TestValidateSiteBackgroundSettings(t *testing.T) {
 				settings.Sources[index] = SiteBackgroundSource{Type: SiteBackgroundSourceImageURL, URL: fmt.Sprintf("https://example.com/%d.jpg", index), Enabled: true, Weight: 1}
 			}
 		}, wantErr: true},
+		{name: "invalid glass renderer", mutate: func(settings *SiteBackgroundSettings) { settings.GlassRenderer = "other" }, wantErr: true},
+		{name: "webgl glass renderer", mutate: func(settings *SiteBackgroundSettings) { settings.GlassRenderer = SiteBackgroundGlassRendererWebGL }},
+		{name: "glass edge clarity out of range", mutate: func(settings *SiteBackgroundSettings) { settings.GlassEdgeClarity = 101 }, wantErr: true},
+		{name: "glass dispersion out of range", mutate: func(settings *SiteBackgroundSettings) { settings.GlassDispersion = -1 }, wantErr: true},
+		{name: "glass edge light out of range", mutate: func(settings *SiteBackgroundSettings) { settings.GlassEdgeLight = 101 }, wantErr: true},
 		{name: "invalid source type", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].Type = "other" }, wantErr: true},
 		{name: "empty source url", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].URL = "" }, wantErr: true},
 		{name: "protocol relative url", mutate: func(settings *SiteBackgroundSettings) { settings.Sources[0].URL = "//example.com/image.jpg" }, wantErr: true},

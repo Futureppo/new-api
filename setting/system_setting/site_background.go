@@ -19,6 +19,9 @@ const (
 	SiteBackgroundFitContain = "contain"
 	SiteBackgroundFitFill    = "fill"
 
+	SiteBackgroundGlassRendererCSS   = "css"
+	SiteBackgroundGlassRendererWebGL = "webgl"
+
 	MaxSiteBackgroundSources = 20
 )
 
@@ -46,12 +49,19 @@ func (source *SiteBackgroundSource) UnmarshalJSON(data []byte) error {
 }
 
 type SiteBackgroundSettings struct {
-	Enabled        bool                   `json:"enabled"`
-	Fit            string                 `json:"fit"`
-	OverlayOpacity int                    `json:"overlay_opacity"`
-	GlassEnabled   bool                   `json:"glass_enabled"`
-	GlassOpacity   int                    `json:"glass_opacity"`
-	Sources        []SiteBackgroundSource `json:"sources"`
+	Enabled         bool   `json:"enabled"`
+	Fit             string `json:"fit"`
+	OverlayOpacity  int    `json:"overlay_opacity"`
+	GlassEnabled    bool   `json:"glass_enabled"`
+	GlassOpacity    int    `json:"glass_opacity"`
+	GlassRefraction int    `json:"glass_refraction"`
+	// 玻璃渲染路径：css 走 backdrop-filter；webgl 用画布自绘（支持边缘折射、
+	// 色散与边缘光，且不受 SVG 滤镜掉出 GPU 合成路径的性能问题影响）。
+	GlassRenderer    string                 `json:"glass_renderer"`
+	GlassEdgeClarity int                    `json:"glass_edge_clarity"`
+	GlassDispersion  int                    `json:"glass_dispersion"`
+	GlassEdgeLight   int                    `json:"glass_edge_light"`
+	Sources          []SiteBackgroundSource `json:"sources"`
 }
 
 type siteBackgroundConfig struct {
@@ -68,12 +78,17 @@ func init() {
 
 func DefaultSiteBackgroundSettings() SiteBackgroundSettings {
 	return SiteBackgroundSettings{
-		Enabled:        false,
-		Fit:            SiteBackgroundFitCover,
-		OverlayOpacity: 25,
-		GlassEnabled:   false,
-		GlassOpacity:   72,
-		Sources:        []SiteBackgroundSource{},
+		Enabled:          false,
+		Fit:              SiteBackgroundFitCover,
+		OverlayOpacity:   25,
+		GlassEnabled:     false,
+		GlassOpacity:     72,
+		GlassRefraction:  0,
+		GlassRenderer:    SiteBackgroundGlassRendererCSS,
+		GlassEdgeClarity: 70,
+		GlassDispersion:  40,
+		GlassEdgeLight:   35,
+		Sources:          []SiteBackgroundSource{},
 	}
 }
 
@@ -89,6 +104,21 @@ func (settings *SiteBackgroundSettings) UnmarshalJSON(data []byte) error {
 	}
 	if _, exists := fields["glass_opacity"]; !exists {
 		decoded.GlassOpacity = DefaultSiteBackgroundSettings().GlassOpacity
+	}
+	if _, exists := fields["glass_refraction"]; !exists {
+		decoded.GlassRefraction = DefaultSiteBackgroundSettings().GlassRefraction
+	}
+	if _, exists := fields["glass_renderer"]; !exists {
+		decoded.GlassRenderer = DefaultSiteBackgroundSettings().GlassRenderer
+	}
+	if _, exists := fields["glass_edge_clarity"]; !exists {
+		decoded.GlassEdgeClarity = DefaultSiteBackgroundSettings().GlassEdgeClarity
+	}
+	if _, exists := fields["glass_dispersion"]; !exists {
+		decoded.GlassDispersion = DefaultSiteBackgroundSettings().GlassDispersion
+	}
+	if _, exists := fields["glass_edge_light"]; !exists {
+		decoded.GlassEdgeLight = DefaultSiteBackgroundSettings().GlassEdgeLight
 	}
 	*settings = SiteBackgroundSettings(decoded)
 	return nil
@@ -123,6 +153,24 @@ func ValidateSiteBackgroundSettings(settings SiteBackgroundSettings) error {
 	}
 	if settings.GlassOpacity < 0 || settings.GlassOpacity > 100 {
 		return fmt.Errorf("液态玻璃不透明度必须在 0 到 100 之间")
+	}
+	if settings.GlassRefraction < 0 || settings.GlassRefraction > 100 {
+		return fmt.Errorf("液态玻璃折射强度必须在 0 到 100 之间")
+	}
+	switch settings.GlassRenderer {
+	// 空串按默认 css 处理，兼容未经 UnmarshalJSON 回填、直接构造的存量结构体
+	case "", SiteBackgroundGlassRendererCSS, SiteBackgroundGlassRendererWebGL:
+	default:
+		return fmt.Errorf("液态玻璃渲染器必须是 css 或 webgl")
+	}
+	if settings.GlassEdgeClarity < 0 || settings.GlassEdgeClarity > 100 {
+		return fmt.Errorf("液态玻璃边缘清晰度必须在 0 到 100 之间")
+	}
+	if settings.GlassDispersion < 0 || settings.GlassDispersion > 100 {
+		return fmt.Errorf("液态玻璃色散必须在 0 到 100 之间")
+	}
+	if settings.GlassEdgeLight < 0 || settings.GlassEdgeLight > 100 {
+		return fmt.Errorf("液态玻璃边缘光必须在 0 到 100 之间")
 	}
 
 	if len(settings.Sources) > MaxSiteBackgroundSources {

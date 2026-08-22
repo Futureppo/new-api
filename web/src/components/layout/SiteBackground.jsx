@@ -22,6 +22,8 @@ import {
   normalizeSiteBackgroundConfig,
   resolveSiteBackground,
 } from '../../services/siteBackground';
+import SiteBackgroundGlassFilter from './SiteBackgroundGlassFilter';
+import SiteBackgroundGlassCanvas from './SiteBackgroundGlassCanvas';
 
 const SiteBackground = ({ config }) => {
   const normalizedConfig = useMemo(
@@ -33,6 +35,12 @@ const SiteBackground = ({ config }) => {
     [normalizedConfig.sources],
   );
   const [imageURL, setImageURL] = useState('');
+  const [webglFailed, setWebglFailed] = useState(false);
+
+  // 管理员把渲染器切回 webgl（或换了配置）时给它重试机会
+  useEffect(() => {
+    setWebglFailed(false);
+  }, [normalizedConfig.glass_renderer]);
 
   useEffect(() => {
     if (!normalizedConfig.enabled) {
@@ -57,24 +65,50 @@ const SiteBackground = ({ config }) => {
 
   if (!normalizedConfig.enabled) return null;
 
+  const webglActive =
+    normalizedConfig.glass_enabled &&
+    normalizedConfig.glass_renderer === 'webgl' &&
+    !webglFailed;
+
+  // WebGL 路径由画布负责背景、遮罩与玻璃磨砂；CSS 路径维持原样。
+  // 渲染器运行中失败（上下文丢失、图源跨域受限）会切回 CSS 路径，此时
+  // 不再补挂 SVG 折射滤镜——折射本就是可选增强，回退以稳为先。
   return (
     <div className='site-background-layer' aria-hidden='true'>
-      {imageURL && (
-        <img
-          className='site-background-image site-background-image-loaded'
-          src={imageURL}
-          alt=''
-          referrerPolicy='no-referrer'
-          style={{ objectFit: normalizedConfig.fit }}
+      {normalizedConfig.glass_enabled && !webglActive && (
+        <SiteBackgroundGlassFilter
+          refraction={normalizedConfig.glass_refraction}
         />
       )}
-      <div
-        className='site-background-overlay'
-        style={{
-          '--site-background-overlay-opacity':
-            normalizedConfig.overlay_opacity / 100,
-        }}
-      />
+      {webglActive ? (
+        <SiteBackgroundGlassCanvas
+          config={normalizedConfig}
+          imageURL={imageURL}
+          onFallback={(reason) => {
+            console.warn('站点背景 WebGL 渲染不可用，退回 CSS:', reason);
+            setWebglFailed(true);
+          }}
+        />
+      ) : (
+        <>
+          {imageURL && (
+            <img
+              className='site-background-image site-background-image-loaded'
+              src={imageURL}
+              alt=''
+              referrerPolicy='no-referrer'
+              style={{ objectFit: normalizedConfig.fit }}
+            />
+          )}
+          <div
+            className='site-background-overlay'
+            style={{
+              '--site-background-overlay-opacity':
+                normalizedConfig.overlay_opacity / 100,
+            }}
+          />
+        </>
+      )}
     </div>
   );
 };

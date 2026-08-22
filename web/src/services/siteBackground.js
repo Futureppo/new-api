@@ -28,12 +28,19 @@ export const SITE_BACKGROUND_SOURCE_TYPES = {
 
 export const SITE_BACKGROUND_FIT_MODES = ['cover', 'contain', 'fill'];
 
+export const SITE_BACKGROUND_GLASS_RENDERERS = ['css', 'webgl'];
+
 export const DEFAULT_SITE_BACKGROUND_CONFIG = Object.freeze({
   enabled: false,
   fit: 'cover',
   overlay_opacity: 25,
   glass_enabled: false,
   glass_opacity: 72,
+  glass_refraction: 0,
+  glass_renderer: 'css',
+  glass_edge_clarity: 70,
+  glass_dispersion: 40,
+  glass_edge_light: 35,
   sources: [],
 });
 
@@ -108,6 +115,33 @@ export const normalizeSiteBackgroundConfig = (value) => {
   const glassOpacity = Number.isFinite(parsedGlassOpacity)
     ? Math.min(100, Math.max(0, Math.round(parsedGlassOpacity)))
     : DEFAULT_SITE_BACKGROUND_CONFIG.glass_opacity;
+  const parsedGlassRefraction = Number(parsed.glass_refraction);
+  const glassRefraction = Number.isFinite(parsedGlassRefraction)
+    ? Math.min(100, Math.max(0, Math.round(parsedGlassRefraction)))
+    : DEFAULT_SITE_BACKGROUND_CONFIG.glass_refraction;
+  const glassRenderer = SITE_BACKGROUND_GLASS_RENDERERS.includes(
+    parsed.glass_renderer,
+  )
+    ? parsed.glass_renderer
+    : DEFAULT_SITE_BACKGROUND_CONFIG.glass_renderer;
+  const clampPercent = (value, fallback) => {
+    const parsedValue = Number(value);
+    return Number.isFinite(parsedValue)
+      ? Math.min(100, Math.max(0, Math.round(parsedValue)))
+      : fallback;
+  };
+  const glassEdgeClarity = clampPercent(
+    parsed.glass_edge_clarity,
+    DEFAULT_SITE_BACKGROUND_CONFIG.glass_edge_clarity,
+  );
+  const glassDispersion = clampPercent(
+    parsed.glass_dispersion,
+    DEFAULT_SITE_BACKGROUND_CONFIG.glass_dispersion,
+  );
+  const glassEdgeLight = clampPercent(
+    parsed.glass_edge_light,
+    DEFAULT_SITE_BACKGROUND_CONFIG.glass_edge_light,
+  );
   const sources = Array.isArray(parsed.sources)
     ? parsed.sources
         .slice(0, SITE_BACKGROUND_MAX_SOURCES)
@@ -122,6 +156,11 @@ export const normalizeSiteBackgroundConfig = (value) => {
     overlay_opacity: overlayOpacity,
     glass_enabled: parsed.glass_enabled === true,
     glass_opacity: glassOpacity,
+    glass_refraction: glassRefraction,
+    glass_renderer: glassRenderer,
+    glass_edge_clarity: glassEdgeClarity,
+    glass_dispersion: glassDispersion,
+    glass_edge_light: glassEdgeLight,
     sources,
   };
 };
