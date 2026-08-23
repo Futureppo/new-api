@@ -52,6 +52,15 @@ body {
   background: var(--semi-color-bg-0);
 }
 
+/* 折射滤镜只提供 <filter> 定义，本身不参与布局与绘制。 */
+.site-background-glass-filter {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 .site-background-image {
   position: absolute;
   inset: 0;
@@ -90,14 +99,32 @@ body[theme-mode='dark'] .site-background-overlay {
 }
 
 .site-background-glass {
-  --site-background-glass-blur: 18px;
-  --site-background-glass-saturation: 145%;
+  /* 可读性的关键在于销毁背景的高频细节，而不是提高对比度——实测各档参数下
+     文字对比度都在 11:1 以上，远超 WCAG AAA，真正让人看不清的是背景纹理在跟
+     笔画抢。所以模糊要足、饱和度要收、再用 contrast 压缩背景的明暗跨度。 */
+  --site-background-glass-blur: 26px;
+  --site-background-glass-saturation: 115%;
+  --site-background-glass-brightness: 104%;
+  --site-background-glass-contrast: 88%;
+  /* 明暗各一份折射滤镜，在这里按主题选定；未启用折射时回落到恒等函数。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
   --site-background-table-fallback: rgba(255, 255, 255, 0.86);
   --site-background-fixed-cell-fallback: rgba(255, 255, 255, 0.25);
   --site-background-fade-surface: rgba(255, 255, 255, 0.22);
 }
 
 body[theme-mode='dark'] .site-background-glass {
+  /* 不要压暗：底色本身就是深色薄膜，再降亮度整块会发闷。 */
+  --site-background-glass-brightness: 102%;
+  --site-background-glass-contrast: 90%;
+  /* 暗色用色散削弱版，否则背景里的高对比边缘会被拆成霓虹条纹。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
+  );
   --site-background-table-fallback: rgba(24, 24, 27, 0.86);
   --site-background-fixed-cell-fallback: rgba(24, 24, 27, 0.25);
   --site-background-fade-surface: rgba(24, 24, 27, 0.22);
@@ -109,25 +136,101 @@ body[theme-mode='dark'] .site-background-glass {
 .site-background-glass .semi-layout-header > header,
 .site-background-glass .app-sider,
 .site-background-glass .semi-layout-footer {
-  background: rgba(255, 255, 255, 0.72) !important;
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+  position: relative;
+  /* 厚度梯度（上薄下厚）。平铺单色是贴纸，真玻璃的透光度随厚度变化。 */
+  background: linear-gradient(
+    158deg,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-opacity, 72%) * 0.72),
+        transparent
+      )
+      0%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+        transparent
+      )
+      52%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-opacity, 72%) * 1.18),
+        transparent
+      )
+      100%
   ) !important;
-  border-color: rgba(255, 255, 255, 0.48) !important;
-  border-color: color-mix(
-    in srgb,
-    white 48%,
-    transparent
-  ) !important;
-  box-shadow:
-    0 12px 36px rgba(31, 38, 135, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.42);
+  /* 边缘交给下面的方向性 inset 亮边处理，四边等亮的描边正是注塑塑料件的轮廓
+     特征。这里只清掉颜色而不动 border-width，避免给 border-0 的卡片撑出位移。 */
+  border-color: transparent !important;
   -webkit-backdrop-filter: blur(var(--site-background-glass-blur))
-    saturate(var(--site-background-glass-saturation));
-  backdrop-filter: blur(var(--site-background-glass-blur))
-    saturate(var(--site-background-glass-saturation));
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness))
+    contrast(var(--site-background-glass-contrast));
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(var(--site-background-glass-blur))
+    saturate(var(--site-background-glass-saturation))
+    brightness(var(--site-background-glass-brightness))
+    contrast(var(--site-background-glass-contrast));
+  box-shadow:
+    /* 接触阴影 + 环境投影：玻璃是浮在背景上的，不是贴上去的 */
+    0 2px 4px rgba(16, 24, 64, 0.1),
+    0 24px 56px -20px rgba(31, 38, 135, 0.34),
+    /* 折射暗带：亮边内侧的一圈极淡暗线，玻璃边缘的关键特征。
+       再深就会在亮边旁边读成一条黑边。 */ inset 0 0 0 1px
+      rgba(130, 150, 205, 0.1),
+    /* 方向性亮边：左上受光强、右下弱。必须是细线——加宽会在四周糊出一圈
+       白雾，既盖掉透光也把圆角的曲线填平，看上去像方角。 */ inset 0 1.5px 1px
+      -1px rgba(255, 255, 255, 0.95),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.3),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.5),
+    /* 内缘聚光：玻璃厚度带来的边缘辉光，同样必须克制 */ inset 0 0 14px -8px
+      rgba(255, 255, 255, 0.45);
+}
+
+/* WebGL 渲染路径：磨砂与折射由画布提供，DOM 侧关掉 backdrop-filter，
+   其余分层（渐变底色、阴影、镜面反射）原样保留，两条路径视觉分层一致。 */
+.site-background-glass-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body.site-background-glass-webgl .site-background-glass .semi-card,
+body.site-background-glass-webgl .site-background-glass .pricing-sidebar,
+body.site-background-glass-webgl .site-background-glass .pricing-search-header,
+body.site-background-glass-webgl
+  .site-background-glass
+  .semi-layout-header
+  > header,
+body.site-background-glass-webgl .site-background-glass .app-sider,
+body.site-background-glass-webgl .site-background-glass .semi-layout-footer {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* 镜面反射。玻璃必然反射环境光，纯 backdrop-filter 做不出这一层。 */
+.site-background-glass .semi-card::after,
+.site-background-glass .pricing-sidebar::after,
+.site-background-glass .pricing-search-header::after {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  content: '';
+  background: linear-gradient(
+    124deg,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0.1) 14%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.16) 100%
+  );
+  border-radius: inherit;
+  mix-blend-mode: soft-light;
 }
 
 body[theme-mode='dark'] .site-background-glass .semi-card,
@@ -136,16 +239,30 @@ body[theme-mode='dark'] .site-background-glass .pricing-search-header,
 body[theme-mode='dark'] .site-background-glass .semi-layout-header > header,
 body[theme-mode='dark'] .site-background-glass .app-sider,
 body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
-  background: rgba(24, 24, 27, 0.72) !important;
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
-  ) !important;
-  border-color: rgba(255, 255, 255, 0.14) !important;
   box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.24),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 2px 4px rgba(0, 0, 0, 0.32),
+    0 24px 56px -20px rgba(0, 0, 0, 0.55),
+    /* 折射暗带在暗色下要用真正的暗色，用白色会把这条对比线抹掉 */
+      inset 0 0 0 1px rgba(8, 12, 28, 0.45),
+    /* 亮边反射的是环境光，不因为主题变暗而变暗——把它调暗正是暗色下
+       玻璃感消失的主因 */ inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.42),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.18),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.34),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
+}
+
+body[theme-mode='dark'] .site-background-glass .semi-card::after,
+body[theme-mode='dark'] .site-background-glass .pricing-sidebar::after,
+body[theme-mode='dark'] .site-background-glass .pricing-search-header::after {
+  background: linear-gradient(
+    124deg,
+    rgba(255, 255, 255, 0.34) 0%,
+    rgba(255, 255, 255, 0.1) 14%,
+    rgba(255, 255, 255, 0) 34%,
+    rgba(255, 255, 255, 0) 70%,
+    rgba(255, 255, 255, 0.2) 100%
+  );
 }
 
 .site-background-glass .sidebar-container,
@@ -351,6 +468,13 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
 }
 
 .site-background-preview-glass {
+  /* 必须在预览元素自身上重新解析：祖先已把该变量算成主滤镜的引用，继承下来的
+     是结果而不是表达式，光在这里设 -light/-dark 不会生效。 */
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-light,
+    opacity(1)
+  );
+
   position: absolute;
   top: 50%;
   left: 50%;
@@ -360,32 +484,66 @@ body[theme-mode='dark'] .site-background-glass .semi-layout-footer {
   font-weight: 600;
   text-align: center;
   background: rgba(255, 255, 255, 0.72);
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+  background: linear-gradient(
+    158deg,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-opacity, 72%) * 0.72),
+        transparent
+      )
+      0%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
+        transparent
+      )
+      52%,
+    color-mix(
+        in srgb,
+        var(--semi-color-bg-0)
+          calc(var(--site-background-glass-opacity, 72%) * 1.18),
+        transparent
+      )
+      100%
   );
-  border: 1px solid rgba(255, 255, 255, 0.48);
+  border: 1px solid transparent;
   border-radius: 18px;
   box-shadow:
-    0 12px 36px rgba(31, 38, 135, 0.14),
-    inset 0 1px 0 rgba(255, 255, 255, 0.48);
+    0 2px 4px rgba(16, 24, 64, 0.1),
+    0 20px 48px -18px rgba(31, 38, 135, 0.34),
+    inset 0 0 0 1px rgba(130, 150, 205, 0.1),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.95),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.6),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.3),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.5),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.45);
   transform: translate(-50%, -50%);
-  -webkit-backdrop-filter: blur(18px) saturate(145%);
-  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(104%)
+    contrast(88%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(26px) saturate(115%) brightness(104%) contrast(88%);
 }
 
 body[theme-mode='dark'] .site-background-preview-glass {
-  background: rgba(24, 24, 27, 0.72);
-  background: color-mix(
-    in srgb,
-    var(--semi-color-bg-0) var(--site-background-glass-opacity, 72%),
-    transparent
+  --site-background-glass-refract: var(
+    --site-background-glass-refract-dark,
+    opacity(1)
   );
-  border-color: rgba(255, 255, 255, 0.14);
+
   box-shadow:
-    0 12px 36px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    0 2px 4px rgba(0, 0, 0, 0.32),
+    0 20px 48px -18px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(8, 12, 28, 0.45),
+    inset 0 1.5px 1px -1px rgba(255, 255, 255, 0.72),
+    inset 1.5px 0 1px -1px rgba(255, 255, 255, 0.42),
+    inset -1.5px 0 1px -1px rgba(255, 255, 255, 0.18),
+    inset 0 -1.5px 1px -1px rgba(255, 255, 255, 0.34),
+    inset 0 0 14px -8px rgba(255, 255, 255, 0.3);
+  -webkit-backdrop-filter: blur(26px) saturate(115%) brightness(102%)
+    contrast(90%);
+  backdrop-filter: var(--site-background-glass-refract, opacity(1))
+    blur(26px) saturate(115%) brightness(102%) contrast(90%);
 }
 
 body[theme-mode='dark'] .site-background-preview-overlay {
@@ -405,8 +563,8 @@ body[theme-mode='dark'] .site-background-preview-overlay {
 
 @media (max-width: 767px) {
   .site-background-glass {
-    --site-background-glass-blur: 12px;
-    --site-background-glass-saturation: 130%;
+    --site-background-glass-blur: 18px;
+    --site-background-glass-saturation: 115%;
   }
 
   .site-background-setting-grid {

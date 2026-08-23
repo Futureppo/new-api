@@ -40,6 +40,10 @@ import { StatusContext } from '../../context/Status';
 import { useLocation } from 'react-router-dom';
 import { normalizeLanguage } from '../../i18n/language';
 import SiteBackground from './SiteBackground';
+import {
+  darkVariantFilterId,
+  SITE_BACKGROUND_GLASS_FILTER_ID,
+} from './SiteBackgroundGlassFilter';
 import { normalizeSiteBackgroundConfig } from '../../services/siteBackground';
 const { Sider, Content, Header } = Layout;
 
@@ -67,6 +71,16 @@ const PageLayout = () => {
   const siteBackgroundGlassStyle = siteBackgroundGlassActive
     ? {
         '--site-background-glass-opacity': `${siteBackgroundConfig.glass_opacity}%`,
+        // 明暗两套滤镜由 CSS 按主题挑选；折射为 0 时两个变量都不下发，
+        // CSS 侧回落到无折射写法。
+        ...(siteBackgroundConfig.glass_refraction > 0
+          ? {
+              '--site-background-glass-refract-light': `url(#${SITE_BACKGROUND_GLASS_FILTER_ID})`,
+              '--site-background-glass-refract-dark': `url(#${darkVariantFilterId(
+                SITE_BACKGROUND_GLASS_FILTER_ID,
+              )})`,
+            }
+          : {}),
       }
     : {};
 
