@@ -95,18 +95,26 @@ func TestTaskModel2DtoHidesFailedTaskDetailsForClient(t *testing.T) {
 	task := &model.Task{
 		Status:     model.TaskStatusFailure,
 		FailReason: "provider account and endpoint leaked",
-		Data:       json.RawMessage(`{"error":{"message":"provider secret"}}`),
+		Properties: model.Properties{Input: "provider secret", UpstreamModelName: "upstream-model"},
+		PrivateData: model.TaskPrivateData{
+			ResultURL: "https://provider.example/result",
+		},
+		Data: json.RawMessage(`{"error":{"message":"provider secret"}}`),
 	}
 
 	hidden := TaskModel2Dto(task, false)
 	require.Equal(t, dto.TaskFailureCode, hidden.FailReason)
 	require.Nil(t, hidden.Data)
+	require.Empty(t, hidden.Properties)
+	require.Empty(t, hidden.ResultURL)
 	require.Equal(t, "provider account and endpoint leaked", task.FailReason)
 	require.NotNil(t, task.Data)
 
 	visible := TaskModel2Dto(task, true)
 	require.Equal(t, task.FailReason, visible.FailReason)
 	require.Equal(t, task.Data, visible.Data)
+	require.Equal(t, task.Properties, visible.Properties)
+	require.Equal(t, task.PrivateData.ResultURL, visible.ResultURL)
 }
 
 func TestInitTaskPersistsFullRedirectStateOnlyWhenActive(t *testing.T) {

@@ -39,7 +39,7 @@ func GetAllTask(c *gin.Context) {
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true, false))
+	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role") >= common.RoleRootUser))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -64,11 +64,11 @@ func GetUserTask(c *gin.Context) {
 	items := model.TaskGetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllUserTask(userId, queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, false, true))
+	pageInfo.SetItems(tasksToDto(items, false, false))
 	common.ApiSuccess(c, pageInfo)
 }
 
-func tasksToDto(tasks []*model.Task, fillUser bool, applyChannelPrivacy bool) []*dto.TaskDto {
+func tasksToDto(tasks []*model.Task, fillUser bool, showErrorDetails bool) []*dto.TaskDto {
 	var userIdMap map[int]*model.UserBase
 	if fillUser {
 		userIdMap = make(map[int]*model.UserBase)
@@ -83,14 +83,6 @@ func tasksToDto(tasks []*model.Task, fillUser bool, applyChannelPrivacy bool) []
 			}
 		}
 	}
-	visibility := map[int]bool{}
-	if applyChannelPrivacy {
-		channelIDs := make([]int, 0, len(tasks))
-		for _, task := range tasks {
-			channelIDs = append(channelIDs, task.ChannelId)
-		}
-		visibility = model.GetChannelErrorDetailsVisibility(channelIDs)
-	}
 	result := make([]*dto.TaskDto, len(tasks))
 	for i, task := range tasks {
 		if fillUser {
@@ -98,11 +90,7 @@ func tasksToDto(tasks []*model.Task, fillUser bool, applyChannelPrivacy bool) []
 				task.Username = user.Username
 			}
 		}
-		if applyChannelPrivacy {
-			result[i] = relay.TaskModel2Dto(task, visibility[task.ChannelId])
-		} else {
-			result[i] = relay.TaskModel2Dto(task)
-		}
+		result[i] = relay.TaskModel2Dto(task, showErrorDetails)
 	}
 	return result
 }

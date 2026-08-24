@@ -55,6 +55,8 @@ const (
 
 const maxUserAgentLogLength = 1024
 
+const hiddenUpstreamErrorCode = "upstream_error"
+
 func requestUserAgent(c *gin.Context) string {
 	if c == nil || c.Request == nil {
 		return ""
@@ -85,8 +87,59 @@ func applyUserAgentFilter(tx *gorm.DB, column string, userAgent string) *gorm.DB
 	return tx.Where("LOWER("+column+") LIKE ? ESCAPE '!'", containsLikePattern(userAgent))
 }
 
+func errorCodeFromLogOther(otherMap map[string]interface{}) string {
+	for _, key := range []string{"error_code", "error_type", "status_code"} {
+		value, ok := otherMap[key]
+		if !ok || value == nil {
+			continue
+		}
+		code := strings.TrimSpace(fmt.Sprint(value))
+		if code != "" && code != "<nil>" {
+			return code
+		}
+	}
+	return hiddenUpstreamErrorCode
+}
+
+func sanitizeErrorLogForNonRoot(log *Log) {
+	if log == nil || log.Type != LogTypeError {
+		return
+	}
+	otherMap, err := common.StrToMap(log.Other)
+	if err != nil {
+		log.Content = hiddenUpstreamErrorCode
+		log.Other = ""
+		return
+	}
+	log.Content = errorCodeFromLogOther(otherMap)
+	safeOther := make(map[string]interface{}, 3)
+	for _, key := range []string{"error_code", "error_type", "status_code"} {
+		if value, ok := otherMap[key]; ok {
+			safeOther[key] = value
+		}
+	}
+	log.Other = common.MapToJsonStr(safeOther)
+}
+
+// SanitizeLogsForNonRoot returns response-only copies with upstream error
+// details removed. The original records remain unchanged for root users and
+// database-backed diagnostics.
+func SanitizeLogsForNonRoot(logs []*Log) []*Log {
+	result := make([]*Log, len(logs))
+	for i, log := range logs {
+		if log == nil {
+			continue
+		}
+		clientLog := *log
+		sanitizeErrorLogForNonRoot(&clientLog)
+		result[i] = &clientLog
+	}
+	return result
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
+		sanitizeErrorLogForNonRoot(logs[i])
 		logs[i].ChannelName = ""
 		var otherMap map[string]interface{}
 		otherMap, _ = common.StrToMap(logs[i].Other)

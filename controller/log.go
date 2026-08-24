@@ -10,6 +10,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func logsForViewer(logs []*model.Log, role int) []*model.Log {
+	if role >= common.RoleRootUser {
+		return logs
+	}
+	return model.SanitizeLogsForNonRoot(logs)
+}
+
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)
 	logType, _ := strconv.Atoi(c.Query("type"))
@@ -28,6 +35,7 @@ func GetAllLogs(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	logs = logsForViewer(logs, c.GetInt("role"))
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(logs)
 	common.ApiSuccess(c, pageInfo)

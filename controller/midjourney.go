@@ -275,6 +275,7 @@ func GetAllMidjourney(c *gin.Context) {
 			items[i] = midjourney
 		}
 	}
+	items = midjourneyTasksForViewer(items, c.GetInt("role") >= common.RoleRootUser)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
@@ -293,7 +294,6 @@ func GetUserMidjourney(c *gin.Context) {
 
 	items := model.GetAllUserTask(userId, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.CountAllUserTask(userId, queryParams)
-	items = sanitizeMidjourneyTasksForUser(items)
 
 	if setting.MjForwardUrlEnabled {
 		for i, midjourney := range items {
@@ -301,30 +301,31 @@ func GetUserMidjourney(c *gin.Context) {
 			items[i] = midjourney
 		}
 	}
+	items = midjourneyTasksForViewer(items, false)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
 }
 
-func sanitizeMidjourneyTasksForUser(items []*model.Midjourney) []*model.Midjourney {
-	channelIDs := make([]int, 0, len(items))
-	for _, task := range items {
-		if task != nil {
-			channelIDs = append(channelIDs, task.ChannelId)
-		}
+func midjourneyTasksForViewer(items []*model.Midjourney, showErrorDetails bool) []*model.Midjourney {
+	if showErrorDetails {
+		return items
 	}
-	visibility := model.GetChannelErrorDetailsVisibility(channelIDs)
 	result := make([]*model.Midjourney, len(items))
 	for i, task := range items {
 		if task == nil {
 			continue
 		}
 		clientTask := *task
-		if !visibility[task.ChannelId] &&
-			(strings.EqualFold(task.Status, "FAILURE") || strings.TrimSpace(task.FailReason) != "") {
+		if strings.EqualFold(task.Status, "FAILURE") || strings.TrimSpace(task.FailReason) != "" {
 			clientTask.FailReason = dto.TaskFailureCode
 			clientTask.Description = dto.TaskFailureCode
 			clientTask.Properties = ""
+			clientTask.State = ""
+			clientTask.ImageUrl = ""
+			clientTask.VideoUrl = ""
+			clientTask.VideoUrls = ""
+			clientTask.Buttons = ""
 		}
 		result[i] = &clientTask
 	}

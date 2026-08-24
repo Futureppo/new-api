@@ -603,6 +603,8 @@ func taskModelForClient(task *model.Task, showErrorDetails bool) *model.Task {
 	}
 	clientTask := *task
 	clientTask.FailReason = dto.TaskFailureCode
+	clientTask.Properties = model.Properties{}
+	clientTask.PrivateData.ResultURL = ""
 	clientTask.Data = nil
 	return &clientTask
 }
@@ -616,6 +618,10 @@ func TaskModel2Dto(task *model.Task, showErrorDetails ...bool) *dto.TaskDto {
 	properties := task.Properties
 	taskData := task.Data
 	modelName := taskDisplayModelName(task)
+	resultURL := task.GetResultURL()
+	if !showDetails && (task.Status == model.TaskStatusFailure || strings.TrimSpace(task.FailReason) != "") {
+		resultURL = ""
+	}
 	if task.PrivateData.ModelMappingFullEnabled {
 		properties.OriginModelName = modelName
 		properties.UpstreamModelName = modelName
@@ -636,7 +642,7 @@ func TaskModel2Dto(task *model.Task, showErrorDetails ...bool) *dto.TaskDto {
 		Action:     task.Action,
 		Status:     string(task.Status),
 		FailReason: SanitizeTaskModelText(task, task.FailReason),
-		ResultURL:  task.GetResultURL(),
+		ResultURL:  resultURL,
 		SubmitTime: task.SubmitTime,
 		StartTime:  task.StartTime,
 		FinishTime: task.FinishTime,
