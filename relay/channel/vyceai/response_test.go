@@ -3,9 +3,14 @@ package vyceai
 import (
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
+	"github.com/QuantumNous/new-api/types"
+
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -60,6 +65,35 @@ func TestBase64FromDataURLRejectsEmptyPayload(t *testing.T) {
 
 	_, err := base64FromDataURL("data:image/jpeg;base64,")
 	require.ErrorContains(t, err, "empty payload")
+}
+
+func TestSafetyErrorReturnsForbidden(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	info := &relaycommon.RelayInfo{}
+	resp := sseResponse("event: error\ndata: {\"message\":\"Prompt blocked by safety filters: Grok declined to generate this prompt due to content policies.\"}\n\n")
+
+	_, apiErr := handleImageResponse(c, resp, info)
+	require.NotNil(t, apiErr)
+	require.Equal(t, http.StatusForbidden, apiErr.StatusCode)
+	require.Equal(t, types.ErrorCodePromptBlocked, apiErr.GetErrorCode())
+	require.True(t, types.IsSkipRetryError(apiErr))
+}
+
+func TestNonSafetyErrorStillReturnsBadGateway(t *testing.T) {
+	t.Parallel()
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	info := &relaycommon.RelayInfo{}
+	resp := sseResponse("event: error\ndata: {\"message\":\"provider unavailable\"}\n\n")
+
+	_, apiErr := handleImageResponse(c, resp, info)
+	require.NotNil(t, apiErr)
+	require.Equal(t, http.StatusBadGateway, apiErr.StatusCode)
+	require.Equal(t, types.ErrorCodeBadResponseBody, apiErr.GetErrorCode())
 }
 
 func sseResponse(body string) *http.Response {

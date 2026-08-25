@@ -21,6 +21,14 @@ import (
 
 var errImageComplete = errors.New("VyceAI image complete")
 
+type promptBlockedError struct {
+	message string
+}
+
+func (e *promptBlockedError) Error() string {
+	return e.message
+}
+
 type streamEvent struct {
 	Message string          `json:"message"`
 	URL     string          `json:"url"`
@@ -76,7 +84,12 @@ func consumeImageStream(resp *http.Response) (string, error) {
 
 		eventType := strings.ToLower(strings.TrimSpace(eventName))
 		if isErrorEvent(eventType, event.Error) {
-			return fmt.Errorf("upstream error event: %s", streamErrorMessage(event))
+			message := streamErrorMessage(event)
+			upstreamError := "upstream error event: " + message
+			if isPromptBlockedMessage(message) {
+				return &promptBlockedError{message: upstreamError}
+			}
+			return errors.New(upstreamError)
 		}
 		if eventType != "complete" {
 			return nil
@@ -188,6 +201,18 @@ func streamErrorMessage(event streamEvent) string {
 	return "unknown upstream error"
 }
 
+func isPromptBlockedMessage(message string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(message))
+	return strings.Contains(normalized, "safety filter") ||
+		strings.Contains(normalized, "content policy") ||
+		strings.Contains(normalized, "content policies") ||
+		strings.Contains(normalized, "prompt blocked")
+}
+
 func badResponseError(err error) *types.NewAPIError {
+	var blocked *promptBlockedError
+	if errors.As(err, &blocked) {
+		return types.NewOpenAIError(err, types.ErrorCodePromptBlocked, http.StatusForbidden, types.ErrOptionWithSkipRetry())
+	}
 	return types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusBadGateway)
 }
