@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
+	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
 
 	//"github.com/QuantumNous/new-api/relay/channel/minimax"
@@ -671,6 +672,8 @@ func (a *Adaptor) GetModelList() []string {
 		return poe.ModelList
 	case constant.ChannelTypeVercel:
 		return vercel.ModelList
+	case constant.ChannelTypeGMICloud:
+		return gmicloud.ModelList
 	default:
 		return ModelList
 	}
@@ -694,6 +697,8 @@ func (a *Adaptor) GetChannelName() string {
 		return poe.ChannelName
 	case constant.ChannelTypeVercel:
 		return vercel.ChannelName
+	case constant.ChannelTypeGMICloud:
+		return gmicloud.ChannelName
 	default:
 		return ChannelName
 	}
