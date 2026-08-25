@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openailocal"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/relay/channel/poe"
+	"github.com/QuantumNous/new-api/relay/channel/vercel"
 	"github.com/QuantumNous/new-api/relay/channel/xinference"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/common_handler"
@@ -668,6 +669,8 @@ func (a *Adaptor) GetModelList() []string {
 		return openailocal.ModelList
 	case constant.ChannelTypePoe:
 		return poe.ModelList
+	case constant.ChannelTypeVercel:
+		return vercel.ModelList
 	default:
 		return ModelList
 	}
@@ -689,6 +692,8 @@ func (a *Adaptor) GetChannelName() string {
 		return openailocal.ChannelName
 	case constant.ChannelTypePoe:
 		return poe.ChannelName
+	case constant.ChannelTypeVercel:
+		return vercel.ChannelName
 	default:
 		return ChannelName
 	}

@@ -63,6 +63,7 @@ const (
 	ChannelTypeOpenCode       = 63
 	ChannelTypeOpenCodeGo     = 64
 	ChannelTypeMistralConsole = 65
+	ChannelTypeVercel         = 66
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -134,6 +135,7 @@ var ChannelBaseURLs = []string{
 	"https://opencode.ai/zen",                   //63
 	"https://opencode.ai/zen/go",                //64
 	"https://console.mistral.ai",                //65
+	"https://ai-gateway.vercel.sh",              //66
 }
 
 var ChannelTypeNames = map[int]string{
@@ -199,6 +201,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeOpenCode:       "OpenCode Zen",
 	ChannelTypeOpenCodeGo:     "OpenCode Go",
 	ChannelTypeMistralConsole: "Mistral Console",
+	ChannelTypeVercel:         "Vercel AI Gateway",
 }
 
 func GetChannelTypeName(channelType int) string {
