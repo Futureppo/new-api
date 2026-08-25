@@ -38,6 +38,8 @@ export const API_ENDPOINTS = [
   '/v1/ppt/generations',
   '/v1/psd/generations',
   '/v1/audio/speech',
+  '/v1/audio/generations',
+  '/v1/music/generations',
   '/v1/audio/transcriptions',
   '/v1/audio/translations',
 ];
@@ -51,3 +53,6 @@ export const TASK_ACTION_PPT = 'ppt';
 export const TASK_ACTION_PSD = 'psd';
 export const TASK_ACTION_IMAGE_GENERATION = 'image_generation';
 export const TASK_ACTION_IMAGE_EDIT = 'image_edit';
+export const TASK_ACTION_AUDIO_GENERATION = 'audio_generation';
+export const TASK_ACTION_MUSIC_GENERATION = 'music_generation';
+export const TASK_ACTION_VOICE_CLONE = 'voice_clone';

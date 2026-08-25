@@ -23,3 +23,24 @@ func TestPath2RelayModeVideoEndpoints(t *testing.T) {
 		})
 	}
 }
+
+func TestPath2RelayModeAudioGenerationEndpoints(t *testing.T) {
+	tests := []struct {
+		path string
+		want int
+	}{
+		{path: "/v1/audio/generations", want: RelayModeAudioGenerationSubmit},
+		{path: "/v1/audio/generations/task_123", want: RelayModeAudioGenerationFetchByID},
+		{path: "/v1/music/generations", want: RelayModeAudioGenerationSubmit},
+		{path: "/v1/music/generations/task_123", want: RelayModeAudioGenerationFetchByID},
+		{path: "/v1/audio/speech", want: RelayModeAudioSpeech},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			if got := Path2RelayMode(tt.path); got != tt.want {
+				t.Fatalf("Path2RelayMode(%q) = %d, want %d", tt.path, got, tt.want)
+			}
+		})
+	}
+}

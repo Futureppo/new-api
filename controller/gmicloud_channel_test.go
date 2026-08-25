@@ -21,17 +21,28 @@ func TestGMICloudDefaultModelListURL(t *testing.T) {
 
 func TestFetchGMICloudModelsDeduplicatesUpstreamList(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/v1/models", r.URL.Path)
 		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"MiniMaxAI/MiniMax-M3"},{"id":"MiniMaxAI/MiniMax-M2.7"},{"id":"MiniMaxAI/MiniMax-M3"}]}`))
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"MiniMaxAI/MiniMax-M3"},{"id":"MiniMaxAI/MiniMax-M2.7"},{"id":"MiniMaxAI/MiniMax-M3"}]}`))
+		case "/api/v1/ie/requestqueue/apikey/models":
+			_, _ = w.Write([]byte(`{"model_ids":["minimax-tts-speech-2.8-turbo","minimax-music-3.0","minimax-music-3.0","unrelated-video-model"]}`))
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	defer upstream.Close()
 
 	channel := &model.Channel{Type: constant.ChannelTypeGMICloud}
 	models, err := fetchChannelModelIDsWithKey(channel, upstream.URL, "test-key", "")
 	require.NoError(t, err)
-	require.Equal(t, []string{"MiniMaxAI/MiniMax-M3", "MiniMaxAI/MiniMax-M2.7"}, models)
+	require.Equal(t, []string{
+		"MiniMaxAI/MiniMax-M3",
+		"MiniMaxAI/MiniMax-M2.7",
+		"minimax-tts-speech-2.8-turbo",
+		"minimax-music-3.0",
+	}, models)
 }
 
 func TestGMICloudDashboardDefaultsToFreeModels(t *testing.T) {

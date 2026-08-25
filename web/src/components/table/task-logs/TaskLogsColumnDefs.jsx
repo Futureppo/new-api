@@ -39,10 +39,13 @@ import {
   TASK_ACTION_GENERATE,
   TASK_ACTION_IMAGE_EDIT,
   TASK_ACTION_IMAGE_GENERATION,
+  TASK_ACTION_AUDIO_GENERATION,
+  TASK_ACTION_MUSIC_GENERATION,
   TASK_ACTION_PPT,
   TASK_ACTION_PSD,
   TASK_ACTION_REFERENCE_GENERATE,
   TASK_ACTION_TEXT_GENERATE,
+  TASK_ACTION_VOICE_CLONE,
   TASK_ACTION_REMIX_GENERATE,
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
@@ -85,7 +88,8 @@ function renderDuration(submit_time, finishTime) {
   if (!submit_time || !finishTime) return '-';
   const durationSec = finishTime - submit_time;
   if (durationSec < 0) return '-';
-  const color = durationSec > 60 ? 'red' : durationSec > 10 ? 'yellow' : 'green';
+  const color =
+    durationSec > 60 ? 'red' : durationSec > 10 ? 'yellow' : 'green';
   const durationText = durationSec === 0 ? '< 1 s' : `${durationSec} s`;
 
   // 返回带有样式的颜色标签
@@ -164,6 +168,24 @@ const renderType = (type, t) => {
           {t('图片编辑')}
         </Tag>
       );
+    case TASK_ACTION_AUDIO_GENERATION:
+      return (
+        <Tag color='cyan' shape='circle' prefixIcon={<Play size={14} />}>
+          {t('生成语音')}
+        </Tag>
+      );
+    case TASK_ACTION_MUSIC_GENERATION:
+      return (
+        <Tag color='violet' shape='circle' prefixIcon={<Music size={14} />}>
+          {t('生成音乐')}
+        </Tag>
+      );
+    case TASK_ACTION_VOICE_CLONE:
+      return (
+        <Tag color='purple' shape='circle' prefixIcon={<Sparkles size={14} />}>
+          {t('音色克隆')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>
@@ -228,6 +250,66 @@ const getImageResultCount = (record) => {
     return data.data.length;
   }
   return record?.result_url ? 1 : 0;
+};
+
+const audioTaskActions = new Set([
+  TASK_ACTION_AUDIO_GENERATION,
+  TASK_ACTION_MUSIC_GENERATION,
+  TASK_ACTION_VOICE_CLONE,
+]);
+
+const getAudioClips = (record) => {
+  const clips = [];
+  const seen = new Set();
+  const modelName = getTaskModelName(record);
+
+  const addClip = (clip, fallbackTitle = modelName) => {
+    if (!clip || typeof clip !== 'object') return;
+    const audioUrl = clip.audio_url || clip.url;
+    if (!audioUrl || seen.has(audioUrl)) return;
+    seen.add(audioUrl);
+    const duration =
+      clip.duration ||
+      clip.metadata?.duration ||
+      (clip.duration_ms ? clip.duration_ms / 1000 : undefined);
+    clips.push({
+      ...clip,
+      audio_url: audioUrl,
+      title: clip.title || fallbackTitle || 'Audio',
+      duration,
+    });
+  };
+
+  const data = record?.data;
+  if (Array.isArray(data)) {
+    data.forEach((clip) => addClip(clip));
+  } else if (data && typeof data === 'object') {
+    if (Array.isArray(data.data)) {
+      data.data.forEach((clip) => addClip(clip));
+    }
+    const outcome = data.outcome || data.data?.outcome;
+    if (outcome && typeof outcome === 'object') {
+      if (outcome.audio_url) {
+        addClip({
+          ...outcome,
+          audio_url: outcome.audio_url,
+        });
+      }
+      if (Array.isArray(outcome.media_urls)) {
+        outcome.media_urls.forEach((clip) => addClip(clip));
+      }
+      if (Array.isArray(outcome.medias)) {
+        outcome.medias.forEach((clip) => addClip(clip));
+      }
+    }
+  }
+
+  const isAudioTask =
+    record?.platform === 'suno' || audioTaskActions.has(record?.action);
+  if (isAudioTask && record?.result_url) {
+    addClip({ audio_url: record.result_url });
+  }
+  return clips;
 };
 
 const renderDownloadButton = (href, label) => {
@@ -376,15 +458,10 @@ export const getTaskLogsColumns = ({
         const displayText = String(record.username || userId || '?');
         return (
           <Space>
-            <Avatar
-              size='extra-small'
-              color={stringToColor(displayText)}
-            >
+            <Avatar size='extra-small' color={stringToColor(displayText)}>
               {displayText.slice(0, 1)}
             </Avatar>
-            <Typography.Text>
-              {displayText}
-            </Typography.Text>
+            <Typography.Text>{displayText}</Typography.Text>
           </Space>
         );
       },
@@ -503,22 +580,18 @@ export const getTaskLogsColumns = ({
       dataIndex: 'fail_reason',
       fixed: 'right',
       render: (text, record, index) => {
-        // Suno audio preview
-        const isSunoSuccess =
-          record.platform === 'suno' &&
-          record.status === 'SUCCESS' &&
-          Array.isArray(record.data) &&
-          record.data.some((c) => c.audio_url);
-        if (isSunoSuccess) {
+        // Audio task preview (Suno, GMICLOUD Speech / Voice Clone / Music)
+        const audioClips = getAudioClips(record);
+        if (record.status === 'SUCCESS' && audioClips.length > 0) {
           return (
             <a
               href='#'
               onClick={(e) => {
                 e.preventDefault();
-                openAudioModal(record.data);
+                openAudioModal(audioClips);
               }}
             >
-              {t('点击预览音乐')}
+              {t('点击预览音频')}
             </a>
           );
         }
@@ -532,9 +605,11 @@ export const getTaskLogsColumns = ({
           record.action === TASK_ACTION_REMIX_GENERATE;
         const isSuccess = record.status === 'SUCCESS';
         const resultUrl = record.result_url;
-        const hasResultUrl = typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
+        const hasResultUrl =
+          typeof resultUrl === 'string' && /^https?:\/\//.test(resultUrl);
         const isEditableFileTask =
-          record.action === TASK_ACTION_PPT || record.action === TASK_ACTION_PSD;
+          record.action === TASK_ACTION_PPT ||
+          record.action === TASK_ACTION_PSD;
         if (isSuccess && isEditableFileTask) {
           const { primaryUrl, zipUrl } = getEditableFileResult(record);
           if (primaryUrl || zipUrl) {

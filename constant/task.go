@@ -20,6 +20,9 @@ const (
 	TaskActionPSD               = "psd"
 	TaskActionImageGeneration   = "image_generation"
 	TaskActionImageEdit         = "image_edit"
+	TaskActionAudioGeneration   = "audio_generation"
+	TaskActionMusicGeneration   = "music_generation"
+	TaskActionVoiceClone        = "voice_clone"
 )
 
 var SunoModel2Action = map[string]string{

@@ -20,6 +20,7 @@ import (
 	awsChannel "github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
+	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
@@ -255,6 +256,45 @@ func fetchOpenAICompatibleModelIDs(channel *model.Channel, fetchURL string, key 
 	return nil, fmt.Errorf("failed to parse model list response")
 }
 
+func fetchGMICloudModelIDs(channel *model.Channel, baseURL string, key string) ([]string, error) {
+	llmModels, err := fetchOpenAICompatibleModelIDs(
+		channel,
+		resolveFetchModelsURL(channel.Type, baseURL, ""),
+		key,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("fetch GMICLOUD LLM models failed: %w", err)
+	}
+
+	headers, err := buildFetchModelsHeaders(channel, key)
+	if err != nil {
+		return nil, err
+	}
+	taskModelsURL := gmicloud.ResolveTaskBaseURL(baseURL) + gmicloud.TaskModelsPath
+	body, err := GetResponseBody(http.MethodGet, taskModelsURL, channel, headers)
+	if err != nil {
+		return nil, fmt.Errorf("fetch GMICLOUD task models failed: %w", err)
+	}
+	var taskModels struct {
+		ModelIDs []string `json:"model_ids"`
+	}
+	if err := common.Unmarshal(body, &taskModels); err != nil {
+		return nil, fmt.Errorf("parse GMICLOUD task models failed: %w", err)
+	}
+	if taskModels.ModelIDs == nil {
+		return nil, fmt.Errorf("parse GMICLOUD task models failed: model_ids is missing")
+	}
+
+	supportedTaskModels := make([]string, 0, len(gmicloud.AudioModelList))
+	for _, modelID := range taskModels.ModelIDs {
+		if gmicloud.IsAudioModel(modelID) {
+			supportedTaskModels = append(supportedTaskModels, modelID)
+		}
+	}
+
+	return normalizeModelNames(append(llmModels, supportedTaskModels...)), nil
+}
+
 func parseModelIDsFromResponseBody(body []byte) ([]string, bool) {
 	var envelope map[string]json.RawMessage
 	if err := common.Unmarshal(body, &envelope); err != nil {
@@ -402,6 +442,10 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 
 	if customModelListURL == "" && channel.Type == constant.ChannelTypeMistralConsole {
 		return []string{"glm-5-2"}, nil
+	}
+
+	if customModelListURL == "" && channel.Type == constant.ChannelTypeGMICloud {
+		return fetchGMICloudModelIDs(channel, baseURL, key)
 	}
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)

@@ -82,7 +82,11 @@ const AudioClipCard = ({ clip }) => {
             marginBottom: '4px',
           }}
         >
-          <Text strong ellipsis={{ showTooltip: true }} style={{ fontSize: 15 }}>
+          <Text
+            strong
+            ellipsis={{ showTooltip: true }}
+            style={{ fontSize: 15 }}
+          >
             {title}
           </Text>
           {duration > 0 && (
@@ -152,7 +156,7 @@ const AudioPreviewModal = ({ isModalOpen, setIsModalOpen, audioClips }) => {
 
   return (
     <Modal
-      title={t('音乐预览')}
+      title={t('音频预览')}
       visible={isModalOpen}
       onOk={() => setIsModalOpen(false)}
       onCancel={() => setIsModalOpen(false)}
