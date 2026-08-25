@@ -9,9 +9,10 @@ var (
 
 // User auth errors
 var (
-	ErrInvalidCredentials   = errors.New("invalid credentials")
-	ErrUserEmptyCredentials = errors.New("empty credentials")
-	ErrUserDisabled         = errors.New("user disabled")
+	ErrInvalidCredentials     = errors.New("invalid credentials")
+	ErrUserEmptyCredentials   = errors.New("empty credentials")
+	ErrUserDisabled           = errors.New("user disabled")
+	ErrEmailIdentityAmbiguous = errors.New("email identity matches multiple users")
 )
 
 // Token auth errors

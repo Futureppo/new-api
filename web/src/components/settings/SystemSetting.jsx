@@ -106,6 +106,7 @@ const SystemSetting = () => {
     'passkey.attachment_preference': '',
     EmailDomainRestrictionEnabled: '',
     EmailAliasRestrictionEnabled: '',
+    EmailCaseInsensitiveEnabled: '',
     SMTPSSLEnabled: '',
     SMTPForceAuthLogin: '',
     EmailDomainWhitelist: [],
@@ -198,6 +199,7 @@ const SystemSetting = () => {
           case 'TurnstileCheckEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
+          case 'EmailCaseInsensitiveEnabled':
           case 'SMTPSSLEnabled':
           case 'SMTPForceAuthLogin':
           case 'LinuxDOOAuthEnabled':
@@ -1278,7 +1280,7 @@ const SystemSetting = () => {
                   <Row
                     gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
                   >
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
                       <Form.Checkbox
                         field='EmailDomainRestrictionEnabled'
                         noLabel
@@ -1292,7 +1294,7 @@ const SystemSetting = () => {
                         启用邮箱域名白名单
                       </Form.Checkbox>
                     </Col>
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
                       <Form.Checkbox
                         field='EmailAliasRestrictionEnabled'
                         noLabel
@@ -1304,6 +1306,20 @@ const SystemSetting = () => {
                         }
                       >
                         启用邮箱别名限制
+                      </Form.Checkbox>
+                    </Col>
+                    <Col xs={24} sm={24} md={8} lg={8} xl={8}>
+                      <Form.Checkbox
+                        field='EmailCaseInsensitiveEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange(
+                            'EmailCaseInsensitiveEnabled',
+                            e,
+                          )
+                        }
+                      >
+                        {t('邮箱用户名大小写不敏感')}
                       </Form.Checkbox>
                     </Col>
                   </Row>

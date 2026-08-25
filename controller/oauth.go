@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -121,6 +122,8 @@ func HandleOAuth(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgOAuthUserDeleted)
 		case *OAuthRegistrationDisabledError:
 			common.ApiErrorI18n(c, i18n.MsgUserRegisterDisabled)
+		case *OAuthEmailAlreadyUsedError:
+			common.ApiErrorI18n(c, i18n.MsgOAuthEmailAlreadyUsed)
 		default:
 			common.ApiError(c, err)
 		}
@@ -255,6 +258,16 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 	if err := validateOAuthAccountAgeForNewAssociation(provider, oauthUser, time.Now()); err != nil {
 		return nil, err
 	}
+	if oauthUser.Email != "" {
+		oauthUser.Email = strings.TrimSpace(oauthUser.Email)
+		taken, err := model.EmailIdentityExists(model.DB, oauthUser.Email, 0, true)
+		if err != nil {
+			return nil, err
+		}
+		if taken {
+			return nil, &OAuthEmailAlreadyUsedError{}
+		}
+	}
 
 	// Set up new user
 	user.Username = provider.GetProviderPrefix() + strconv.Itoa(model.GetMaxUserId()+1)
@@ -373,6 +386,12 @@ type OAuthRegistrationDisabledError struct{}
 
 func (e *OAuthRegistrationDisabledError) Error() string {
 	return "registration is disabled"
+}
+
+type OAuthEmailAlreadyUsedError struct{}
+
+func (e *OAuthEmailAlreadyUsedError) Error() string {
+	return "oauth email is already associated with an account"
 }
 
 type OAuthAccountAgeTooLowError struct{}

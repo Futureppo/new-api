@@ -3545,6 +3545,7 @@
     "邮箱域名白名单格式不正确": "Le format de la liste blanche des domaines e-mail est incorrect",
     "邮箱域名格式不正确，请输入有效的域名，如 gmail.com 或 *.edu.cn": "Le format du domaine e-mail est incorrect, veuillez saisir un domaine valide, comme gmail.com ou *.edu.cn",
     "邮箱账户绑定成功！": "Liaison du compte e-mail réussie !",
+    "邮箱用户名大小写不敏感": "Ignorer la casse du nom d’utilisateur de l’e-mail",
     "邮箱字段（可选）": "Champ e-mail (optionnel)",
     "友情链接": "Liens amicaux",
     "有 Reasoning": "A un raisonnement",

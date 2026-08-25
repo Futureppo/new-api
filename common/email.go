@@ -10,6 +10,16 @@ import (
 	"time"
 )
 
+// NormalizeEmailIdentity returns the comparison/cache key for an email address.
+// The original email value is intentionally preserved for storage and display.
+func NormalizeEmailIdentity(email string) string {
+	email = strings.TrimSpace(email)
+	if EmailCaseInsensitiveEnabled {
+		return strings.ToLower(email)
+	}
+	return email
+}
+
 func generateMessageID() (string, error) {
 	split := strings.Split(SMTPFrom, "@")
 	if len(split) < 2 {

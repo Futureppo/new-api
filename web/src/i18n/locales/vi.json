@@ -3967,6 +3967,7 @@
     "邮箱域名白名单格式不正确": "Định dạng danh sách trắng tên miền email không chính xác",
     "邮箱域名格式不正确，请输入有效的域名，如 gmail.com 或 *.edu.cn": "Định dạng tên miền email không chính xác, vui lòng nhập tên miền hợp lệ như gmail.com hoặc *.edu.cn",
     "邮箱账户绑定成功！": "Liên kết tài khoản email thành công!",
+    "邮箱用户名大小写不敏感": "Không phân biệt chữ hoa chữ thường trong tên người dùng email",
     "邮箱找回密码": "Khôi phục mật khẩu qua email",
     "邮箱注册": "Đăng ký email",
     "邮箱字段（可选）": "Trường email (tùy chọn)",

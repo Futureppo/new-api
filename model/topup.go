@@ -3,6 +3,7 @@ package model
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -440,7 +441,13 @@ func RechargeCreem(referenceId string, customerEmail string, customerName string
 
 			// 如果用户邮箱为空，则更新为支付时使用的邮箱
 			if user.Email == "" {
-				updateFields["email"] = customerEmail
+				taken, checkErr := EmailIdentityExists(tx, customerEmail, user.Id, true)
+				if checkErr != nil {
+					return checkErr
+				}
+				if !taken {
+					updateFields["email"] = strings.TrimSpace(customerEmail)
+				}
 			}
 		}
 

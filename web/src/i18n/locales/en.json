@@ -3622,6 +3622,7 @@
     "邮箱域名白名单格式不正确": "The email domain whitelist format is incorrect",
     "邮箱域名格式不正确，请输入有效的域名，如 gmail.com 或 *.edu.cn": "The email domain format is incorrect. Please enter a valid domain such as gmail.com or *.edu.cn",
     "邮箱账户绑定成功！": "Email account bound successfully!",
+    "邮箱用户名大小写不敏感": "Treat email usernames as case-insensitive",
     "邮箱字段": "Email Field",
     "邮箱字段（可选）": "Email Field (optional)",
     "友情链接": "Friendly links",

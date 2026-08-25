@@ -175,24 +175,17 @@ func generateDefaultSidebarConfigForRole(userRole int) string {
 func CheckUserExistOrDeleted(username string, email string) (bool, error) {
 	var user User
 
-	// err := DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
-	// check email if empty
-	var err error
-	if email == "" {
-		err = DB.Unscoped().First(&user, "username = ?", username).Error
-	} else {
-		err = DB.Unscoped().First(&user, "username = ? or email = ?", username, email).Error
+	err := DB.Unscoped().Select("id").First(&user, "username = ?", username).Error
+	if err == nil {
+		return true, nil
 	}
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// not exist, return false, nil
-			return false, nil
-		}
-		// other error, return false, err
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, err
 	}
-	// exist, return true, nil
-	return true, nil
+	if email == "" {
+		return false, nil
+	}
+	return EmailIdentityExists(DB, email, 0, true)
 }
 
 func GetMaxUserId() int {
@@ -688,12 +681,19 @@ func (user *User) ValidateAndFill() (err error) {
 	if username == "" || password == "" {
 		return ErrUserEmptyCredentials
 	}
-	// find by username or email
-	err = DB.Where("username = ? OR email = ?", username, username).First(user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrInvalidCredentials
+	// Preserve exact username semantics. Only fall back to email identity lookup
+	// when no user has that exact username.
+	err = DB.Where("username = ?", username).First(user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		matchedUser, lookupErr := FindUniqueUserByEmail(username)
+		if lookupErr != nil {
+			if errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+				return ErrInvalidCredentials
+			}
+			return lookupErr
 		}
+		*user = *matchedUser
+	} else if err != nil {
 		return fmt.Errorf("%w: %v", ErrDatabase, err)
 	}
 	okay := common.ValidatePasswordAndHash(password, user.Password)
@@ -718,7 +718,11 @@ func (user *User) FillUserByEmail() error {
 	if user.Email == "" {
 		return errors.New("email 为空！")
 	}
-	DB.Where(User{Email: user.Email}).First(user)
+	matchedUser, err := FindUniqueUserByEmail(user.Email)
+	if err != nil {
+		return err
+	}
+	*user = *matchedUser
 	return nil
 }
 
@@ -773,8 +777,89 @@ func (user *User) FillUserByTelegramId() error {
 	return nil
 }
 
+func applyEmailCandidateFilter(query *gorm.DB, email string) *gorm.DB {
+	return query.Where("LOWER(email) = ?", strings.ToLower(strings.TrimSpace(email)))
+}
+
+func emailIdentityMatches(storedEmail string, email string) bool {
+	if common.EmailCaseInsensitiveEnabled {
+		return common.NormalizeEmailIdentity(storedEmail) == common.NormalizeEmailIdentity(email)
+	}
+	return storedEmail == common.NormalizeEmailIdentity(email)
+}
+
+// EmailIdentityExists checks whether an email identity is already assigned.
+// excludeUserID can be used when changing an existing user's email.
+func EmailIdentityExists(db *gorm.DB, email string, excludeUserID int, unscoped bool) (bool, error) {
+	if strings.TrimSpace(email) == "" {
+		return false, nil
+	}
+	if db == nil {
+		db = DB
+	}
+	query := db.Model(&User{})
+	if unscoped {
+		query = query.Unscoped()
+	}
+	query = applyEmailCandidateFilter(query, email)
+	if excludeUserID != 0 {
+		query = query.Where("id <> ?", excludeUserID)
+	}
+	if !common.EmailCaseInsensitiveEnabled {
+		var users []User
+		if err := query.Select("id", "email").Find(&users).Error; err != nil {
+			return false, err
+		}
+		for _, user := range users {
+			if emailIdentityMatches(user.Email, email) {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+	var count int64
+	if err := query.Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// FindUniqueUserByEmail returns the single active user for an email identity.
+// Historical case-only duplicates are reported instead of choosing a user.
+func FindUniqueUserByEmail(email string) (*User, error) {
+	if strings.TrimSpace(email) == "" {
+		return nil, gorm.ErrRecordNotFound
+	}
+	var users []User
+	query := applyEmailCandidateFilter(DB.Model(&User{}), email).Order("id ASC")
+	if common.EmailCaseInsensitiveEnabled {
+		query = query.Limit(2)
+	}
+	if err := query.Find(&users).Error; err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrDatabase, err)
+	}
+	if !common.EmailCaseInsensitiveEnabled {
+		matchedUsers := users[:0]
+		for _, user := range users {
+			if emailIdentityMatches(user.Email, email) {
+				matchedUsers = append(matchedUsers, user)
+			}
+		}
+		users = matchedUsers
+	}
+	switch len(users) {
+	case 0:
+		return nil, gorm.ErrRecordNotFound
+	case 1:
+		return &users[0], nil
+	default:
+		return nil, ErrEmailIdentityAmbiguous
+	}
+}
+
 func IsEmailAlreadyTaken(email string) bool {
-	return DB.Unscoped().Where("email = ?", email).Find(&User{}).RowsAffected == 1
+	taken, err := EmailIdentityExists(DB, email, 0, true)
+	return err == nil && taken
 }
 
 func IsWeChatIdAlreadyTaken(wechatId string) bool {
@@ -801,11 +886,15 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
+	user, err := FindUniqueUserByEmail(email)
+	if err != nil {
+		return err
+	}
 	hashedPassword, err := common.Password2Hash(password)
 	if err != nil {
 		return err
 	}
-	err = DB.Model(&User{}).Where("email = ?", email).Update("password", hashedPassword).Error
+	err = DB.Model(&User{}).Where("id = ?", user.Id).Update("password", hashedPassword).Error
 	return err
 }
 

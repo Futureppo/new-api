@@ -53,6 +53,7 @@ var RegisterEnabled = true
 
 var EmailDomainRestrictionEnabled = false // 是否启用邮箱域名限制
 var EmailAliasRestrictionEnabled = false  // 是否启用邮箱别名限制
+var EmailCaseInsensitiveEnabled = true    // 是否将邮箱大小写变体视为同一身份
 var EmailDomainWhitelist = []string{
 	"gmail.com",
 	"163.com",

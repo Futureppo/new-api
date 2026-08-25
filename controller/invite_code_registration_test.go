@@ -81,6 +81,7 @@ func setupInviteRegistrationControllerTestDB(t *testing.T) *gorm.DB {
 	originalRegisterEnabled := common.RegisterEnabled
 	originalPasswordRegisterEnabled := common.PasswordRegisterEnabled
 	originalEmailVerificationEnabled := common.EmailVerificationEnabled
+	originalEmailCaseInsensitiveEnabled := common.EmailCaseInsensitiveEnabled
 	originalGenerateDefaultToken := constant.GenerateDefaultToken
 	originalQuotaForNewUser := common.QuotaForNewUser
 	originalQuotaForInviter := common.QuotaForInviter
@@ -96,6 +97,7 @@ func setupInviteRegistrationControllerTestDB(t *testing.T) *gorm.DB {
 	common.RegisterEnabled = true
 	common.PasswordRegisterEnabled = true
 	common.EmailVerificationEnabled = false
+	common.EmailCaseInsensitiveEnabled = true
 	constant.GenerateDefaultToken = false
 	common.QuotaForNewUser = 0
 	common.QuotaForInviter = 0
@@ -122,6 +124,7 @@ func setupInviteRegistrationControllerTestDB(t *testing.T) *gorm.DB {
 		common.RegisterEnabled = originalRegisterEnabled
 		common.PasswordRegisterEnabled = originalPasswordRegisterEnabled
 		common.EmailVerificationEnabled = originalEmailVerificationEnabled
+		common.EmailCaseInsensitiveEnabled = originalEmailCaseInsensitiveEnabled
 		constant.GenerateDefaultToken = originalGenerateDefaultToken
 		common.QuotaForNewUser = originalQuotaForNewUser
 		common.QuotaForInviter = originalQuotaForInviter
@@ -243,6 +246,53 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	require.Equal(t, 1, registrationCode.UsedCount)
 }
 
+func TestPasswordRegistrationTreatsEmailCaseVariantsAsOneIdentity(t *testing.T) {
+	db := setupInviteRegistrationControllerTestDB(t)
+	cfg := setting.GetEnhancementSetting()
+	cfg.InviteCodeRequired = false
+	cfg.RegistrationCodeRequired = false
+	common.EmailVerificationEnabled = true
+	common.EmailCaseInsensitiveEnabled = true
+
+	const verificationCode = "123456"
+	firstEmail := "Likwei@My.SWJTU.edu.cn"
+	common.RegisterVerificationCodeWithKey(
+		common.NormalizeEmailIdentity(firstEmail),
+		verificationCode,
+		common.EmailVerificationPurpose,
+	)
+	t.Cleanup(func() {
+		common.DeleteKey(common.NormalizeEmailIdentity(firstEmail), common.EmailVerificationPurpose)
+	})
+
+	firstResponse := registerTestUser(t, gin.H{
+		"username":          "email-case-first",
+		"password":          "password123",
+		"email":             firstEmail,
+		"verification_code": verificationCode,
+	})
+	require.True(t, firstResponse.Success)
+
+	var firstUser model.User
+	require.NoError(t, db.Where("username = ?", "email-case-first").First(&firstUser).Error)
+	require.Equal(t, firstEmail, firstUser.Email)
+
+	caseVariant := "likwei@my.swjtu.EDU.CN"
+	common.RegisterVerificationCodeWithKey(
+		common.NormalizeEmailIdentity(caseVariant),
+		verificationCode,
+		common.EmailVerificationPurpose,
+	)
+	secondResponse := registerTestUser(t, gin.H{
+		"username":          "email-case-second",
+		"password":          "password123",
+		"email":             caseVariant,
+		"verification_code": verificationCode,
+	})
+	require.False(t, secondResponse.Success)
+	requireRegistrationUserMissing(t, db, "email-case-second")
+}
+
 func TestOAuthRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.T) {
 	db := setupInviteRegistrationControllerTestDB(t)
 	cfg := setting.GetEnhancementSetting()
@@ -280,6 +330,70 @@ func TestOAuthRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.T
 	existingUser, err := findOrCreateOAuthUser(nil, provider, oauthUser, newInviteTestSession(nil))
 	require.NoError(t, err)
 	require.Equal(t, createdUser.Id, existingUser.Id)
+}
+
+func TestOAuthRegistrationRejectsEmailAlreadyUsedByCaseVariant(t *testing.T) {
+	db := setupInviteRegistrationControllerTestDB(t)
+	cfg := setting.GetEnhancementSetting()
+	cfg.InviteCodeRequired = false
+	cfg.RegistrationCodeRequired = false
+	common.EmailCaseInsensitiveEnabled = true
+
+	existing := model.User{
+		Username:    "oauth-email-owner",
+		Password:    "password123",
+		DisplayName: "OAuth Email Owner",
+		Email:       "Owner@Example.com",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     "OAUTH-EMAIL-OWNER",
+	}
+	require.NoError(t, db.Create(&existing).Error)
+
+	provider := &oauth.DiscordProvider{}
+	oauthUser := &oauth.OAuthUser{
+		ProviderUserID: "discord-email-duplicate",
+		Username:       "oauth-email-duplicate",
+		DisplayName:    "OAuth Email Duplicate",
+		Email:          "owner@example.COM",
+	}
+
+	_, err := findOrCreateOAuthUser(nil, provider, oauthUser, newInviteTestSession(nil))
+	var emailUsedErr *OAuthEmailAlreadyUsedError
+	require.ErrorAs(t, err, &emailUsedErr)
+	requireRegistrationUserMissing(t, db, oauthUser.Username)
+
+	require.NoError(t, db.Model(&model.User{}).Where("id = ?", existing.Id).Update("discord_id", oauthUser.ProviderUserID).Error)
+	boundUser, err := findOrCreateOAuthUser(nil, provider, oauthUser, newInviteTestSession(nil))
+	require.NoError(t, err)
+	require.Equal(t, existing.Id, boundUser.Id)
+}
+
+func TestPasswordResetRejectsAmbiguousEmailIdentity(t *testing.T) {
+	db := setupInviteRegistrationControllerTestDB(t)
+	common.EmailCaseInsensitiveEnabled = true
+
+	for index, email := range []string{"duplicate@example.com", "Duplicate@example.com"} {
+		user := model.User{
+			Username:    fmt.Sprintf("reset-duplicate-%d", index),
+			Password:    "password123",
+			DisplayName: fmt.Sprintf("Reset Duplicate %d", index),
+			Email:       email,
+			Role:        common.RoleCommonUser,
+			Status:      common.UserStatusEnabled,
+			AffCode:     fmt.Sprintf("RESET-DUP-%d", index),
+		}
+		require.NoError(t, db.Create(&user).Error)
+	}
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/reset_password?email=DUPLICATE@example.com", nil)
+	SendPasswordResetEmail(ctx)
+
+	var response registrationAPIResponse
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+	require.False(t, response.Success)
 }
 
 func TestGenerateOAuthCodeReplacesOrClearsInviteCode(t *testing.T) {
