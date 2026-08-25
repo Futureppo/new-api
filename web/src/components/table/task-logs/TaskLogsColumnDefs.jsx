@@ -40,6 +40,7 @@ import {
   TASK_ACTION_IMAGE_EDIT,
   TASK_ACTION_IMAGE_GENERATION,
   TASK_ACTION_AUDIO_GENERATION,
+  TASK_ACTION_BATCH_INFERENCE,
   TASK_ACTION_MUSIC_GENERATION,
   TASK_ACTION_PPT,
   TASK_ACTION_PSD,
@@ -186,6 +187,12 @@ const renderType = (type, t) => {
           {t('音色克隆')}
         </Tag>
       );
+    case TASK_ACTION_BATCH_INFERENCE:
+      return (
+        <Tag color='indigo' shape='circle' prefixIcon={<List size={14} />}>
+          {t('批量推理')}
+        </Tag>
+      );
     default:
       return (
         <Tag color='white' shape='circle' prefixIcon={<HelpCircle size={14} />}>
@@ -323,6 +330,26 @@ const renderDownloadButton = (href, label) => {
       </Button>
     </a>
   );
+};
+
+const getBatchResultUrls = (record) => {
+  const urls = [];
+  const seen = new Set();
+  const addUrl = (url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//.test(url) || seen.has(url)) {
+      return;
+    }
+    seen.add(url);
+    urls.push(url);
+  };
+
+  const outcome = record?.data?.outcome || record?.data?.data?.outcome;
+  if (Array.isArray(outcome?.output_download_urls)) {
+    outcome.output_download_urls.forEach(addUrl);
+  }
+  addUrl(outcome?.output_url);
+  addUrl(record?.result_url);
+  return urls;
 };
 
 const renderStatus = (type, t) => {
@@ -639,6 +666,27 @@ export const getTaskLogsColumns = ({
                 : t('查看图片结果')}
             </Typography.Text>
           );
+        }
+
+        const isBatchTask = record.action === TASK_ACTION_BATCH_INFERENCE;
+        if (isSuccess && isBatchTask) {
+          const resultUrls = getBatchResultUrls(record);
+          if (resultUrls.length > 0) {
+            return (
+              <Space wrap>
+                {resultUrls.map((url, resultIndex) => (
+                  <React.Fragment key={url}>
+                    {renderDownloadButton(
+                      url,
+                      resultUrls.length > 1
+                        ? t('结果 {{index}}', { index: resultIndex + 1 })
+                        : t('下载结果'),
+                    )}
+                  </React.Fragment>
+                ))}
+              </Space>
+            );
+          }
         }
 
         if (isSuccess && isVideoTask && hasResultUrl) {

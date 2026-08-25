@@ -42,6 +42,21 @@ func TestGMICloudChatCompletionRequestURL(t *testing.T) {
 	require.Equal(t, "https://api.gmi-serving.com/v1/chat/completions", url)
 }
 
+func TestGMICloudBatchModelRejectsChatCompletionEndpoint(t *testing.T) {
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:       constant.ChannelTypeGMICloud,
+			ChannelBaseUrl:    constant.ChannelBaseURLs[constant.ChannelTypeGMICloud],
+			UpstreamModelName: gmicloud.BatchInferenceModel,
+		},
+		RequestURLPath: "/v1/chat/completions",
+	}
+
+	requestURL, err := (&Adaptor{}).GetRequestURL(info)
+	require.ErrorContains(t, err, "/v1/batch/generations")
+	require.Empty(t, requestURL)
+}
+
 func TestGMICloudDoRequestUsesBearerAuthAndPreservesModel(t *testing.T) {
 	if service.GetHttpClient() == nil {
 		service.InitHttpClient()

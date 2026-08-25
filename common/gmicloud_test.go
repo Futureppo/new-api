@@ -25,4 +25,18 @@ func TestGMICloudEndpointTypes(t *testing.T) {
 			GetEndpointTypesByChannelType(constant.ChannelTypeGMICloud, modelName),
 		)
 	}
+	require.Equal(
+		t,
+		[]constant.EndpointType{constant.EndpointTypeBatchGeneration},
+		GetEndpointTypesByChannelType(constant.ChannelTypeGMICloud, "Gemini-batch-inference"),
+	)
+	require.Equal(
+		t,
+		[]constant.EndpointType{constant.EndpointTypeBatchGeneration},
+		GetEndpointTypesByChannelType(constant.ChannelTypeGMICloud, "gemini-batch-inference"),
+	)
+	endpoint, ok := GetDefaultEndpointInfo(constant.EndpointTypeBatchGeneration)
+	require.True(t, ok)
+	require.Equal(t, "/v1/batch/generations", endpoint.Path)
+	require.Equal(t, "POST", endpoint.Method)
 }

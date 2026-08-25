@@ -44,6 +44,8 @@ const (
 	RelayModeVideoSubmit
 	RelayModeAudioGenerationFetchByID
 	RelayModeAudioGenerationSubmit
+	RelayModeBatchGenerationFetchByID
+	RelayModeBatchGenerationSubmit
 
 	RelayModeRerank
 
@@ -86,6 +88,10 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeAudioGenerationSubmit
 	} else if strings.HasPrefix(path, "/v1/audio/generations/") || strings.HasPrefix(path, "/v1/music/generations/") {
 		relayMode = RelayModeAudioGenerationFetchByID
+	} else if path == "/v1/batch/generations" {
+		relayMode = RelayModeBatchGenerationSubmit
+	} else if strings.HasPrefix(path, "/v1/batch/generations/") {
+		relayMode = RelayModeBatchGenerationFetchByID
 	} else if strings.HasPrefix(path, "/v1/audio/speech") {
 		relayMode = RelayModeAudioSpeech
 	} else if strings.HasPrefix(path, "/v1/audio/transcriptions") {

@@ -100,6 +100,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelType == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(info.UpstreamModelName) {
+		return "", fmt.Errorf("model %s is asynchronous; use POST /v1/batch/generations", info.UpstreamModelName)
+	}
 	if info.RelayMode == relayconstant.RelayModeRealtime {
 		if strings.HasPrefix(info.ChannelBaseUrl, "https://") {
 			baseUrl := strings.TrimPrefix(info.ChannelBaseUrl, "https://")

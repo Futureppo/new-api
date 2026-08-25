@@ -15,6 +15,7 @@ const (
 	EndpointTypeImageGeneration       EndpointType = "image-generation"
 	EndpointTypeEmbeddings            EndpointType = "embeddings"
 	EndpointTypeOpenAIVideo           EndpointType = "openai-video"
+	EndpointTypeBatchGeneration       EndpointType = "batch-generation"
 	EndpointTypeAudioSpeech           EndpointType = "audio-speech"
 	EndpointTypeAudioTranscription    EndpointType = "audio-transcription"
 	//EndpointTypeMidjourney     EndpointType = "midjourney-proxy"

@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	openailocalmodel "github.com/QuantumNous/new-api/relay/channel/openailocal"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
@@ -291,6 +292,23 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			relayMode = relayconstant.RelayModeAudioGenerationSubmit
 		} else if c.Request.Method == http.MethodGet {
 			relayMode = relayconstant.RelayModeAudioGenerationFetchByID
+			shouldSelectChannel = false
+		}
+		c.Set("relay_mode", relayMode)
+	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/batch/generations") {
+		relayMode := relayconstant.RelayModeUnknown
+		if c.Request.Method == http.MethodPost {
+			req, err := getModelFromRequest(c)
+			if err != nil {
+				return nil, false, err
+			}
+			modelRequest.Model = req.Model
+			if gmicloud.IsBatchModel(modelRequest.Model) {
+				modelRequest.Model = gmicloud.BatchInferenceModel
+			}
+			relayMode = relayconstant.RelayModeBatchGenerationSubmit
+		} else if c.Request.Method == http.MethodGet {
+			relayMode = relayconstant.RelayModeBatchGenerationFetchByID
 			shouldSelectChannel = false
 		}
 		c.Set("relay_mode", relayMode)

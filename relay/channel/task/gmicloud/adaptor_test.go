@@ -77,6 +77,11 @@ func TestValidateRequestSetsModelSpecificActions(t *testing.T) {
 			body:   `{"model":"minimax-audio-voice-clone-speech-2.8-hd","payload":{"text":"hello","source_audio":"https://example.com/voice.wav"}}`,
 			action: constant.TaskActionVoiceClone,
 		},
+		{
+			name:   "gemini batch lowercase alias",
+			body:   `{"model":"gemini-batch-inference","payload":{"model":"gemini-3-flash-preview","input_data":"{\"request\":{\"contents\":[]}}"}}`,
+			action: constant.TaskActionBatchInference,
+		},
 	}
 
 	for _, tt := range tests {
@@ -97,6 +102,37 @@ func TestValidateRequestSetsModelSpecificActions(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestBatchRequestUsesCanonicalUpstreamModel(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/batch/generations", strings.NewReader(`{
+		"model":"gemini-batch-inference",
+		"payload":{"model":"gemini-3-flash-preview","input_data":"{\"request\":{\"contents\":[]}}"}
+	}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	info := &relaycommon.RelayInfo{
+		OriginModelName: "gemini-batch-inference",
+		ChannelMeta: &relaycommon.ChannelMeta{
+			UpstreamModelName: "gemini-batch-inference",
+		},
+		TaskRelayInfo: &relaycommon.TaskRelayInfo{},
+	}
+	adaptor := &TaskAdaptor{}
+	require.Nil(t, adaptor.ValidateRequestAndSetAction(c, info))
+
+	body, err := adaptor.BuildRequestBody(c, info)
+	require.NoError(t, err)
+	requestBytes, err := io.ReadAll(body)
+	require.NoError(t, err)
+	var request TaskRequest
+	require.NoError(t, common.Unmarshal(requestBytes, &request))
+	require.Equal(t, channelgmicloud.BatchInferenceModel, request.Model)
+	require.Equal(t, channelgmicloud.BatchInferenceModel, info.UpstreamModelName)
+	var payload map[string]any
+	require.NoError(t, common.Unmarshal(request.Payload, &payload))
+	require.Equal(t, "gemini-3-flash-preview", payload["model"])
+	require.Contains(t, payload["input_data"], "contents")
 }
 
 func TestDoResponseUsesPublicTaskID(t *testing.T) {
@@ -180,6 +216,26 @@ func TestParseTaskResult(t *testing.T) {
 			reason:   "generation failed",
 			progress: "100%",
 		},
+		{
+			name:     "batch running",
+			body:     `{"request_id":"5","status":"processing","outcome":{"batch_job_state":"JOB_STATE_RUNNING"}}`,
+			status:   model.TaskStatusInProgress,
+			progress: "50%",
+		},
+		{
+			name:     "batch success",
+			body:     `{"request_id":"6","status":"success","outcome":{"batch_job_state":"JOB_STATE_SUCCEEDED","output_url":"https://example.com/predictions.jsonl","token_usage":{"total_prompt_tokens":5,"total_candidates_tokens":8}}}`,
+			status:   model.TaskStatusSuccess,
+			url:      "https://example.com/predictions.jsonl",
+			progress: "100%",
+		},
+		{
+			name:     "batch failed with outcome error",
+			body:     `{"request_id":"7","status":"processing","outcome":{"batch_job_state":"JOB_STATE_FAILED","error":{"message":"vertex batch failed"}}}`,
+			status:   model.TaskStatusFailure,
+			reason:   "vertex batch failed",
+			progress: "100%",
+		},
 	}
 
 	for _, tt := range tests {
@@ -201,4 +257,5 @@ func TestGetModelListIncludesFreeSpeechAndMusicModels(t *testing.T) {
 	require.Contains(t, models, "minimax-audio-voice-clone-speech-2.8-turbo")
 	require.Contains(t, models, "minimax-audio-voice-clone-speech-2.8-hd")
 	require.Contains(t, models, "minimax-music-3.0")
+	require.Contains(t, models, channelgmicloud.BatchInferenceModel)
 }

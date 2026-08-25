@@ -143,7 +143,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 
 	imageN := uint(1)
-	if request.N != nil {
+	if request.N != nil && info.ChannelType != constant.ChannelTypeVyceAI {
 		imageN = *request.N
 	}
 
@@ -282,8 +282,11 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 }
 
 func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
-	if info != nil && info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeAgnesAI {
-		return false
+	if info != nil && info.ChannelMeta != nil {
+		switch info.ChannelType {
+		case constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI:
+			return false
+		}
 	}
 	if model_setting.GetGlobalSettings().PassThroughRequestEnabled {
 		return true

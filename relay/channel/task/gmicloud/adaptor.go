@@ -37,9 +37,24 @@ type taskResponse struct {
 }
 
 type taskOutcome struct {
-	AudioURL  string      `json:"audio_url,omitempty"`
-	MediaURLs []taskMedia `json:"media_urls,omitempty"`
-	Medias    []taskMedia `json:"medias,omitempty"`
+	AudioURL                string          `json:"audio_url,omitempty"`
+	MediaURLs               []taskMedia     `json:"media_urls,omitempty"`
+	Medias                  []taskMedia     `json:"medias,omitempty"`
+	OutputURL               string          `json:"output_url,omitempty"`
+	OutputDownloadURLs      []string        `json:"output_download_urls,omitempty"`
+	BatchJobState           string          `json:"batch_job_state,omitempty"`
+	BatchJobCompletionStats map[string]any  `json:"batch_job_completion_stats,omitempty"`
+	TokenUsage              batchTokenUsage `json:"token_usage,omitempty"`
+	ActualCostUSD           string          `json:"actual_cost_usd,omitempty"`
+	Message                 string          `json:"message,omitempty"`
+	Error                   json.RawMessage `json:"error,omitempty"`
+}
+
+type batchTokenUsage struct {
+	TotalPromptTokens     int `json:"total_prompt_tokens,omitempty"`
+	TotalCandidatesTokens int `json:"total_candidates_tokens,omitempty"`
+	SuccessfulRequests    int `json:"successful_requests,omitempty"`
+	FailedRequests        int `json:"failed_requests,omitempty"`
 }
 
 type taskMedia struct {
@@ -72,8 +87,15 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("payload must be a JSON object"), "invalid_payload", http.StatusBadRequest)
 	}
 
-	_, hasLyrics := payload["lyrics"]
-	if channelgmicloud.IsMusicModel(modelName) || hasLyrics {
+	if channelgmicloud.IsBatchModel(modelName) {
+		if err := requirePayloadString(payload, "model"); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
+		}
+		if err := requirePayloadString(payload, "input_data"); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
+		}
+		info.Action = constant.TaskActionBatchInference
+	} else if _, hasLyrics := payload["lyrics"]; channelgmicloud.IsMusicModel(modelName) || hasLyrics {
 		if err := requirePayloadString(payload, "lyrics"); err != nil {
 			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
 		}
@@ -164,6 +186,10 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if modelName == "" {
 		modelName = req.Model
 	}
+	if channelgmicloud.IsBatchModel(modelName) {
+		modelName = channelgmicloud.BatchInferenceModel
+		info.UpstreamModelName = modelName
+	}
 	body, err := common.Marshal(TaskRequest{Model: modelName, Payload: req.Payload})
 	if err != nil {
 		return nil, err
@@ -190,7 +216,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("request_id is empty: %s", responseReason(upstream)), "invalid_response", http.StatusInternalServerError)
 	}
 
-	status := strings.ToLower(strings.TrimSpace(upstream.Status))
+	status := normalizedTaskStatus(upstream)
 	if status == "" {
 		status = "queued"
 	}
@@ -230,7 +256,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 
 	result := &relaycommon.TaskInfo{TaskID: response.RequestID}
-	switch strings.ToLower(strings.TrimSpace(response.Status)) {
+	switch normalizedTaskStatus(response) {
 	case "queued", "pending", "submitted", "dispatched":
 		result.Status = model.TaskStatusQueued
 		result.Progress = taskcommon.ProgressQueued
@@ -243,7 +269,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		result.Url = response.Outcome.primaryURL()
 		if result.Url == "" {
 			result.Status = model.TaskStatusFailure
-			result.Reason = "GMICLOUD task succeeded without an audio result URL"
+			result.Reason = "GMICLOUD task succeeded without a result URL"
 		}
 	case "failed", "failure", "cancelled", "canceled":
 		result.Status = model.TaskStatusFailure
@@ -260,10 +286,37 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			result.Reason = reason
 		}
 	}
+	result.TotalTokens = response.Outcome.TokenUsage.TotalPromptTokens + response.Outcome.TokenUsage.TotalCandidatesTokens
 	return result, nil
 }
 
+func normalizedTaskStatus(response taskResponse) string {
+	status := strings.ToLower(strings.TrimSpace(response.Status))
+	state := strings.ToUpper(strings.TrimSpace(response.Outcome.BatchJobState))
+	switch state {
+	case "JOB_STATE_QUEUED", "JOB_STATE_PENDING":
+		if status == "" || status == "processing" {
+			return "queued"
+		}
+	case "JOB_STATE_RUNNING":
+		return "processing"
+	case "JOB_STATE_SUCCEEDED", "JOB_STATE_PARTIALLY_SUCCEEDED":
+		return "success"
+	case "JOB_STATE_FAILED", "JOB_STATE_CANCELLED":
+		return "failed"
+	}
+	return status
+}
+
 func (o taskOutcome) primaryURL() string {
+	if strings.TrimSpace(o.OutputURL) != "" {
+		return o.OutputURL
+	}
+	for _, outputURL := range o.OutputDownloadURLs {
+		if strings.TrimSpace(outputURL) != "" {
+			return outputURL
+		}
+	}
 	if strings.TrimSpace(o.AudioURL) != "" {
 		return o.AudioURL
 	}
@@ -281,18 +334,28 @@ func responseReason(response taskResponse) string {
 	if strings.TrimSpace(response.Message) != "" {
 		return response.Message
 	}
-	if len(response.Error) == 0 || string(response.Error) == "null" {
+	if strings.TrimSpace(response.Outcome.Message) != "" {
+		return response.Outcome.Message
+	}
+	if reason := rawErrorReason(response.Outcome.Error); reason != "" {
+		return reason
+	}
+	return rawErrorReason(response.Error)
+}
+
+func rawErrorReason(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
 		return ""
 	}
 	var message string
-	if err := common.Unmarshal(response.Error, &message); err == nil {
+	if err := common.Unmarshal(raw, &message); err == nil {
 		return message
 	}
 	var detail struct {
 		Message string `json:"message"`
 		Detail  string `json:"detail"`
 	}
-	if err := common.Unmarshal(response.Error, &detail); err == nil {
+	if err := common.Unmarshal(raw, &detail); err == nil {
 		if detail.Message != "" {
 			return detail.Message
 		}
@@ -300,11 +363,11 @@ func responseReason(response taskResponse) string {
 			return detail.Detail
 		}
 	}
-	return strings.TrimSpace(string(response.Error))
+	return strings.TrimSpace(string(raw))
 }
 
 func (a *TaskAdaptor) GetModelList() []string {
-	return channelgmicloud.AudioModelList
+	return channelgmicloud.TaskModelList
 }
 
 func (a *TaskAdaptor) GetChannelName() string {

@@ -40,6 +40,7 @@ export const API_ENDPOINTS = [
   '/v1/audio/speech',
   '/v1/audio/generations',
   '/v1/music/generations',
+  '/v1/batch/generations',
   '/v1/audio/transcriptions',
   '/v1/audio/translations',
 ];
@@ -56,3 +57,4 @@ export const TASK_ACTION_IMAGE_EDIT = 'image_edit';
 export const TASK_ACTION_AUDIO_GENERATION = 'audio_generation';
 export const TASK_ACTION_MUSIC_GENERATION = 'music_generation';
 export const TASK_ACTION_VOICE_CLONE = 'voice_clone';
+export const TASK_ACTION_BATCH_INFERENCE = 'batch_inference';

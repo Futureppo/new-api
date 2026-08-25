@@ -23,6 +23,7 @@ const (
 	TaskActionAudioGeneration   = "audio_generation"
 	TaskActionMusicGeneration   = "music_generation"
 	TaskActionVoiceClone        = "voice_clone"
+	TaskActionBatchInference    = "batch_inference"
 )
 
 var SunoModel2Action = map[string]string{

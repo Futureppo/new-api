@@ -27,7 +27,7 @@ func TestFetchGMICloudModelsDeduplicatesUpstreamList(t *testing.T) {
 		case "/v1/models":
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"MiniMaxAI/MiniMax-M3"},{"id":"MiniMaxAI/MiniMax-M2.7"},{"id":"MiniMaxAI/MiniMax-M3"}]}`))
 		case "/api/v1/ie/requestqueue/apikey/models":
-			_, _ = w.Write([]byte(`{"model_ids":["minimax-tts-speech-2.8-turbo","minimax-music-3.0","minimax-music-3.0","unrelated-video-model"]}`))
+			_, _ = w.Write([]byte(`{"model_ids":["minimax-tts-speech-2.8-turbo","minimax-music-3.0","minimax-music-3.0","Gemini-batch-inference","Gemini-batch-inference","unrelated-video-model"]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -42,6 +42,7 @@ func TestFetchGMICloudModelsDeduplicatesUpstreamList(t *testing.T) {
 		"MiniMaxAI/MiniMax-M2.7",
 		"minimax-tts-speech-2.8-turbo",
 		"minimax-music-3.0",
+		"Gemini-batch-inference",
 	}, models)
 }
 

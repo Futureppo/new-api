@@ -52,6 +52,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/tencent"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/volcengine"
+	"github.com/QuantumNous/new-api/relay/channel/vyceai"
 	"github.com/QuantumNous/new-api/relay/channel/xai"
 	"github.com/QuantumNous/new-api/relay/channel/xunfei"
 	"github.com/QuantumNous/new-api/relay/channel/zhipu"
@@ -143,6 +144,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 		return &opencode.GoAdaptor{}
 	case constant.APITypeMistralConsole:
 		return &mistralconsole.Adaptor{}
+	case constant.APITypeVyceAI:
+		return &vyceai.Adaptor{}
 	}
 	return nil
 }

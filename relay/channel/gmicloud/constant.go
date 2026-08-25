@@ -22,7 +22,15 @@ var AudioModelList = []string{
 	"minimax-music-3.0",
 }
 
-var ModelList = append(append([]string{}, LLMModelList...), AudioModelList...)
+const BatchInferenceModel = "Gemini-batch-inference"
+
+var BatchModelList = []string{
+	BatchInferenceModel,
+}
+
+var TaskModelList = append(append([]string{}, AudioModelList...), BatchModelList...)
+
+var ModelList = append(append([]string{}, LLMModelList...), TaskModelList...)
 
 var ChannelName = "gmicloud"
 
@@ -49,4 +57,12 @@ func IsAudioModel(model string) bool {
 		}
 	}
 	return false
+}
+
+func IsBatchModel(model string) bool {
+	return strings.EqualFold(strings.TrimSpace(model), BatchInferenceModel)
+}
+
+func IsTaskModel(model string) bool {
+	return IsAudioModel(model) || IsBatchModel(model)
 }

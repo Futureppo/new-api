@@ -65,6 +65,7 @@ const (
 	ChannelTypeMistralConsole = 65
 	ChannelTypeVercel         = 66
 	ChannelTypeGMICloud       = 67
+	ChannelTypeVyceAI         = 68
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -138,6 +139,7 @@ var ChannelBaseURLs = []string{
 	"https://console.mistral.ai",                //65
 	"https://ai-gateway.vercel.sh",              //66
 	"https://api.gmi-serving.com",               //67
+	"https://vyceai.com",                        //68
 }
 
 var ChannelTypeNames = map[int]string{
@@ -205,6 +207,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeMistralConsole: "Mistral Console",
 	ChannelTypeVercel:         "Vercel AI Gateway",
 	ChannelTypeGMICloud:       "GMI Cloud",
+	ChannelTypeVyceAI:         "VyceAI",
 }
 
 func GetChannelTypeName(channelType int) string {

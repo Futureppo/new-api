@@ -292,6 +292,7 @@ var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp 
 	relayconstant.RelayModeSunoFetch:                sunoFetchRespBodyBuilder,
 	relayconstant.RelayModeVideoFetchByID:           videoFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeAudioGenerationFetchByID: videoFetchByIDRespBodyBuilder,
+	relayconstant.RelayModeBatchGenerationFetchByID: videoFetchByIDRespBodyBuilder,
 }
 
 func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {

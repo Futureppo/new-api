@@ -334,6 +334,12 @@ var defaultModelPrice = map[string]float64{
 	"openai-local-search":            0,
 	"openai-local-ppt":               0,
 	"openai-local-psd":               0,
+	"你妈-1x1":                         0,
+	"你妈-16x9":                        0,
+	"你妈-9x16":                        0,
+	"你妈-2x3":                         0,
+	"你妈-3x2":                         0,
+	"你妈-4x3":                         0,
 }
 
 var defaultAudioRatio = map[string]float64{

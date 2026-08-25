@@ -19,6 +19,7 @@ func SetRouter(router *gin.Engine, buildFS embed.FS, indexPage []byte) {
 	SetRelayRouter(router)
 	SetVideoRouter(router)
 	SetAudioTaskRouter(router)
+	SetBatchTaskRouter(router)
 	frontendBaseUrl := os.Getenv("FRONTEND_BASE_URL")
 	if common.IsMasterNode && frontendBaseUrl != "" {
 		frontendBaseUrl = ""

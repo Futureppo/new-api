@@ -285,9 +285,9 @@ func fetchGMICloudModelIDs(channel *model.Channel, baseURL string, key string) (
 		return nil, fmt.Errorf("parse GMICLOUD task models failed: model_ids is missing")
 	}
 
-	supportedTaskModels := make([]string, 0, len(gmicloud.AudioModelList))
+	supportedTaskModels := make([]string, 0, len(gmicloud.TaskModelList))
 	for _, modelID := range taskModels.ModelIDs {
-		if gmicloud.IsAudioModel(modelID) {
+		if gmicloud.IsTaskModel(modelID) {
 			supportedTaskModels = append(supportedTaskModels, modelID)
 		}
 	}

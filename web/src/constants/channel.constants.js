@@ -63,6 +63,7 @@ export const CHANNEL_OPTIONS = [
   { value: 62, color: 'orange', label: 'Cerebras' },
   { value: 66, color: 'black', label: 'Vercel AI Gateway' },
   { value: 67, color: 'blue', label: 'GMI Cloud' },
+  { value: 68, color: 'blue', label: 'VyceAI' },
   { value: 63, color: 'cyan', label: 'OpenCode Zen' },
   { value: 64, color: 'green', label: 'OpenCode Go' },
   {

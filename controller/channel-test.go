@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -285,6 +286,12 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 			return string(constant.EndpointTypeAudioTranscription)
 		}
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(modelName) {
+		return string(constant.EndpointTypeBatchGeneration)
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeVyceAI {
+		return string(constant.EndpointTypeImageGeneration)
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeOpenCode {
 		switch constant.GetOpenCodeEndpoint(modelName) {
 		case constant.OpenCodeEndpointResponses:
@@ -457,7 +464,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAIImage
 		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			relayFormat = types.RelayFormatEmbedding
-		case constant.EndpointTypeOpenAIVideo:
+		case constant.EndpointTypeOpenAIVideo, constant.EndpointTypeBatchGeneration:
 			relayFormat = types.RelayFormatTask
 		case constant.EndpointTypeAudioSpeech, constant.EndpointTypeAudioTranscription:
 			relayFormat = types.RelayFormatOpenAIAudio
@@ -493,7 +500,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 
-	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo {
+	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo ||
+		constant.EndpointType(endpointType) == constant.EndpointTypeBatchGeneration {
 		return testTaskChannel(c, channel, testModel, tik)
 	}
 
@@ -895,10 +903,10 @@ func applyTaskTestOtherRatios(info *relaycommon.RelayInfo, ratios map[string]flo
 	}
 }
 
-func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID string) map[string]interface{} {
+func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID, requestPath string) map[string]interface{} {
 	other := map[string]interface{}{
 		"is_task":      true,
-		"request_path": "/v1/videos",
+		"request_path": requestPath,
 		"task_id":      taskID,
 		"model_price":  info.PriceData.ModelPrice,
 	}
@@ -920,7 +928,21 @@ func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID string) map[strin
 }
 
 func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, tik time.Time) testResult {
-	jsonData, err := buildTestVideoRequestBody(testModel)
+	taskEndpointType := constant.EndpointTypeOpenAIVideo
+	var jsonData []byte
+	var err error
+	if channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(testModel) {
+		taskEndpointType = constant.EndpointTypeBatchGeneration
+		jsonData, err = common.Marshal(map[string]any{
+			"model": testModel,
+			"payload": map[string]any{
+				"model":      "gemini-3-flash-preview",
+				"input_data": `{"request":{"contents":[{"role":"user","parts":[{"text":"Reply only with the number 4."}]}]}}`,
+			},
+		})
+	} else {
+		jsonData, err = buildTestVideoRequestBody(testModel)
+	}
 	if err != nil {
 		return testResult{
 			context:     c,
@@ -1027,7 +1049,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			channel.Name,
 			channel.Type,
 			testModel,
-			constant.EndpointTypeOpenAIVideo,
+			taskEndpointType,
 			resp.StatusCode,
 			err,
 		))
@@ -1061,9 +1083,9 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 		UseTimeSeconds: int(consumedTime),
 		IsStream:       false,
 		Group:          info.UsingGroup,
-		Other:          buildTaskTestLogOther(info, taskID),
+		Other:          buildTaskTestLogOther(info, taskID, c.Request.URL.Path),
 	})
-	common.SysLog(fmt.Sprintf("testing channel #%d, video task id: %s", channel.Id, taskID))
+	common.SysLog(fmt.Sprintf("testing channel #%d, task id: %s", channel.Id, taskID))
 	testSucceeded = true
 	return testResult{
 		context:     c,
