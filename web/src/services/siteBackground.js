@@ -75,13 +75,14 @@ export const isAllowedSiteBackgroundURL = (value) => {
   }
 };
 
-const normalizeSource = (source) => {
+const normalizeSource = (source, index = 0) => {
   if (!source || typeof source !== 'object') return null;
 
   const type = String(source.type || '').trim();
   const url = String(source.url || '').trim();
   const jsonPath = String(source.json_path || '').trim();
   const parsedWeight = Number(source.weight);
+  const parsedSourceIndex = Number(source.source_index);
   if (!ALLOWED_SOURCE_TYPES.has(type) || !isAllowedSiteBackgroundURL(url)) {
     return null;
   }
@@ -92,6 +93,9 @@ const normalizeSource = (source) => {
   return {
     type,
     url,
+    source_index: Number.isInteger(parsedSourceIndex)
+      ? parsedSourceIndex
+      : index,
     enabled: source.enabled !== false,
     weight: Number.isFinite(parsedWeight)
       ? Math.min(100, Math.max(1, Math.round(parsedWeight)))
@@ -145,7 +149,7 @@ export const normalizeSiteBackgroundConfig = (value) => {
   const sources = Array.isArray(parsed.sources)
     ? parsed.sources
         .slice(0, SITE_BACKGROUND_MAX_SOURCES)
-        .map(normalizeSource)
+        .map((source, index) => normalizeSource(source, index))
         .filter(Boolean)
     : [];
 
@@ -309,7 +313,9 @@ export const preloadSiteBackgroundImage = (url, signal) =>
 export const resolveSiteBackground = async (sources, options = {}) => {
   const { signal } = options;
   const normalizedSources = Array.isArray(sources)
-    ? sources.map(normalizeSource).filter((source) => source?.enabled === true)
+    ? sources
+        .map((source, index) => normalizeSource(source, index))
+        .filter((source) => source?.enabled === true)
     : [];
   let lastError;
 
@@ -321,6 +327,81 @@ export const resolveSiteBackground = async (sources, options = {}) => {
       const url = await resolveSourceURL(source, signal);
       await preloadSiteBackgroundImage(url, signal);
       return { url, source };
+    } catch (error) {
+      if (signal?.aborted) {
+        throw new DOMException('Aborted', 'AbortError');
+      }
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('No valid site background source');
+};
+
+const getResponseImageContentType = (response) =>
+  String(response.headers.get('content-type') || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+
+const isSameOriginSiteBackgroundSource = (source) => {
+  if (source.type === SITE_BACKGROUND_SOURCE_TYPES.JSON_API) return false;
+  try {
+    return (
+      new URL(source.url, window.location.href).origin ===
+      window.location.origin
+    );
+  } catch {
+    return false;
+  }
+};
+
+const fetchSiteBackgroundAsset = async (source, signal) => {
+  const useSameOriginSource = isSameOriginSiteBackgroundSource(source);
+  const requestURL = useSameOriginSource
+    ? source.url
+    : `/api/site-background/image?source=${encodeURIComponent(source.source_index)}&_site_background=${Date.now()}`;
+  const response = await fetch(requestURL, {
+    cache: 'no-store',
+    credentials: 'same-origin',
+    referrerPolicy: 'no-referrer',
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Background image request failed: ${response.status}`);
+  }
+
+  const contentType = getResponseImageContentType(response);
+  if (!contentType.startsWith('image/')) {
+    throw new Error('Background response is not an image');
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  try {
+    await preloadSiteBackgroundImage(url, signal);
+    return { url, blob, content_type: contentType, source };
+  } catch (error) {
+    URL.revokeObjectURL(url);
+    throw error;
+  }
+};
+
+export const resolveSiteBackgroundAsset = async (sources, options = {}) => {
+  const { signal } = options;
+  const normalizedSources = Array.isArray(sources)
+    ? sources
+        .map((source, index) => normalizeSource(source, index))
+        .filter((source) => source?.enabled === true)
+    : [];
+  let lastError;
+
+  for (const source of orderSiteBackgroundSources(normalizedSources)) {
+    if (signal?.aborted) {
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    try {
+      return await fetchSiteBackgroundAsset(source, signal);
     } catch (error) {
       if (signal?.aborted) {
         throw new DOMException('Aborted', 'AbortError');
@@ -348,31 +429,22 @@ const SITE_BACKGROUND_FILE_EXTENSIONS = {
 const getSiteBackgroundFileExtension = (contentType) =>
   SITE_BACKGROUND_FILE_EXTENSIONS[contentType] || 'img';
 
-export const downloadSiteBackgroundImage = async (url) => {
-  if (!isAllowedSiteBackgroundURL(url)) {
-    throw new Error('Invalid site background URL');
-  }
-
-  const response = await fetch(url, {
-    credentials: 'omit',
-    referrerPolicy: 'no-referrer',
-  });
-  if (!response.ok) {
-    throw new Error(`Background image download failed: ${response.status}`);
-  }
-
-  const contentType = String(response.headers.get('content-type') || '')
-    .split(';', 1)[0]
+export const downloadSiteBackgroundImage = async (asset) => {
+  const contentType = String(asset?.content_type || asset?.blob?.type || '')
     .trim()
     .toLowerCase();
   if (!contentType.startsWith('image/')) {
-    throw new Error('Background download response is not an image');
+    throw new Error('Background asset is not an image');
+  }
+  if (
+    !(asset?.blob instanceof Blob) ||
+    !String(asset?.url).startsWith('blob:')
+  ) {
+    throw new Error('Background asset is unavailable');
   }
 
-  const blob = await response.blob();
-  const objectURL = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.href = objectURL;
+  link.href = asset.url;
   link.download = `site-background-${Date.now()}.${getSiteBackgroundFileExtension(contentType)}`;
 
   try {
@@ -380,6 +452,5 @@ export const downloadSiteBackgroundImage = async (url) => {
     link.click();
   } finally {
     link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(objectURL), 0);
   }
 };

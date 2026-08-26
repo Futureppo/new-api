@@ -41,13 +41,13 @@ const UserArea = ({
   navigate,
   t,
   siteBackgroundEnabled,
-  currentSiteBackgroundURL,
+  currentSiteBackgroundAsset,
 }) => {
   const dropdownRef = useRef(null);
   const [isDownloadingBackground, setIsDownloadingBackground] = useState(false);
   const canDownloadBackground =
     siteBackgroundEnabled &&
-    Boolean(currentSiteBackgroundURL) &&
+    Boolean(currentSiteBackgroundAsset?.url) &&
     !isDownloadingBackground;
 
   const handleBackgroundDownload = async () => {
@@ -55,11 +55,11 @@ const UserArea = ({
 
     setIsDownloadingBackground(true);
     try {
-      await downloadSiteBackgroundImage(currentSiteBackgroundURL);
+      await downloadSiteBackgroundImage(currentSiteBackgroundAsset);
       showSuccess(t('背景图片下载已开始'));
     } catch (error) {
       console.error('背景图片下载失败:', error);
-      showError(t('背景图片下载失败，请检查图片来源是否允许跨域下载'));
+      showError(t('背景图片下载失败，请稍后重试'));
     } finally {
       setIsDownloadingBackground(false);
     }
@@ -130,7 +130,7 @@ const UserArea = ({
                 disabled={!canDownloadBackground}
                 onClick={handleBackgroundDownload}
                 title={
-                  !siteBackgroundEnabled || !currentSiteBackgroundURL
+                  !siteBackgroundEnabled || !currentSiteBackgroundAsset?.url
                     ? t('背景图片未启用或尚未加载')
                     : undefined
                 }

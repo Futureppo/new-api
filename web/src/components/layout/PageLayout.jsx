@@ -53,7 +53,8 @@ const PageLayout = () => {
   const isMobile = useIsMobile();
   const [collapsed, , setCollapsed] = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [currentSiteBackgroundURL, setCurrentSiteBackgroundURL] = useState('');
+  const [currentSiteBackgroundAsset, setCurrentSiteBackgroundAsset] =
+    useState(null);
   const { i18n } = useTranslation();
   const location = useLocation();
   const siteBackgroundConfig = normalizeSiteBackgroundConfig(
@@ -187,7 +188,7 @@ const PageLayout = () => {
       <>
         <SiteBackground
           config={siteBackgroundConfig}
-          onImageChange={setCurrentSiteBackgroundURL}
+          onAssetChange={setCurrentSiteBackgroundAsset}
         />
         <Layout
           className={appLayoutClassName}
@@ -211,7 +212,7 @@ const PageLayout = () => {
     <>
       <SiteBackground
         config={siteBackgroundConfig}
-        onImageChange={setCurrentSiteBackgroundURL}
+        onAssetChange={setCurrentSiteBackgroundAsset}
       />
       <Layout
         className={appLayoutClassName}
@@ -237,7 +238,7 @@ const PageLayout = () => {
             onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
             drawerOpen={drawerOpen}
             siteBackgroundEnabled={siteBackgroundActive}
-            currentSiteBackgroundURL={currentSiteBackgroundURL}
+            currentSiteBackgroundAsset={currentSiteBackgroundAsset}
           />
         </Header>
         <Layout

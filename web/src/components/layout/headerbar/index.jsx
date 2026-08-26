@@ -31,7 +31,7 @@ const HeaderBar = ({
   onMobileMenuToggle,
   drawerOpen,
   siteBackgroundEnabled,
-  currentSiteBackgroundURL,
+  currentSiteBackgroundAsset,
 }) => {
   const {
     userState,
@@ -133,7 +133,7 @@ const HeaderBar = ({
             navigate={navigate}
             t={t}
             siteBackgroundEnabled={siteBackgroundEnabled}
-            currentSiteBackgroundURL={currentSiteBackgroundURL}
+            currentSiteBackgroundAsset={currentSiteBackgroundAsset}
           />
         </div>
       </div>

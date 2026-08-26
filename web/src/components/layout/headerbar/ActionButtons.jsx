@@ -40,7 +40,7 @@ const ActionButtons = ({
   navigate,
   t,
   siteBackgroundEnabled,
-  currentSiteBackgroundURL,
+  currentSiteBackgroundAsset,
 }) => {
   return (
     <div className='flex items-center gap-2 md:gap-3'>
@@ -69,7 +69,7 @@ const ActionButtons = ({
         navigate={navigate}
         t={t}
         siteBackgroundEnabled={siteBackgroundEnabled}
-        currentSiteBackgroundURL={currentSiteBackgroundURL}
+        currentSiteBackgroundAsset={currentSiteBackgroundAsset}
       />
     </div>
   );

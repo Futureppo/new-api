@@ -20,12 +20,12 @@ For commercial licensing, please contact support@quantumnous.com
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   normalizeSiteBackgroundConfig,
-  resolveSiteBackground,
+  resolveSiteBackgroundAsset,
 } from '../../services/siteBackground';
 import SiteBackgroundGlassFilter from './SiteBackgroundGlassFilter';
 import SiteBackgroundGlassCanvas from './SiteBackgroundGlassCanvas';
 
-const SiteBackground = ({ config, onImageChange }) => {
+const SiteBackground = ({ config, onAssetChange }) => {
   const normalizedConfig = useMemo(
     () => normalizeSiteBackgroundConfig(config),
     [config],
@@ -34,8 +34,9 @@ const SiteBackground = ({ config, onImageChange }) => {
     () => JSON.stringify(normalizedConfig.sources),
     [normalizedConfig.sources],
   );
-  const [imageURL, setImageURL] = useState('');
+  const [imageAsset, setImageAsset] = useState(null);
   const [webglFailed, setWebglFailed] = useState(false);
+  const imageURL = imageAsset?.url || '';
 
   // 管理员把渲染器切回 webgl（或换了配置）时给它重试机会
   useEffect(() => {
@@ -44,29 +45,46 @@ const SiteBackground = ({ config, onImageChange }) => {
 
   useEffect(() => {
     if (!normalizedConfig.enabled) {
-      setImageURL('');
+      setImageAsset(null);
       return undefined;
     }
 
-    setImageURL('');
+    let active = true;
+    setImageAsset(null);
     const controller = new AbortController();
-    resolveSiteBackground(normalizedConfig.sources, {
+    resolveSiteBackgroundAsset(normalizedConfig.sources, {
       signal: controller.signal,
     })
-      .then(({ url }) => setImageURL(url))
+      .then((asset) => {
+        if (active) {
+          setImageAsset(asset);
+        } else {
+          URL.revokeObjectURL(asset.url);
+        }
+      })
       .catch((error) => {
-        if (error?.name !== 'AbortError') {
+        if (active && error?.name !== 'AbortError') {
           console.warn('站点背景加载失败:', error);
-          setImageURL('');
+          setImageAsset(null);
         }
       });
 
-    return () => controller.abort();
+    return () => {
+      active = false;
+      controller.abort();
+    };
   }, [normalizedConfig.enabled, sourceSignature]);
 
   useEffect(() => {
-    onImageChange?.(normalizedConfig.enabled ? imageURL : '');
-  }, [imageURL, normalizedConfig.enabled, onImageChange]);
+    onAssetChange?.(normalizedConfig.enabled ? imageAsset : null);
+  }, [imageAsset, normalizedConfig.enabled, onAssetChange]);
+
+  useEffect(
+    () => () => {
+      if (imageAsset?.url) URL.revokeObjectURL(imageAsset.url);
+    },
+    [imageAsset],
+  );
 
   if (!normalizedConfig.enabled) return null;
 
