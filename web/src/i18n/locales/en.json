@@ -4365,7 +4365,7 @@
     "背景图片来源不能超过 20 个": "Background image sources cannot exceed 20",
     "下载背景": "Download background",
     "背景图片下载已开始": "Background image download started",
-    "背景图片下载失败，请检查图片来源是否允许跨域下载": "Failed to download the background image. Check whether the image source allows cross-origin downloads.",
+    "背景图片下载失败，请稍后重试": "Failed to download the background image. Please try again.",
     "背景图片未启用或尚未加载": "The background image is disabled or has not loaded yet.",
     "背景显示模式": "Background display mode",
     "背景遮罩强度": "Background overlay strength",

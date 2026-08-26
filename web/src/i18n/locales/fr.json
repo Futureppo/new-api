@@ -4268,7 +4268,7 @@
     "背景图片来源不能超过 20 个": "Le nombre de sources d’images ne peut pas dépasser 20",
     "下载背景": "Télécharger l’arrière-plan",
     "背景图片下载已开始": "Le téléchargement de l’image d’arrière-plan a commencé",
-    "背景图片下载失败，请检查图片来源是否允许跨域下载": "Échec du téléchargement de l’image d’arrière-plan. Vérifiez que la source autorise les téléchargements inter-origines.",
+    "背景图片下载失败，请稍后重试": "Échec du téléchargement de l’image d’arrière-plan. Veuillez réessayer.",
     "背景图片未启用或尚未加载": "L’image d’arrière-plan est désactivée ou n’est pas encore chargée.",
     "背景显示模式": "Mode d’affichage de l’arrière-plan",
     "背景遮罩强度": "Intensité du voile d’arrière-plan",
