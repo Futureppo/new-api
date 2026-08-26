@@ -301,6 +301,8 @@ docker run --name new-api -d --restart always \
 | **遠端資料庫** | MySQL ≥ 5.7.8 或 PostgreSQL ≥ 9.6 |
 | **容器引擎** | Docker / Docker Compose |
 
+> **資料庫建議：** 新部署推薦優先使用 PostgreSQL。
+
 ### ⚙️ 環境變數配置
 
 <details>

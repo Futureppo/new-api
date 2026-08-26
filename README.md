@@ -301,6 +301,8 @@ docker run --name new-api -d --restart always \
 | **Remote database** | MySQL ≥ 5.7.8 or PostgreSQL ≥ 9.6 |
 | **Container engine** | Docker / Docker Compose |
 
+> **Database recommendation:** PostgreSQL is preferred for new deployments.
+
 ### ⚙️ Environment Variable Configuration
 
 <details>

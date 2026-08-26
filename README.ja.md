@@ -303,6 +303,8 @@ docker run --name new-api -d --restart always \
 | **リモートデータベース** | MySQL ≥ 5.7.8 または PostgreSQL ≥ 9.6 |
 | **コンテナエンジン** | Docker / Docker Compose |
 
+> **データベースの推奨:** 新規デプロイでは PostgreSQL の利用を推奨します。
+
 ### ⚙️ 環境変数設定
 
 <details>
