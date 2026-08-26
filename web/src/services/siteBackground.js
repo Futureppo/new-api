@@ -165,10 +165,7 @@ export const normalizeSiteBackgroundConfig = (value) => {
   };
 };
 
-export const orderSiteBackgroundSources = (
-  values,
-  random = Math.random,
-) => {
+export const orderSiteBackgroundSources = (values, random = Math.random) => {
   const pool = [...values];
   const result = [];
 
@@ -312,9 +309,7 @@ export const preloadSiteBackgroundImage = (url, signal) =>
 export const resolveSiteBackground = async (sources, options = {}) => {
   const { signal } = options;
   const normalizedSources = Array.isArray(sources)
-    ? sources
-        .map(normalizeSource)
-        .filter((source) => source?.enabled === true)
+    ? sources.map(normalizeSource).filter((source) => source?.enabled === true)
     : [];
   let lastError;
 
@@ -335,4 +330,56 @@ export const resolveSiteBackground = async (sources, options = {}) => {
   }
 
   throw lastError || new Error('No valid site background source');
+};
+
+const SITE_BACKGROUND_FILE_EXTENSIONS = {
+  'image/avif': 'avif',
+  'image/bmp': 'bmp',
+  'image/gif': 'gif',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/svg+xml': 'svg',
+  'image/tiff': 'tiff',
+  'image/vnd.microsoft.icon': 'ico',
+  'image/webp': 'webp',
+  'image/x-icon': 'ico',
+};
+
+const getSiteBackgroundFileExtension = (contentType) =>
+  SITE_BACKGROUND_FILE_EXTENSIONS[contentType] || 'img';
+
+export const downloadSiteBackgroundImage = async (url) => {
+  if (!isAllowedSiteBackgroundURL(url)) {
+    throw new Error('Invalid site background URL');
+  }
+
+  const response = await fetch(url, {
+    credentials: 'omit',
+    referrerPolicy: 'no-referrer',
+  });
+  if (!response.ok) {
+    throw new Error(`Background image download failed: ${response.status}`);
+  }
+
+  const contentType = String(response.headers.get('content-type') || '')
+    .split(';', 1)[0]
+    .trim()
+    .toLowerCase();
+  if (!contentType.startsWith('image/')) {
+    throw new Error('Background download response is not an image');
+  }
+
+  const blob = await response.blob();
+  const objectURL = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = objectURL;
+  link.download = `site-background-${Date.now()}.${getSiteBackgroundFileExtension(contentType)}`;
+
+  try {
+    document.body.appendChild(link);
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectURL), 0);
+  }
 };

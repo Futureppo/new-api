@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Avatar, Button, Dropdown, Typography } from '@douyinfe/semi-ui';
 import { ChevronDown } from 'lucide-react';
@@ -25,9 +25,11 @@ import {
   IconExit,
   IconUserSetting,
   IconCreditCard,
+  IconDownload,
   IconKey,
 } from '@douyinfe/semi-icons';
-import { stringToColor } from '../../../helpers';
+import { showError, showSuccess, stringToColor } from '../../../helpers';
+import { downloadSiteBackgroundImage } from '../../../services/siteBackground';
 import SkeletonWrapper from '../components/SkeletonWrapper';
 
 const UserArea = ({
@@ -38,8 +40,31 @@ const UserArea = ({
   logout,
   navigate,
   t,
+  siteBackgroundEnabled,
+  currentSiteBackgroundURL,
 }) => {
   const dropdownRef = useRef(null);
+  const [isDownloadingBackground, setIsDownloadingBackground] = useState(false);
+  const canDownloadBackground =
+    siteBackgroundEnabled &&
+    Boolean(currentSiteBackgroundURL) &&
+    !isDownloadingBackground;
+
+  const handleBackgroundDownload = async () => {
+    if (!canDownloadBackground) return;
+
+    setIsDownloadingBackground(true);
+    try {
+      await downloadSiteBackgroundImage(currentSiteBackgroundURL);
+      showSuccess(t('背景图片下载已开始'));
+    } catch (error) {
+      console.error('背景图片下载失败:', error);
+      showError(t('背景图片下载失败，请检查图片来源是否允许跨域下载'));
+    } finally {
+      setIsDownloadingBackground(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <SkeletonWrapper
@@ -99,6 +124,24 @@ const UserArea = ({
                     className='text-gray-500 dark:text-gray-400'
                   />
                   <span>{t('钱包管理')}</span>
+                </div>
+              </Dropdown.Item>
+              <Dropdown.Item
+                disabled={!canDownloadBackground}
+                onClick={handleBackgroundDownload}
+                title={
+                  !siteBackgroundEnabled || !currentSiteBackgroundURL
+                    ? t('背景图片未启用或尚未加载')
+                    : undefined
+                }
+                className='!px-3 !py-1.5 !text-sm !text-semi-color-text-0 hover:!bg-semi-color-fill-1 dark:!text-gray-200 dark:hover:!bg-blue-500 dark:hover:!text-white'
+              >
+                <div className='flex items-center gap-2'>
+                  <IconDownload
+                    size='small'
+                    className='text-gray-500 dark:text-gray-400'
+                  />
+                  <span>{t('下载背景')}</span>
                 </div>
               </Dropdown.Item>
               <Dropdown.Item

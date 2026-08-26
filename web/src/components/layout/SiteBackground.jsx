@@ -25,7 +25,7 @@ import {
 import SiteBackgroundGlassFilter from './SiteBackgroundGlassFilter';
 import SiteBackgroundGlassCanvas from './SiteBackgroundGlassCanvas';
 
-const SiteBackground = ({ config }) => {
+const SiteBackground = ({ config, onImageChange }) => {
   const normalizedConfig = useMemo(
     () => normalizeSiteBackgroundConfig(config),
     [config],
@@ -48,6 +48,7 @@ const SiteBackground = ({ config }) => {
       return undefined;
     }
 
+    setImageURL('');
     const controller = new AbortController();
     resolveSiteBackground(normalizedConfig.sources, {
       signal: controller.signal,
@@ -62,6 +63,10 @@ const SiteBackground = ({ config }) => {
 
     return () => controller.abort();
   }, [normalizedConfig.enabled, sourceSignature]);
+
+  useEffect(() => {
+    onImageChange?.(normalizedConfig.enabled ? imageURL : '');
+  }, [imageURL, normalizedConfig.enabled, onImageChange]);
 
   if (!normalizedConfig.enabled) return null;
 

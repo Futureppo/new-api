@@ -53,6 +53,7 @@ const PageLayout = () => {
   const isMobile = useIsMobile();
   const [collapsed, , setCollapsed] = useSidebarCollapsed();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [currentSiteBackgroundURL, setCurrentSiteBackgroundURL] = useState('');
   const { i18n } = useTranslation();
   const location = useLocation();
   const siteBackgroundConfig = normalizeSiteBackgroundConfig(
@@ -184,7 +185,10 @@ const PageLayout = () => {
   if (location.pathname === '/model-status') {
     return (
       <>
-        <SiteBackground config={siteBackgroundConfig} />
+        <SiteBackground
+          config={siteBackgroundConfig}
+          onImageChange={setCurrentSiteBackgroundURL}
+        />
         <Layout
           className={appLayoutClassName}
           style={{ minHeight: '100vh', ...siteBackgroundGlassStyle }}
@@ -205,7 +209,10 @@ const PageLayout = () => {
 
   return (
     <>
-      <SiteBackground config={siteBackgroundConfig} />
+      <SiteBackground
+        config={siteBackgroundConfig}
+        onImageChange={setCurrentSiteBackgroundURL}
+      />
       <Layout
         className={appLayoutClassName}
         style={{
@@ -229,6 +236,8 @@ const PageLayout = () => {
           <HeaderBar
             onMobileMenuToggle={() => setDrawerOpen((prev) => !prev)}
             drawerOpen={drawerOpen}
+            siteBackgroundEnabled={siteBackgroundActive}
+            currentSiteBackgroundURL={currentSiteBackgroundURL}
           />
         </Header>
         <Layout
