@@ -57,7 +57,7 @@
 version: '3'
 services:
   new-api:
-    image: calciumion/new-api:latest
+    image: ghcr.io/futureppo/new-api:latest
     container_name: new-api
     restart: always
     ports:
@@ -126,7 +126,7 @@ volumes:
 
 ```bash
 # 拉取最新镜像
-docker pull calciumion/new-api:latest
+docker pull ghcr.io/futureppo/new-api:latest
 
 # 重启容器
 docker-compose down && docker-compose up -d
