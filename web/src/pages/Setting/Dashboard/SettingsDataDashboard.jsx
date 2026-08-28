@@ -26,16 +26,17 @@ import {
   showSuccess,
   showWarning,
 } from '../../../helpers';
+import { TIME_OPTIONS } from '../../../constants/dashboard.constants';
 import { useTranslation } from 'react-i18next';
 
 export default function DataDashboard(props) {
   const { t } = useTranslation();
 
-  const optionsDataExportDefaultTime = [
-    { key: 'hour', label: t('小时'), value: 'hour' },
-    { key: 'day', label: t('天'), value: 'day' },
-    { key: 'week', label: t('周'), value: 'week' },
-  ];
+  const optionsDataExportDefaultTime = TIME_OPTIONS.map((option) => ({
+    ...option,
+    key: option.value,
+    label: t(option.label),
+  }));
   const [loading, setLoading] = useState(false);
   const [inputs, setInputs] = useState({
     DataExportEnabled: false,

@@ -48,6 +48,39 @@ export const getTimeInterval = (timeType, isSeconds = false) => {
   return isSeconds ? intervals.seconds : intervals.minutes;
 };
 
+const getCalendarBucketStart = (timestamp, timeType) => {
+  const date = new Date(timestamp * 1000);
+  date.setHours(0, 0, 0, 0);
+
+  if (timeType === 'month') {
+    date.setDate(1);
+  } else if (timeType === 'year') {
+    date.setMonth(0, 1);
+  }
+
+  return date;
+};
+
+const shiftCalendarBucket = (date, timeType, amount) => {
+  const shiftedDate = new Date(date.getTime());
+  if (timeType === 'month') {
+    shiftedDate.setMonth(shiftedDate.getMonth() + amount);
+  } else {
+    shiftedDate.setFullYear(shiftedDate.getFullYear() + amount);
+  }
+  return shiftedDate;
+};
+
+const getTimeIntervalForTimestamp = (timestamp, timeType) => {
+  if (timeType !== 'month' && timeType !== 'year') {
+    return getTimeInterval(timeType);
+  }
+
+  const bucketStart = getCalendarBucketStart(timestamp, timeType);
+  const nextBucket = shiftCalendarBucket(bucketStart, timeType, 1);
+  return (nextBucket.getTime() - bucketStart.getTime()) / 60000;
+};
+
 export const getInitialTimestamp = () => {
   const defaultTime = getDefaultTime();
   const now = new Date().getTime() / 1000;
@@ -256,6 +289,7 @@ export const processRawData = (
     timeQuotaMap: new Map(),
     timeTokensMap: new Map(),
     timeCountMap: new Map(),
+    timeIntervalMap: new Map(),
   };
 
   // 检查数据是否跨年
@@ -274,6 +308,12 @@ export const processRawData = (
     );
     if (!result.timePoints.includes(timeKey)) {
       result.timePoints.push(timeKey);
+    }
+    if (!result.timeIntervalMap.has(timeKey)) {
+      result.timeIntervalMap.set(
+        timeKey,
+        getTimeIntervalForTimestamp(item.created_at, dataExportDefaultTime),
+      );
     }
 
     initializeMaps(
@@ -297,6 +337,7 @@ export const calculateTrendData = (
   timeTokensMap,
   timeCountMap,
   dataExportDefaultTime,
+  timeIntervalMap = new Map(),
 ) => {
   const quotaTrend = timePoints.map((time) => timeQuotaMap.get(time) || 0);
   const tokensTrend = timePoints.map((time) => timeTokensMap.get(time) || 0);
@@ -306,9 +347,10 @@ export const calculateTrendData = (
   const tpmTrend = [];
 
   if (timePoints.length >= 2) {
-    const interval = getTimeInterval(dataExportDefaultTime);
-
     for (let i = 0; i < timePoints.length; i++) {
+      const interval =
+        timeIntervalMap.get(timePoints[i]) ||
+        getTimeInterval(dataExportDefaultTime);
       rpmTrend.push(timeCountMap.get(timePoints[i]) / interval);
       tpmTrend.push(timeTokensMap.get(timePoints[i]) / interval);
     }
@@ -369,13 +411,34 @@ export const generateChartTimePoints = (
 
   if (chartTimePoints.length < DEFAULTS.MAX_TREND_POINTS) {
     const lastTime = Math.max(...data.map((item) => item.created_at));
-    const interval = getTimeInterval(dataExportDefaultTime, true);
+    let generatedTimestamps;
+
+    if (
+      dataExportDefaultTime === 'month' ||
+      dataExportDefaultTime === 'year'
+    ) {
+      const lastBucket = getCalendarBucketStart(
+        lastTime,
+        dataExportDefaultTime,
+      );
+      generatedTimestamps = Array.from(
+        { length: DEFAULTS.MAX_TREND_POINTS },
+        (_, i) =>
+          shiftCalendarBucket(
+            lastBucket,
+            dataExportDefaultTime,
+            i - 6,
+          ).getTime() / 1000,
+      );
+    } else {
+      const interval = getTimeInterval(dataExportDefaultTime, true);
+      generatedTimestamps = Array.from(
+        { length: DEFAULTS.MAX_TREND_POINTS },
+        (_, i) => lastTime - (6 - i) * interval,
+      );
+    }
 
     // 生成时间点数组，用于检查是否跨年
-    const generatedTimestamps = Array.from(
-      { length: DEFAULTS.MAX_TREND_POINTS },
-      (_, i) => lastTime - (6 - i) * interval,
-    );
     const showYear = isDataCrossYear(generatedTimestamps);
 
     chartTimePoints = generatedTimestamps.map((ts) =>

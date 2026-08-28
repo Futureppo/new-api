@@ -41,6 +41,8 @@ export const TIME_OPTIONS = [
   { label: '小时', value: 'hour' },
   { label: '天', value: 'day' },
   { label: '周', value: 'week' },
+  { label: '月', value: 'month' },
+  { label: '年', value: 'year' },
 ];
 
 export const DEFAULT_TIME_INTERVALS = {
@@ -54,6 +56,8 @@ export const DEFAULT_TIME_RANGE = {
   HOUR: 'hour',
   DAY: 'day',
   WEEK: 'week',
+  MONTH: 'month',
+  YEAR: 'year',
 };
 
 // ========== 图表默认配置 ==========
