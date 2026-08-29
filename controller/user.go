@@ -1012,6 +1012,11 @@ type BatchDisableRelatedUsersRequest struct {
 	SelectAllRelated *bool  `json:"select_all_related,omitempty"`
 }
 
+type BatchManageUsersRequest struct {
+	Action string `json:"action"`
+	Reason string `json:"reason,omitempty"`
+}
+
 func BatchDisableRelatedUsers(c *gin.Context) {
 	var req BatchDisableRelatedUsersRequest
 	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
@@ -1032,6 +1037,20 @@ func BatchDisableRelatedUsers(c *gin.Context) {
 		c.GetInt("id"),
 		c.GetInt("role"),
 	)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	common.ApiSuccess(c, result)
+}
+
+func BatchManageUsers(c *gin.Context) {
+	var req BatchManageUsersRequest
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	result, err := enhancement.BatchManageUsers(req.Action, req.Reason, c.GetInt("id"), c.GetInt("role"))
 	if err != nil {
 		common.ApiError(c, err)
 		return

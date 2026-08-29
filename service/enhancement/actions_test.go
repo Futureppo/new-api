@@ -185,6 +185,16 @@ func requirePurgeUserExists(t *testing.T, id int, expected bool) {
 	require.Equal(t, int64(0), count)
 }
 
+func requireBatchUser(t *testing.T, id int, status int, disableReason string, deleted bool) {
+	t.Helper()
+
+	var user model.User
+	require.NoError(t, model.DB.Unscoped().First(&user, id).Error)
+	require.Equal(t, status, user.Status)
+	require.Equal(t, disableReason, user.DisableReason)
+	require.Equal(t, deleted, user.DeletedAt.Valid)
+}
+
 func TestSaveModelStatusRequestCountHideThreshold(t *testing.T) {
 	setupModelStatusOptionTestDB(t)
 
@@ -229,7 +239,7 @@ func TestPurgeSoftDeletedUsersAdminDeletesOnlyCommonUsers(t *testing.T) {
 	requirePurgeUserExists(t, 104, true)
 }
 
-func TestPurgeSoftDeletedUsersRootDeletesCommonAndAdminUsers(t *testing.T) {
+func TestPurgeSoftDeletedUsersRootDeletesOnlyCommonUsers(t *testing.T) {
 	setupUserPurgeTestDB(t)
 	seedPurgeUser(t, 201, common.RoleCommonUser, common.UserStatusEnabled, true)
 	seedPurgeUser(t, 202, common.RoleAdminUser, common.UserStatusEnabled, true)
@@ -239,11 +249,117 @@ func TestPurgeSoftDeletedUsersRootDeletesCommonAndAdminUsers(t *testing.T) {
 	deleted, err := PurgeSoftDeletedUsers(900, common.RoleRootUser)
 
 	require.NoError(t, err)
-	require.Equal(t, int64(2), deleted)
+	require.Equal(t, int64(1), deleted)
 	requirePurgeUserExists(t, 201, false)
-	requirePurgeUserExists(t, 202, false)
+	requirePurgeUserExists(t, 202, true)
 	requirePurgeUserExists(t, 203, true)
 	requirePurgeUserExists(t, 204, true)
+}
+
+func TestBatchManageUsersEnablesOnlyDisabledCommonUsers(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	seedPurgeUser(t, 301, common.RoleCommonUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 302, common.RoleCommonUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 303, common.RoleAdminUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 304, common.RoleRootUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 305, common.RoleCommonUser, common.UserStatusDisabled, true)
+	require.NoError(t, model.DB.Unscoped().Model(&model.User{}).Where("id IN ?", []int{301, 303, 304, 305}).Update("disable_reason", "review").Error)
+
+	result, err := BatchManageUsers("enable_disabled", "", 900, common.RoleRootUser)
+
+	require.NoError(t, err)
+	require.Equal(t, BatchManageUsersResult{Action: "enable_disabled", Affected: 1}, result)
+	requireBatchUser(t, 301, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 302, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 303, common.UserStatusDisabled, "review", false)
+	requireBatchUser(t, 304, common.UserStatusDisabled, "review", false)
+	requireBatchUser(t, 305, common.UserStatusDisabled, "review", true)
+}
+
+func TestBatchManageUsersDisablesOnlyEnabledCommonUsers(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	seedPurgeUser(t, 401, common.RoleCommonUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 402, common.RoleCommonUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 403, common.RoleAdminUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 404, common.RoleRootUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 405, common.RoleCommonUser, common.UserStatusEnabled, true)
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 402).Update("disable_reason", "existing").Error)
+
+	result, err := BatchManageUsers("disable_enabled", "  maintenance  ", 900, common.RoleAdminUser)
+
+	require.NoError(t, err)
+	require.Equal(t, BatchManageUsersResult{Action: "disable_enabled", Affected: 1}, result)
+	requireBatchUser(t, 401, common.UserStatusDisabled, "maintenance", false)
+	requireBatchUser(t, 402, common.UserStatusDisabled, "existing", false)
+	requireBatchUser(t, 403, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 404, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 405, common.UserStatusEnabled, "", true)
+}
+
+func TestBatchManageUsersRejectsInvalidDisableReason(t *testing.T) {
+	setupUserPurgeTestDB(t)
+
+	_, err := BatchManageUsers("disable_enabled", "   ", 900, common.RoleAdminUser)
+	require.ErrorContains(t, err, "cannot be empty")
+
+	_, err = BatchManageUsers("disable_enabled", strings.Repeat("a", 256), 900, common.RoleAdminUser)
+	require.ErrorContains(t, err, "cannot exceed 255")
+}
+
+func TestBatchManageUsersSoftDeletesOnlyDisabledCommonUsers(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	seedPurgeUser(t, 501, common.RoleCommonUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 502, common.RoleCommonUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 503, common.RoleAdminUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 504, common.RoleRootUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 505, common.RoleCommonUser, common.UserStatusDisabled, true)
+
+	result, err := BatchManageUsers("delete_disabled", "", 900, common.RoleRootUser)
+
+	require.NoError(t, err)
+	require.Equal(t, BatchManageUsersResult{Action: "delete_disabled", Affected: 1}, result)
+	requireBatchUser(t, 501, common.UserStatusDisabled, "", true)
+	requireBatchUser(t, 502, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 503, common.UserStatusDisabled, "", false)
+	requireBatchUser(t, 504, common.UserStatusDisabled, "", false)
+	requireBatchUser(t, 505, common.UserStatusDisabled, "", true)
+}
+
+func TestBatchManageUsersPermanentlyDeletesOnlyActiveDisabledCommonUsers(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	seedPurgeUser(t, 601, common.RoleCommonUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 602, common.RoleCommonUser, common.UserStatusEnabled, false)
+	seedPurgeUser(t, 603, common.RoleAdminUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 604, common.RoleRootUser, common.UserStatusDisabled, false)
+	seedPurgeUser(t, 605, common.RoleCommonUser, common.UserStatusDisabled, true)
+
+	result, err := BatchManageUsers("purge_disabled", "", 900, common.RoleRootUser)
+
+	require.NoError(t, err)
+	require.Equal(t, BatchManageUsersResult{Action: "purge_disabled", Affected: 1}, result)
+	requirePurgeUserExists(t, 601, false)
+	requireBatchUser(t, 602, common.UserStatusEnabled, "", false)
+	requireBatchUser(t, 603, common.UserStatusDisabled, "", false)
+	requireBatchUser(t, 604, common.UserStatusDisabled, "", false)
+	requireBatchUser(t, 605, common.UserStatusDisabled, "", true)
+}
+
+func TestBatchManageUsersValidatesPermissionActionAndEmptyResult(t *testing.T) {
+	setupUserPurgeTestDB(t)
+
+	_, err := BatchManageUsers("enable_disabled", "", 900, common.RoleCommonUser)
+	require.ErrorContains(t, err, "admin permission required")
+
+	_, err = BatchManageUsers("unknown", "", 900, common.RoleAdminUser)
+	require.ErrorContains(t, err, "unsupported batch user action")
+
+	result, err := BatchManageUsers("enable_disabled", "", 900, common.RoleAdminUser)
+	require.NoError(t, err)
+	require.Equal(t, BatchManageUsersResult{Action: "enable_disabled", Affected: 0}, result)
+
+	var auditCount int64
+	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeManage).Count(&auditCount).Error)
+	require.Equal(t, int64(1), auditCount)
 }
 
 func TestCreateRiskIPBansCreatesPermanentAutoBanAndSkipsExisting(t *testing.T) {

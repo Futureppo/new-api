@@ -14,6 +14,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const batchUserChunkSize = 500
+
+type BatchManageUsersResult struct {
+	Action   string `json:"action"`
+	Affected int64  `json:"affected"`
+}
+
 func GenerateRedemptions(req GenerateRedemptionsRequest, operatorId int) ([]RedemptionSummary, error) {
 	if req.Count <= 0 || req.Count > MaxGenerateRedemption {
 		return nil, fmt.Errorf("count must be between 1 and %d", MaxGenerateRedemption)
@@ -270,28 +277,145 @@ func BatchDeleteUsers(ids []int, operatorId int, operatorRole int) (map[string]i
 	}, nil
 }
 
+func BatchManageUsers(action string, reason string, operatorId int, operatorRole int) (BatchManageUsersResult, error) {
+	result := BatchManageUsersResult{Action: action}
+	if operatorRole < common.RoleAdminUser {
+		return result, errors.New("admin permission required")
+	}
+
+	action = strings.TrimSpace(action)
+	result.Action = action
+	reason = strings.TrimSpace(reason)
+
+	var targetStatus int
+	var updates map[string]interface{}
+	softDelete := false
+	hardDelete := false
+	switch action {
+	case "enable_disabled":
+		targetStatus = common.UserStatusDisabled
+		updates = map[string]interface{}{
+			"status":         common.UserStatusEnabled,
+			"disable_reason": "",
+		}
+	case "disable_enabled":
+		if reason == "" {
+			return result, errors.New("disable reason cannot be empty")
+		}
+		if len([]rune(reason)) > 255 {
+			return result, errors.New("disable reason cannot exceed 255 characters")
+		}
+		targetStatus = common.UserStatusEnabled
+		updates = map[string]interface{}{
+			"status":         common.UserStatusDisabled,
+			"disable_reason": reason,
+		}
+	case "delete_disabled":
+		targetStatus = common.UserStatusDisabled
+		softDelete = true
+	case "purge_disabled":
+		targetStatus = common.UserStatusDisabled
+		hardDelete = true
+	default:
+		return result, fmt.Errorf("unsupported batch user action: %s", action)
+	}
+
+	userIds := make([]int, 0)
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.User{}).
+			Where("role = ? AND status = ?", common.RoleCommonUser, targetStatus).
+			Order("id ASC").
+			Pluck("id", &userIds).Error; err != nil {
+			return err
+		}
+
+		for start := 0; start < len(userIds); start += batchUserChunkSize {
+			end := start + batchUserChunkSize
+			if end > len(userIds) {
+				end = len(userIds)
+			}
+			chunk := userIds[start:end]
+			query := tx.Where("id IN ? AND role = ? AND status = ?", chunk, common.RoleCommonUser, targetStatus)
+			var updateResult *gorm.DB
+			if hardDelete {
+				updateResult = query.Unscoped().Where("deleted_at IS NULL").Delete(&model.User{})
+			} else if softDelete {
+				updateResult = query.Delete(&model.User{})
+			} else {
+				updateResult = query.Model(&model.User{}).Updates(updates)
+			}
+			if updateResult.Error != nil {
+				return updateResult.Error
+			}
+			result.Affected += updateResult.RowsAffected
+		}
+		return nil
+	})
+	if err != nil {
+		return BatchManageUsersResult{Action: action}, err
+	}
+
+	invalidateBatchManagedUserCaches(action, userIds)
+	auditPayload := map[string]interface{}{
+		"affected": result.Affected,
+		"role":     common.RoleCommonUser,
+	}
+	if action == "disable_enabled" {
+		auditPayload["reason"] = reason
+	}
+	audit(operatorId, "users", action, auditPayload)
+	return result, nil
+}
+
+func invalidateBatchManagedUserCaches(action string, userIds []int) {
+	for _, userId := range userIds {
+		if err := model.InvalidateUserCache(userId); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate user cache after %s for user %d: %s", action, userId, err.Error()))
+		}
+		if err := model.InvalidateUserTokensCache(userId); err != nil {
+			common.SysLog(fmt.Sprintf("failed to invalidate token cache after %s for user %d: %s", action, userId, err.Error()))
+		}
+	}
+}
+
 func PurgeSoftDeletedUsers(operatorId int, operatorRole int) (int64, error) {
 	if operatorRole < common.RoleAdminUser {
 		return 0, errors.New("admin permission required")
 	}
 
-	maxDeletedRole := common.RoleAdminUser
-	if operatorRole >= common.RoleRootUser {
-		maxDeletedRole = common.RoleRootUser
-	}
-
-	result := model.DB.Unscoped().
-		Where("deleted_at IS NOT NULL").
-		Where("role < ?", maxDeletedRole).
-		Delete(&model.User{})
-	if result.Error != nil {
-		return 0, result.Error
-	}
-	audit(operatorId, "enhancements.users", "purge_soft_deleted", map[string]interface{}{
-		"count":    result.RowsAffected,
-		"max_role": maxDeletedRole,
+	userIds := make([]int, 0)
+	var affected int64
+	err := model.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Model(&model.User{}).
+			Where("deleted_at IS NOT NULL AND role = ?", common.RoleCommonUser).
+			Order("id ASC").
+			Pluck("id", &userIds).Error; err != nil {
+			return err
+		}
+		for start := 0; start < len(userIds); start += batchUserChunkSize {
+			end := start + batchUserChunkSize
+			if end > len(userIds) {
+				end = len(userIds)
+			}
+			result := tx.Unscoped().
+				Where("id IN ? AND deleted_at IS NOT NULL AND role = ?", userIds[start:end], common.RoleCommonUser).
+				Delete(&model.User{})
+			if result.Error != nil {
+				return result.Error
+			}
+			affected += result.RowsAffected
+		}
+		return nil
 	})
-	return result.RowsAffected, nil
+	if err != nil {
+		return 0, err
+	}
+	invalidateBatchManagedUserCaches("purge_soft_deleted", userIds)
+	audit(operatorId, "enhancements.users", "purge_soft_deleted", map[string]interface{}{
+		"count": affected,
+		"role":  common.RoleCommonUser,
+	})
+	return affected, nil
 }
 
 func DisableToken(tokenId int, operatorId int) error {

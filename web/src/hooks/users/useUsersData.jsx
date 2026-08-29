@@ -35,7 +35,7 @@ export const useUsersData = () => {
   const [searching, setSearching] = useState(false);
   const [groupOptions, setGroupOptions] = useState([]);
   const [userCount, setUserCount] = useState(0);
-  const [purgingSoftDeletedUsers, setPurgingSoftDeletedUsers] = useState(false);
+  const [batchActionLoading, setBatchActionLoading] = useState('');
 
   // Modal states
   const [showAddUser, setShowAddUser] = useState(false);
@@ -368,30 +368,80 @@ export const useUsersData = () => {
     }
   };
 
-  const purgeSoftDeletedUsers = async () => {
-    if (purgingSoftDeletedUsers) {
-      return;
+  const batchManageUsers = async (action, reason = '') => {
+    if (batchActionLoading) {
+      return false;
     }
-    setPurgingSoftDeletedUsers(true);
+    setBatchActionLoading(action);
+    setLoading(true);
+    try {
+      const res = await API.post('/api/user/batch-manage', { action, reason });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message);
+        return false;
+      }
+
+      const count = Number(data?.affected || 0);
+      if (count === 0) {
+        showSuccess(t('没有符合条件的用户'));
+      } else if (action === 'enable_disabled') {
+        showSuccess(t('已启用 {{total}} 个用户', { total: count }));
+      } else if (action === 'disable_enabled') {
+        showSuccess(t('已禁用 {{total}} 个用户', { total: count }));
+      } else if (action === 'delete_disabled') {
+        showSuccess(t('已注销 {{total}} 个用户', { total: count }));
+      } else if (action === 'purge_disabled') {
+        showSuccess(t('已永久清理 {{total}} 个已禁用用户', { total: count }));
+      }
+      try {
+        await refresh(1);
+      } catch {
+        // The batch action already succeeded. The API interceptor reports
+        // refresh failures, so keep the confirmation flow completed.
+      }
+      return true;
+    } catch (error) {
+      showError(error?.response?.data?.message || error.message || error);
+      return false;
+    } finally {
+      setBatchActionLoading('');
+      setLoading(false);
+    }
+  };
+
+  const purgeSoftDeletedUsers = async () => {
+    if (batchActionLoading) {
+      return false;
+    }
+    setBatchActionLoading('purge_soft_deleted');
     setLoading(true);
     try {
       const res = await API.post('/api/user/soft-deleted/purge');
       const { success, message, data } = res.data;
-      if (success) {
-        const count = Number(data?.deleted || 0);
-        if (count > 0) {
-          showSuccess(t('已清理 {{count}} 个已注销用户', { count }));
-        } else {
-          showSuccess(t('没有需要清理的已注销用户'));
-        }
-        await refresh(1);
-      } else {
+      if (!success) {
         showError(message);
+        return false;
       }
+
+      const count = Number(data?.deleted || 0);
+      if (count > 0) {
+        showSuccess(t('已清理 {{count}} 个已注销用户', { count }));
+      } else {
+        showSuccess(t('没有需要清理的已注销用户'));
+      }
+      try {
+        await refresh(1);
+      } catch {
+        // The purge already succeeded. Refresh failures are reported by the
+        // global API interceptor and should not keep the modal open.
+      }
+      return true;
     } catch (error) {
-      showError(error.message || error);
+      showError(error?.response?.data?.message || error.message || error);
+      return false;
     } finally {
-      setPurgingSoftDeletedUsers(false);
+      setBatchActionLoading('');
       setLoading(false);
     }
   };
@@ -445,7 +495,7 @@ export const useUsersData = () => {
     userCount,
     searching,
     groupOptions,
-    purgingSoftDeletedUsers,
+    batchActionLoading,
 
     // Modal state
     showAddUser,
@@ -469,6 +519,7 @@ export const useUsersData = () => {
     searchUsers,
     manageUser,
     batchDisableUsers,
+    batchManageUsers,
     purgeSoftDeletedUsers,
     resetUserPasskey,
     resetUserTwoFA,

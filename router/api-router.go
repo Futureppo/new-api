@@ -144,6 +144,7 @@ func SetApiRouter(router *gin.Engine) {
 				adminRoute.GET("/:id", controller.GetUser)
 				adminRoute.POST("/", controller.CreateUser)
 				adminRoute.POST("/manage", controller.ManageUser)
+				adminRoute.POST("/batch-manage", controller.BatchManageUsers)
 				adminRoute.POST("/batch-disable", controller.BatchDisableRelatedUsers)
 				adminRoute.POST("/soft-deleted/purge", controller.PurgeSoftDeletedUsers)
 				adminRoute.PUT("/", controller.UpdateUser)
