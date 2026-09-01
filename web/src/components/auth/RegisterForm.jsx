@@ -148,13 +148,25 @@ const RegisterForm = () => {
   );
   const registrationCodeRequired = Boolean(status.registration_code_required);
   const inviteCodeRequired = Boolean(status.invite_code_required);
+  const domainEmailRegistrationEnabled = Boolean(
+    status.domain_email_registration_enabled,
+  );
   const registrationOAuthOptions = {
     shouldLogout: true,
     registrationCode: inputs.registration_code,
     affCode: inputs.aff_code,
   };
 
-  const ensureRequiredRegistrationCodes = () => {
+  const ensureRequiredRegistrationCodes = (
+    allowDomainEmailRegistration = false,
+  ) => {
+    if (
+      allowDomainEmailRegistration &&
+      domainEmailRegistrationEnabled &&
+      status.email_verification
+    ) {
+      return true;
+    }
     if (inviteCodeRequired && !inputs.aff_code.trim()) {
       showInfo(t('请输入邀请码'));
       return false;
@@ -267,7 +279,7 @@ const RegisterForm = () => {
       return;
     }
     if (username && password) {
-      if (!ensureRequiredRegistrationCodes()) {
+      if (!ensureRequiredRegistrationCodes(true)) {
         return;
       }
       if (turnstileEnabled && turnstileToken === '') {

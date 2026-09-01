@@ -186,6 +186,10 @@ func Register(c *gin.Context) {
 			common.ApiErrorI18n(c, i18n.MsgUserEmailVerificationRequired)
 			return
 		}
+		if common.IsEmailDomainBlacklisted(user.Email) {
+			common.ApiErrorI18n(c, i18n.MsgUserEmailDomainBlacklisted)
+			return
+		}
 		if !common.VerifyCodeWithKey(common.NormalizeEmailIdentity(user.Email), user.VerificationCode, common.EmailVerificationPurpose) {
 			common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 			return
@@ -202,7 +206,10 @@ func Register(c *gin.Context) {
 		return
 	}
 	affCode := user.AffCode // this code is the inviter's code, not the user's own code
-	inviterId, err := model.ResolveInviterIdByAffCode(affCode, setting.IsInviteCodeRequired())
+	domainEmailRegistration := common.EmailVerificationEnabled && common.IsDomainEmailRegistrationAllowed(user.Email)
+	inviteCodeRequired := setting.IsInviteCodeRequired() && !domainEmailRegistration
+	registrationCodeRequired := setting.IsRegistrationCodeRequired() && !domainEmailRegistration
+	inviterId, err := model.ResolveInviterIdByAffCode(affCode, inviteCodeRequired)
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -221,7 +228,7 @@ func Register(c *gin.Context) {
 		if err := cleanUser.InsertWithTx(tx, inviterId); err != nil {
 			return err
 		}
-		if err := model.ConsumeRegistrationCodeTx(tx, user.RegistrationCode, cleanUser.Id, cleanUser.Username, "password", setting.IsRegistrationCodeRequired()); err != nil {
+		if err := model.ConsumeRegistrationCodeTx(tx, user.RegistrationCode, cleanUser.Id, cleanUser.Username, "password", registrationCodeRequired); err != nil {
 			return err
 		}
 		if constant.GenerateDefaultToken {
@@ -1236,6 +1243,10 @@ func EmailBind(c *gin.Context) {
 	}
 	email := strings.TrimSpace(req.Email)
 	code := req.Code
+	if common.IsEmailDomainBlacklisted(email) {
+		common.ApiErrorI18n(c, i18n.MsgUserEmailDomainBlacklisted)
+		return
+	}
 	if !common.VerifyCodeWithKey(common.NormalizeEmailIdentity(email), code, common.EmailVerificationPurpose) {
 		common.ApiErrorI18n(c, i18n.MsgUserVerificationCodeError)
 		return

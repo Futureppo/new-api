@@ -101,6 +101,7 @@ const (
 	MsgUserEmailVerificationRequired = "user.email_verification_required"
 	MsgUserVerificationCodeError     = "user.verification_code_error"
 	MsgUserEmailTaken                = "user.email_taken"
+	MsgUserEmailDomainBlacklisted    = "user.email_domain_blacklisted"
 	MsgUserEmailAmbiguous            = "user.email_ambiguous"
 	MsgUserInputInvalid              = "user.input_invalid"
 	MsgUserNoPermissionSameLevel     = "user.no_permission_same_level"

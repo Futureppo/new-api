@@ -58,7 +58,10 @@ func InitOptionMap() {
 	common.OptionMap["EmailDomainRestrictionEnabled"] = strconv.FormatBool(common.EmailDomainRestrictionEnabled)
 	common.OptionMap["EmailAliasRestrictionEnabled"] = strconv.FormatBool(common.EmailAliasRestrictionEnabled)
 	common.OptionMap["EmailCaseInsensitiveEnabled"] = strconv.FormatBool(common.EmailCaseInsensitiveEnabled)
+	common.OptionMap["DomainEmailRegistrationEnabled"] = strconv.FormatBool(common.DomainEmailRegistrationEnabled)
 	common.OptionMap["EmailDomainWhitelist"] = strings.Join(common.EmailDomainWhitelist, ",")
+	common.OptionMap["DomainEmailRegistrationWhitelist"] = strings.Join(common.DomainEmailRegistrationWhitelist, ",")
+	common.OptionMap["EmailDomainBlacklist"] = strings.Join(common.EmailDomainBlacklist, ",")
 	common.OptionMap["SMTPServer"] = ""
 	common.OptionMap["SMTPFrom"] = ""
 	common.OptionMap["SMTPPort"] = strconv.Itoa(common.SMTPPort)
@@ -279,6 +282,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.EmailAliasRestrictionEnabled = boolValue
 		case "EmailCaseInsensitiveEnabled":
 			common.EmailCaseInsensitiveEnabled = boolValue
+		case "DomainEmailRegistrationEnabled":
+			common.DomainEmailRegistrationEnabled = boolValue
 		case "AutomaticDisableChannelEnabled":
 			common.AutomaticDisableChannelEnabled = boolValue
 		case "AutomaticEnableChannelEnabled":
@@ -342,6 +347,10 @@ func updateOptionMap(key string, value string) (err error) {
 	switch key {
 	case "EmailDomainWhitelist":
 		common.EmailDomainWhitelist = strings.Split(value, ",")
+	case "DomainEmailRegistrationWhitelist":
+		common.DomainEmailRegistrationWhitelist = strings.Split(value, ",")
+	case "EmailDomainBlacklist":
+		common.EmailDomainBlacklist = strings.Split(value, ",")
 	case "SMTPServer":
 		common.SMTPServer = value
 	case "SMTPPort":
