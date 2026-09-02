@@ -83,7 +83,13 @@ func createRootAccountIfNeed() error {
 			AccessToken: nil,
 			Quota:       100000000,
 		}
-		DB.Create(&rootUser)
+		rootUser.AffCode, err = GenerateUniqueInviteCode(DB)
+		if err != nil {
+			return err
+		}
+		if err := DB.Create(&rootUser).Error; err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -290,6 +296,9 @@ func migrateDB() error {
 	if err != nil {
 		return err
 	}
+	if err := migrateInviteCodesV2(DB); err != nil {
+		return err
+	}
 	if err := EnsureIPBanUserBanUniqueIndex(DB); err != nil {
 		return err
 	}
@@ -368,6 +377,9 @@ func migrateDBFast() error {
 		if err != nil {
 			return err
 		}
+	}
+	if err := migrateInviteCodesV2(DB); err != nil {
+		return err
 	}
 	if common.UsingSQLite {
 		if err := ensureSubscriptionPlanTableSQLite(); err != nil {

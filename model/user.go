@@ -335,8 +335,12 @@ func GetUserById(id int, selectAll bool) (*User, error) {
 }
 
 func GetUserIdByAffCode(affCode string) (int, error) {
+	affCode = common.NormalizeInviteCode(affCode)
 	if affCode == "" {
 		return 0, errors.New("affCode 为空！")
+	}
+	if !common.IsValidInviteCode(affCode) {
+		return 0, gorm.ErrRecordNotFound
 	}
 	var user User
 	err := DB.Select("id").Where("aff_code = ? AND status = ?", affCode, common.UserStatusEnabled).First(&user).Error
@@ -344,7 +348,7 @@ func GetUserIdByAffCode(affCode string) (int, error) {
 }
 
 func ResolveInviterIdByAffCode(affCode string, required bool) (int, error) {
-	affCode = strings.TrimSpace(affCode)
+	affCode = common.NormalizeInviteCode(affCode)
 	if affCode == "" {
 		if required {
 			return 0, errors.New("请输入邀请码")
@@ -464,7 +468,10 @@ func (user *User) Insert(inviterId int) error {
 	}
 	user.Quota = common.QuotaForNewUser
 	//user.SetAccessToken(common.GetUUID())
-	user.AffCode = common.GetRandomString(4)
+	user.AffCode, err = GenerateUniqueInviteCode(DB)
+	if err != nil {
+		return err
+	}
 
 	// 初始化用户设置，包括默认的边栏配置
 	if user.Setting == "" {
@@ -523,7 +530,10 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 		}
 	}
 	user.Quota = common.QuotaForNewUser
-	user.AffCode = common.GetRandomString(4)
+	user.AffCode, err = GenerateUniqueInviteCode(tx)
+	if err != nil {
+		return err
+	}
 
 	// 初始化用户设置
 	if user.Setting == "" {

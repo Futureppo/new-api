@@ -65,13 +65,18 @@ import { StatusContext } from '../../context/Status';
 import { useTranslation } from 'react-i18next';
 import { SiDiscord } from 'react-icons/si';
 
+const INVITE_CODE_LENGTH = 16;
+
+const normalizeInviteCodeInput = (value) => (value || '').trim().toUpperCase();
+
 const getInitialInviteCode = () => {
   const queryCode = new URLSearchParams(window.location.search).get('aff');
   if (queryCode) {
-    localStorage.setItem('aff', queryCode);
-    return queryCode;
+    const normalizedCode = normalizeInviteCodeInput(queryCode);
+    localStorage.setItem('aff', normalizedCode);
+    return normalizedCode;
   }
-  return localStorage.getItem('aff') || '';
+  return normalizeInviteCodeInput(localStorage.getItem('aff'));
 };
 
 const RegisterForm = () => {
@@ -260,11 +265,14 @@ const RegisterForm = () => {
 
   function handleChange(name, value) {
     if (name === 'aff_code') {
-      if (value) {
-        localStorage.setItem('aff', value);
+      const normalizedCode = normalizeInviteCodeInput(value);
+      if (normalizedCode) {
+        localStorage.setItem('aff', normalizedCode);
       } else {
         localStorage.removeItem('aff');
       }
+      setInputs((inputs) => ({ ...inputs, [name]: normalizedCode }));
+      return;
     }
     setInputs((inputs) => ({ ...inputs, [name]: value }));
   }
@@ -487,6 +495,7 @@ const RegisterForm = () => {
                   name='aff_code'
                   value={inputs.aff_code}
                   onChange={(value) => handleChange('aff_code', value)}
+                  maxLength={INVITE_CODE_LENGTH}
                   prefix={<IconKey />}
                 />
                 <Form.Input
@@ -741,6 +750,7 @@ const RegisterForm = () => {
                   name='aff_code'
                   value={inputs.aff_code}
                   onChange={(value) => handleChange('aff_code', value)}
+                  maxLength={INVITE_CODE_LENGTH}
                   prefix={<IconKey />}
                 />
 

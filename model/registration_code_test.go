@@ -55,13 +55,15 @@ func setupRegistrationCodeTestDB(t *testing.T) *gorm.DB {
 
 func createRegistrationCodeTestUser(t *testing.T, db *gorm.DB, username string) User {
 	t.Helper()
+	affCode, err := common.GenerateInviteCode()
+	require.NoError(t, err)
 	user := User{
 		Username:    username,
 		Password:    "password",
 		DisplayName: username,
 		Status:      common.UserStatusEnabled,
 		Role:        common.RoleCommonUser,
-		AffCode:     username + "-aff",
+		AffCode:     affCode,
 	}
 	require.NoError(t, db.Create(&user).Error)
 	return user
@@ -114,6 +116,9 @@ func TestResolveInviterIdByAffCodeRequiredAndOptional(t *testing.T) {
 	inviter := createRegistrationCodeTestUser(t, db, "inviter")
 
 	inviterId, err := ResolveInviterIdByAffCode("  "+inviter.AffCode+"  ", true)
+	require.NoError(t, err)
+	require.Equal(t, inviter.Id, inviterId)
+	inviterId, err = ResolveInviterIdByAffCode(strings.ToLower(inviter.AffCode), true)
 	require.NoError(t, err)
 	require.Equal(t, inviter.Id, inviterId)
 

@@ -27,6 +27,12 @@ type registrationAPIResponse struct {
 	Message string `json:"message"`
 }
 
+type inviteCodeAPIResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	Data    string `json:"data"`
+}
+
 type inviteTestSession struct {
 	values map[interface{}]interface{}
 }
@@ -168,6 +174,13 @@ func requireRegistrationUserMissing(t *testing.T, db *gorm.DB, username string) 
 	require.Zero(t, count)
 }
 
+func inviteRegistrationTestCode(t *testing.T) string {
+	t.Helper()
+	code, err := common.GenerateInviteCode()
+	require.NoError(t, err)
+	return code
+}
+
 func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := setupInviteRegistrationControllerTestDB(t)
@@ -181,7 +194,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 		DisplayName: "inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
-		AffCode:     "VALID-AFF",
+		AffCode:     inviteRegistrationTestCode(t),
 	}
 	require.NoError(t, db.Create(&inviter).Error)
 
@@ -196,7 +209,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	invalidInvite := registerTestUser(t, gin.H{
 		"username": "invalid-invite",
 		"password": "password123",
-		"aff_code": "UNKNOWN",
+		"aff_code": "ABCD",
 	})
 	require.False(t, invalidInvite.Success)
 	require.Contains(t, invalidInvite.Message, "邀请码无效")
@@ -206,7 +219,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	disabledInviter := registerTestUser(t, gin.H{
 		"username": "disabled-inviter",
 		"password": "password123",
-		"aff_code": inviter.AffCode,
+		"aff_code": strings.ToLower(inviter.AffCode),
 	})
 	require.False(t, disabledInviter.Success)
 	require.Contains(t, disabledInviter.Message, "邀请码无效")
@@ -222,6 +235,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	var invitedUser model.User
 	require.NoError(t, db.Where("username = ?", "valid-invite").First(&invitedUser).Error)
 	require.Equal(t, inviter.Id, invitedUser.InviterId)
+	require.True(t, common.IsValidInviteCode(invitedUser.AffCode))
 
 	cfg.RegistrationCodeRequired = true
 	registrationCode := model.RegistrationCode{
@@ -254,6 +268,37 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	require.Equal(t, inviter.Id, registeredUser.InviterId)
 	require.NoError(t, db.First(&registrationCode, registrationCode.Id).Error)
 	require.Equal(t, 1, registrationCode.UsedCount)
+}
+
+func TestGetAffCodeRepairsLegacyCodeAndKeepsV2Code(t *testing.T) {
+	db := setupInviteRegistrationControllerTestDB(t)
+	user := model.User{
+		Username:    "legacy-aff-code-user",
+		Password:    "password123",
+		DisplayName: "legacy-aff-code-user",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		AffCode:     "OLD1",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	requestAffCode := func() inviteCodeAPIResponse {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		ctx.Set("id", user.Id)
+		GetAffCode(ctx)
+		var response inviteCodeAPIResponse
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		return response
+	}
+
+	first := requestAffCode()
+	require.True(t, first.Success)
+	require.True(t, common.IsValidInviteCode(first.Data))
+	require.NotEqual(t, "OLD1", first.Data)
+	second := requestAffCode()
+	require.True(t, second.Success)
+	require.Equal(t, first.Data, second.Data)
 }
 
 func TestDomainEmailRegistrationBypassesInviteAndRegistrationCodes(t *testing.T) {
@@ -436,7 +481,7 @@ func TestOAuthRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.T
 		DisplayName: "oauth-inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
-		AffCode:     "OAUTH-AFF",
+		AffCode:     inviteRegistrationTestCode(t),
 	}
 	require.NoError(t, db.Create(&inviter).Error)
 
@@ -457,6 +502,7 @@ func TestOAuthRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.T
 	require.NoError(t, err)
 	require.Equal(t, inviter.Id, createdUser.InviterId)
 	require.Equal(t, oauthUser.ProviderUserID, createdUser.DiscordId)
+	require.True(t, common.IsValidInviteCode(createdUser.AffCode))
 
 	existingUser, err := findOrCreateOAuthUser(nil, provider, oauthUser, newInviteTestSession(nil))
 	require.NoError(t, err)
@@ -562,7 +608,7 @@ func TestWeChatRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.
 		DisplayName: "wechat-inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
-		AffCode:     "WECHAT-AFF",
+		AffCode:     inviteRegistrationTestCode(t),
 	}
 	require.NoError(t, db.Create(&inviter).Error)
 
@@ -615,6 +661,7 @@ func TestWeChatRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.
 	var createdUser model.User
 	require.NoError(t, db.Where("wechat_id = ?", "wechat-new-user").First(&createdUser).Error)
 	require.Equal(t, inviter.Id, createdUser.InviterId)
+	require.True(t, common.IsValidInviteCode(createdUser.AffCode))
 
 	existingLogin := requestWeChat("/api/oauth/wechat?code=valid")
 	require.True(t, existingLogin.Success)
