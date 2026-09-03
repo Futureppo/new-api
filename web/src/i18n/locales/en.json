@@ -4129,7 +4129,7 @@
     "模型由你的 Modal 部署决定，可手动填写或尝试获取模型列表。": "Models are defined by your Modal deployment. Enter them manually or try fetching the model list.",
     "定时测活": "Scheduled keepalive",
     "测活间隔": "Keepalive interval",
-    "定时请求模型列表接口，避免自部署模型因空闲而冷却。": "Periodically request the model list endpoint to prevent self-hosted models from cooling down while idle.",
+    "按设定间隔调用该渠道配置的全部模型，每个模型发送一次 max_tokens=1 的对话请求以避免冷却；会产生实际推理用量。": "At the configured interval, call every model in this channel with a max_tokens=1 chat request to prevent cold starts. This incurs actual inference usage.",
     "默认 30 秒": "30 seconds by default",
     "API端点": "API endpoints",
     "API令牌管理": "API token management",

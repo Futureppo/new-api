@@ -102,29 +102,43 @@ func TestModalKeepaliveScheduleHonorsEligibilityIntervalAndOverlap(t *testing.T)
 	require.Equal(t, []*model.Channel{keepalive}, state.startDue(channels, now.Add(30*time.Second)))
 }
 
-func TestKeepModalChannelAliveUsesBearerAuthAndHeaderOverrides(t *testing.T) {
+func TestKeepModalChannelAliveCallsEveryConfiguredModel(t *testing.T) {
+	received := make(chan modalKeepaliveChatRequest, 2)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodGet, r.Method)
-		require.Equal(t, "/v1/models", r.URL.Path)
+		require.Equal(t, http.MethodPost, r.Method)
+		require.Equal(t, "/v1/chat/completions", r.URL.Path)
 		require.Equal(t, "Bearer token-id.token-secret", r.Header.Get("Authorization"))
 		require.Equal(t, "modal-keepalive", r.Header.Get("X-Request-Source"))
+		require.Equal(t, "application/json", r.Header.Get("Content-Type"))
+
+		var payload modalKeepaliveChatRequest
+		require.NoError(t, common.DecodeJson(r.Body, &payload))
+		require.Equal(t, 1, payload.MaxTokens)
+		require.False(t, payload.Stream)
+		require.Equal(t, []modalKeepaliveMessage{{Role: "user", Content: "ping"}}, payload.Messages)
+		received <- payload
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
 
 	headerOverride := `{"X-Request-Source":"modal-keepalive"}`
+	modelMapping := `{"alias-model":"mapped-model"}`
 	channel := &model.Channel{
 		Id:             1,
 		Type:           constant.ChannelTypeModal,
 		Status:         common.ChannelStatusEnabled,
 		Key:            "token-id.token-secret",
 		BaseURL:        common.GetPointer(upstream.URL + "/v1/chat/completions"),
+		Models:         "alias-model,direct-model,alias-model",
+		ModelMapping:   &modelMapping,
 		HeaderOverride: &headerOverride,
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	require.NoError(t, keepModalChannelAlive(ctx, channel))
+	require.Equal(t, "mapped-model", (<-received).Model)
+	require.Equal(t, "direct-model", (<-received).Model)
 }
 
 func TestModalDashboardStartsWithoutAssumedModels(t *testing.T) {

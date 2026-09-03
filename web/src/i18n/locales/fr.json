@@ -4042,7 +4042,7 @@
     "模型由你的 Modal 部署决定，可手动填写或尝试获取模型列表。": "Les modèles sont définis par votre déploiement Modal. Saisissez-les manuellement ou essayez de récupérer la liste des modèles.",
     "定时测活": "Maintien en activité planifié",
     "测活间隔": "Intervalle de maintien en activité",
-    "定时请求模型列表接口，避免自部署模型因空闲而冷却。": "Interroge périodiquement la liste des modèles pour éviter la mise en veille des modèles auto-hébergés.",
+    "按设定间隔调用该渠道配置的全部模型，每个模型发送一次 max_tokens=1 的对话请求以避免冷却；会产生实际推理用量。": "À l’intervalle défini, appelle chaque modèle de ce canal avec une requête de dialogue max_tokens=1 afin d’éviter les démarrages à froid. Cela génère une utilisation réelle de l’inférence.",
     "默认 30 秒": "30 secondes par défaut",
     "API端点": "Points de terminaison de l'API",
     "API令牌管理": "Jetons API",

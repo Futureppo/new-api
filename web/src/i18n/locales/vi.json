@@ -4550,7 +4550,7 @@
     "模型由你的 Modal 部署决定，可手动填写或尝试获取模型列表。": "Các mô hình do bản triển khai Modal của bạn quyết định. Hãy nhập thủ công hoặc thử lấy danh sách mô hình.",
     "定时测活": "Giữ hoạt động định kỳ",
     "测活间隔": "Khoảng thời gian giữ hoạt động",
-    "定时请求模型列表接口，避免自部署模型因空闲而冷却。": "Định kỳ yêu cầu danh sách mô hình để tránh mô hình tự triển khai chuyển sang trạng thái nguội khi không hoạt động.",
+    "按设定间隔调用该渠道配置的全部模型，每个模型发送一次 max_tokens=1 的对话请求以避免冷却；会产生实际推理用量。": "Theo khoảng thời gian đã đặt, gọi mọi mô hình trong kênh bằng một yêu cầu trò chuyện max_tokens=1 để tránh khởi động nguội. Việc này tạo ra mức sử dụng suy luận thực tế.",
     "默认 30 秒": "Mặc định 30 giây",
     "API端点": "Điểm cuối API",
     "API令牌管理": "Quản lý mã thông báo API",
