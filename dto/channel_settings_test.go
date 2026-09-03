@@ -130,3 +130,11 @@ func TestChannelOtherSettingsMistralConsoleToolsExplicitValues(t *testing.T) {
 	require.NoError(t, err)
 	require.JSONEq(t, payload, string(data))
 }
+
+func TestChannelOtherSettingsModalKeepaliveInterval(t *testing.T) {
+	settings := dto.ChannelOtherSettings{}
+	require.Equal(t, dto.ModalKeepaliveDefaultIntervalSeconds, settings.ModalKeepaliveInterval())
+
+	settings.ModalKeepaliveIntervalSeconds = 45
+	require.Equal(t, 45, settings.ModalKeepaliveInterval())
+}

@@ -64,6 +64,7 @@ export const CHANNEL_OPTIONS = [
   { value: 66, color: 'black', label: 'Vercel AI Gateway' },
   { value: 67, color: 'blue', label: 'GMI Cloud' },
   { value: 68, color: 'blue', label: 'VyceAI' },
+  { value: 69, color: 'violet', label: 'Modal' },
   { value: 63, color: 'cyan', label: 'OpenCode Zen' },
   { value: 64, color: 'green', label: 'OpenCode Go' },
   {
@@ -213,7 +214,7 @@ export const CHANNEL_OPTIONS = [
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
   1, 4, 14, 33, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
-  61, 62, 63, 64, 65, 66, 67,
+  61, 62, 63, 64, 65, 66, 67, 69,
 ]);
 
 export const isManualModelFetchSupported = (

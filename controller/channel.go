@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
+	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
@@ -232,6 +233,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 			return fmt.Sprintf("%s/models", strings.TrimRight(plan.OpenAIBaseURL, "/"))
 		}
 		return fmt.Sprintf("%s/v1/models", baseURL)
+	case constant.ChannelTypeModal:
+		return fmt.Sprintf("%s/v1/models", modalchannel.NormalizeBaseURL(baseURL))
 	default:
 		return fmt.Sprintf("%s/v1/models", baseURL)
 	}
@@ -721,6 +724,31 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel.Type == constant.ChannelTypeVertexAi {
 		if err := vertex.ValidateRegionConfig(channel.Other); err != nil {
 			return err
+		}
+	}
+
+	// Modal deployments have per-app URLs. Accept both the deployment origin
+	// and Modal's full curl-example endpoint, then store a canonical origin.
+	if channel.Type == constant.ChannelTypeModal {
+		baseURL := modalchannel.NormalizeBaseURL(channel.GetBaseURL())
+		parsedURL, err := url.Parse(baseURL)
+		if baseURL == "" || err != nil || parsedURL.Host == "" || (parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
+			return fmt.Errorf("Modal 渠道必须填写有效的部署地址")
+		}
+		channel.BaseURL = common.GetPointer(baseURL)
+
+		settings := dto.ChannelOtherSettings{}
+		if strings.TrimSpace(channel.OtherSettings) != "" {
+			if err := common.UnmarshalJsonStr(channel.OtherSettings, &settings); err != nil {
+				return fmt.Errorf("Modal 渠道额外设置格式错误：%w", err)
+			}
+		}
+		if settings.ModalKeepaliveIntervalSeconds < 0 {
+			return fmt.Errorf("Modal 测活间隔不能小于 0")
+		}
+		if settings.ModalKeepaliveEnabled && settings.ModalKeepaliveIntervalSeconds == 0 {
+			settings.ModalKeepaliveIntervalSeconds = dto.ModalKeepaliveDefaultIntervalSeconds
+			channel.SetOtherSettings(settings)
 		}
 	}
 

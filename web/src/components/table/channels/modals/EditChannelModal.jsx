@@ -129,6 +129,7 @@ const DEPRECATED_DOUBAO_CODING_PLAN_BASE_URL = 'doubao-coding-plan';
 const VERTEX_CHANNEL_TYPE = 41;
 const GCP_CHANNEL_TYPE = 60;
 const MISTRAL_CONSOLE_CHANNEL_TYPE = 65;
+const MODAL_CHANNEL_TYPE = 69;
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -159,6 +160,8 @@ function type2secretPrompt(type) {
       return '请输入 JSON 格式的 OAuth 凭据（必须包含 access_token 和 account_id）';
     case 65:
       return '请输入完整 Cookie 请求头值；批量创建时也可每行仅填一个 ory_session 值（不包含 Cookie: 前缀）';
+    case MODAL_CHANNEL_TYPE:
+      return '请输入 MODAL_PROXY_TOKEN_ID.MODAL_PROXY_TOKEN_SECRET';
     default:
       return '请输入渠道对应的鉴权密钥';
   }
@@ -229,6 +232,8 @@ const EditChannelModal = (props) => {
     claude_beta_query: false,
     xai_codex_compatibility_enabled: false,
     custom_model_list_url: '',
+    modal_keepalive_enabled: false,
+    modal_keepalive_interval_seconds: 30,
     openrouter_auto_sync_free_and_alpha_models_enabled: false,
     openrouter_free_model_name_simplification_enabled: false,
     upstream_model_update_check_enabled: false,
@@ -673,11 +678,21 @@ const EditChannelModal = (props) => {
             base_url: 'https://ark.cn-beijing.volces.com',
           }));
           break;
+        case MODAL_CHANNEL_TYPE:
+          // Modal deployments define their own models; do not retain the
+          // OpenAI defaults selected when the creation form first opens.
+          localModels = [];
+          setInputs((prevInputs) => ({
+            ...prevInputs,
+            base_url: '',
+            models: [],
+          }));
+          break;
         default:
           localModels = getChannelModels(value);
           break;
       }
-      if (inputs.models.length === 0) {
+      if (value !== MODAL_CHANNEL_TYPE && inputs.models.length === 0) {
         setInputs((inputs) => ({ ...inputs, models: localModels }));
       }
       setBasicModels(localModels);
@@ -956,6 +971,14 @@ const EditChannelModal = (props) => {
             parsedSettings.xai_codex_compatibility_enabled === true;
           data.custom_model_list_url =
             parsedSettings.custom_model_list_url || '';
+          data.modal_keepalive_enabled =
+            parsedSettings.modal_keepalive_enabled === true;
+          data.modal_keepalive_interval_seconds =
+            Number(parsedSettings.modal_keepalive_interval_seconds) > 0
+              ? Math.trunc(
+                  Number(parsedSettings.modal_keepalive_interval_seconds),
+                )
+              : 30;
           data.openrouter_auto_sync_free_and_alpha_models_enabled =
             parsedSettings.openrouter_auto_sync_free_and_alpha_models_enabled ===
             true;
@@ -999,6 +1022,8 @@ const EditChannelModal = (props) => {
           data.claude_beta_query = false;
           data.xai_codex_compatibility_enabled = false;
           data.custom_model_list_url = '';
+          data.modal_keepalive_enabled = false;
+          data.modal_keepalive_interval_seconds = 30;
           data.openrouter_auto_sync_free_and_alpha_models_enabled = false;
           data.openrouter_free_model_name_simplification_enabled = false;
           data.upstream_model_update_check_enabled = false;
@@ -1026,6 +1051,8 @@ const EditChannelModal = (props) => {
         data.claude_beta_query = false;
         data.xai_codex_compatibility_enabled = false;
         data.custom_model_list_url = '';
+        data.modal_keepalive_enabled = false;
+        data.modal_keepalive_interval_seconds = 30;
         data.openrouter_auto_sync_free_and_alpha_models_enabled = false;
         data.openrouter_free_model_name_simplification_enabled = false;
         data.upstream_model_update_check_enabled = false;
@@ -1752,7 +1779,7 @@ const EditChannelModal = (props) => {
       return;
     }
     if (
-      localInputs.type === 45 &&
+      (localInputs.type === 45 || localInputs.type === MODAL_CHANNEL_TYPE) &&
       (!localInputs.base_url || localInputs.base_url.trim() === '')
     ) {
       showInfo(t('请输入API地址！'));
@@ -1921,6 +1948,21 @@ const EditChannelModal = (props) => {
       delete settings.custom_model_list_url;
     }
 
+    if (localInputs.type === MODAL_CHANNEL_TYPE) {
+      settings.modal_keepalive_enabled =
+        localInputs.modal_keepalive_enabled === true;
+      const keepaliveInterval = Number(
+        localInputs.modal_keepalive_interval_seconds,
+      );
+      settings.modal_keepalive_interval_seconds =
+        Number.isFinite(keepaliveInterval) && keepaliveInterval >= 1
+          ? Math.trunc(keepaliveInterval)
+          : 30;
+    } else {
+      delete settings.modal_keepalive_enabled;
+      delete settings.modal_keepalive_interval_seconds;
+    }
+
     // type === 1 (OpenAI) 或 type === 14 (Claude): 设置字段透传控制（显式保存布尔值）
     if (localInputs.type === 1 || localInputs.type === 14) {
       settings.allow_service_tier = localInputs.allow_service_tier === true;
@@ -2026,6 +2068,8 @@ const EditChannelModal = (props) => {
     delete localInputs.claude_beta_query;
     delete localInputs.xai_codex_compatibility_enabled;
     delete localInputs.custom_model_list_url;
+    delete localInputs.modal_keepalive_enabled;
+    delete localInputs.modal_keepalive_interval_seconds;
     delete localInputs.openrouter_auto_sync_free_and_alpha_models_enabled;
     delete localInputs.openrouter_free_model_name_simplification_enabled;
     delete localInputs.upstream_model_update_check_enabled;
@@ -3813,6 +3857,56 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === MODAL_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={t(
+                            'Modal 每个部署使用独立地址。可填写部署域名，也可直接粘贴以 /v1/chat/completions 结尾的完整地址；鉴权密钥格式为 TOKEN_ID.TOKEN_SECRET。',
+                          )}
+                          className='!rounded-lg'
+                        />
+                      )}
+
+                      {inputs.type === MODAL_CHANNEL_TYPE && (
+                        <Row gutter={12}>
+                          <Col xs={24} sm={12}>
+                            <Form.Switch
+                              field='modal_keepalive_enabled'
+                              label={t('定时测活')}
+                              checkedText={t('开')}
+                              uncheckedText={t('关')}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'modal_keepalive_enabled',
+                                  value,
+                                )
+                              }
+                              extraText={t(
+                                '定时请求模型列表接口，避免自部署模型因空闲而冷却。',
+                              )}
+                            />
+                          </Col>
+                          <Col xs={24} sm={12}>
+                            <Form.InputNumber
+                              field='modal_keepalive_interval_seconds'
+                              label={t('测活间隔')}
+                              min={1}
+                              step={1}
+                              precision={0}
+                              suffix={t('秒')}
+                              disabled={!inputs.modal_keepalive_enabled}
+                              onChange={(value) =>
+                                handleChannelOtherSettingsChange(
+                                  'modal_keepalive_interval_seconds',
+                                  value,
+                                )
+                              }
+                              extraText={t('默认 30 秒')}
+                            />
+                          </Col>
+                        </Row>
+                      )}
+
                       {inputs.type !== 3 &&
                         inputs.type !== 8 &&
                         inputs.type !== 22 &&
@@ -3821,18 +3915,42 @@ const EditChannelModal = (props) => {
                           <div>
                             <Form.Input
                               field='base_url'
-                              label={t('API地址')}
-                              placeholder={t(
-                                '此项可选，用于通过自定义API地址来进行 API 调用，末尾不要带/v1和/',
-                              )}
+                              label={
+                                inputs.type === MODAL_CHANNEL_TYPE
+                                  ? t('Modal 部署地址')
+                                  : t('API地址')
+                              }
+                              placeholder={
+                                inputs.type === MODAL_CHANNEL_TYPE
+                                  ? 'https://your-workspace--your-app.modal.direct'
+                                  : t(
+                                      '此项可选，用于通过自定义API地址来进行 API 调用，末尾不要带/v1和/',
+                                    )
+                              }
+                              rules={
+                                inputs.type === MODAL_CHANNEL_TYPE
+                                  ? [
+                                      {
+                                        required: true,
+                                        message: t('请输入 Modal 部署地址'),
+                                      },
+                                    ]
+                                  : []
+                              }
                               onChange={(value) =>
                                 handleInputChange('base_url', value)
                               }
                               showClear
                               disabled={isIonetLocked}
-                              extraText={t(
-                                '对于官方渠道，new-api已经内置地址，除非是第三方代理站点或者Azure的特殊接入地址，否则不需要填写',
-                              )}
+                              extraText={
+                                inputs.type === MODAL_CHANNEL_TYPE
+                                  ? t(
+                                      '模型由你的 Modal 部署决定，可手动填写或尝试获取模型列表。',
+                                    )
+                                  : t(
+                                      '对于官方渠道，new-api已经内置地址，除非是第三方代理站点或者Azure的特殊接入地址，否则不需要填写',
+                                    )
+                              }
                             />
                           </div>
                         )}

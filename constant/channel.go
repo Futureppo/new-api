@@ -66,6 +66,7 @@ const (
 	ChannelTypeVercel         = 66
 	ChannelTypeGMICloud       = 67
 	ChannelTypeVyceAI         = 68
+	ChannelTypeModal          = 69
 	ChannelTypeDummy          // this one is only for count, do not add any channel after this
 
 )
@@ -140,6 +141,7 @@ var ChannelBaseURLs = []string{
 	"https://ai-gateway.vercel.sh",              //66
 	"https://api.gmi-serving.com",               //67
 	"https://vyceai.com",                        //68
+	"",                                          //69, Modal deployments use per-app base URLs
 }
 
 var ChannelTypeNames = map[int]string{
@@ -208,6 +210,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeVercel:         "Vercel AI Gateway",
 	ChannelTypeGMICloud:       "GMI Cloud",
 	ChannelTypeVyceAI:         "VyceAI",
+	ChannelTypeModal:          "Modal",
 }
 
 func GetChannelTypeName(channelType int) string {

@@ -374,6 +374,7 @@ export function getChannelIcon(channelType) {
       return <Vercel size={iconSize} />;
     case 67: // GMI Cloud
     case 68: // VyceAI
+    case 69: // Modal
       return <Cloud size={iconSize} />;
     case 63: // OpenCode Zen
     case 64: // OpenCode Go

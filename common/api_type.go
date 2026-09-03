@@ -97,6 +97,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeOpenAI
 	case constant.ChannelTypeVyceAI:
 		apiType = constant.APITypeVyceAI
+	case constant.ChannelTypeModal:
+		apiType = constant.APITypeOpenAI
 	}
 	if apiType == -1 {
 		return constant.APITypeOpenAI, false

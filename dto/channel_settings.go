@@ -55,6 +55,8 @@ const (
 	AwsKeyTypeApiKey AwsKeyType = "api_key"
 )
 
+const ModalKeepaliveDefaultIntervalSeconds = 30
+
 type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string        `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType `json:"vertex_key_type,omitempty"` // "json" or "api_key"
@@ -74,6 +76,8 @@ type ChannelOtherSettings struct {
 	ConversationLogEnabled                bool          `json:"conversation_log_enabled,omitempty"` // Root-only: capture full conversation payloads for distillation
 	AwsKeyType                            AwsKeyType    `json:"aws_key_type,omitempty"`
 	CustomModelListURL                    string        `json:"custom_model_list_url,omitempty"`                      // 自定义模型列表 API 地址
+	ModalKeepaliveEnabled                 bool          `json:"modal_keepalive_enabled,omitempty"`                    // 是否定时请求 Modal 部署以避免实例冷却
+	ModalKeepaliveIntervalSeconds         int           `json:"modal_keepalive_interval_seconds,omitempty"`           // Modal 测活间隔（秒）
 	UpstreamModelUpdateCheckEnabled       bool          `json:"upstream_model_update_check_enabled,omitempty"`        // 是否检测上游模型更新
 	UpstreamModelUpdateAutoSyncEnabled    bool          `json:"upstream_model_update_auto_sync_enabled,omitempty"`    // 是否自动同步上游模型更新
 	UpstreamModelUpdateLastCheckTime      int64         `json:"upstream_model_update_last_check_time,omitempty"`      // 上次检测时间
@@ -108,4 +112,11 @@ func (s ChannelOtherSettings) ShouldEnableMistralConsoleImageGeneration() bool {
 
 func (s ChannelOtherSettings) ShouldEnableMistralConsoleWebSearch() bool {
 	return s.MistralConsoleWebSearchEnabled == nil || *s.MistralConsoleWebSearchEnabled
+}
+
+func (s ChannelOtherSettings) ModalKeepaliveInterval() int {
+	if s.ModalKeepaliveIntervalSeconds <= 0 {
+		return ModalKeepaliveDefaultIntervalSeconds
+	}
+	return s.ModalKeepaliveIntervalSeconds
 }
