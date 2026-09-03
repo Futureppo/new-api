@@ -260,6 +260,13 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if !info.SupportStreamOptions {
 		request.StreamOptions = nil
 	}
+	// Modal deployments expose user-defined OpenAI-compatible servers. Their
+	// model names may start with "o" (for example, "orcarouter/...") without
+	// being OpenAI o-series reasoning models, so preserve the request instead
+	// of applying OpenAI-specific model-name heuristics below.
+	if info.ChannelType == constant.ChannelTypeModal {
+		return request, nil
+	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
 		if len(request.Usage) == 0 {
 			request.Usage = json.RawMessage(`{"include":true}`)

@@ -2,6 +2,7 @@ package openai
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -43,6 +44,9 @@ func TestModalChatCompletionRequest(t *testing.T) {
 		require.NoError(t, err)
 		require.Contains(t, string(body), `"model":"`+modelName+`"`)
 		require.Contains(t, string(body), `"stream":false`)
+		require.Contains(t, string(body), `"max_tokens":2048`)
+		require.NotContains(t, string(body), "max_completion_tokens")
+		require.Contains(t, string(body), `"temperature":0.3`)
 		require.Contains(t, string(body), `"reasoning_effort":"none"`)
 		require.NotContains(t, string(body), "stream_options")
 		w.Header().Set("Content-Type", "application/json")
@@ -94,4 +98,84 @@ func TestModalChatCompletionRequest(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 	require.NoError(t, resp.Body.Close())
+}
+
+func TestModalAdvancedRequestPreservesOpenAICompatibleFields(t *testing.T) {
+	stream := true
+	maxTokens := uint(2048)
+	temperature := 0.3
+	topP := 0.9
+	reasoning := json.RawMessage(`{"enabled":true}`)
+	jsonSchema := json.RawMessage(`{
+		"name":"person_info",
+		"strict":true,
+		"schema":{
+			"type":"object",
+			"properties":{
+				"name":{"type":"string"},
+				"age":{"type":"integer"},
+				"city":{"type":"string"}
+			},
+			"required":["name","age","city"],
+			"additionalProperties":false
+		}
+	}`)
+	request := &dto.GeneralOpenAIRequest{
+		Model: "orcarouter/Qwen3.8-27B-Uncensored-FP8",
+		Messages: []dto.Message{
+			{Role: "system", Content: "You are a concise technical assistant."},
+			{Role: "user", Content: "Extract the name, age, and city: Ada, 36, London."},
+		},
+		Temperature:   &temperature,
+		MaxTokens:     &maxTokens,
+		TopP:          &topP,
+		Stream:        &stream,
+		StreamOptions: &dto.StreamOptions{IncludeUsage: true},
+		Reasoning:     reasoning,
+		ResponseFormat: &dto.ResponseFormat{
+			Type:       "json_schema",
+			JsonSchema: jsonSchema,
+		},
+		Tools: []dto.ToolCallRequest{
+			{
+				Type: "function",
+				Function: dto.FunctionRequest{
+					Name:        "get_weather",
+					Description: "Get the current weather for a city.",
+					Parameters: map[string]any{
+						"type": "object",
+						"properties": map[string]any{
+							"city": map[string]any{"type": "string"},
+						},
+						"required": []string{"city"},
+					},
+				},
+			},
+		},
+		ToolChoice: "auto",
+	}
+	info := &relaycommon.RelayInfo{
+		ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType:          constant.ChannelTypeModal,
+			SupportStreamOptions: false,
+			UpstreamModelName:    request.Model,
+		},
+	}
+
+	converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, info, request)
+	require.NoError(t, err)
+	got, ok := converted.(*dto.GeneralOpenAIRequest)
+	require.True(t, ok)
+	require.Equal(t, &maxTokens, got.MaxTokens)
+	require.Nil(t, got.MaxCompletionTokens)
+	require.Equal(t, &temperature, got.Temperature)
+	require.Equal(t, &topP, got.TopP)
+	require.Equal(t, "system", got.Messages[0].Role)
+	require.JSONEq(t, string(reasoning), string(got.Reasoning))
+	require.Equal(t, "json_schema", got.ResponseFormat.Type)
+	require.JSONEq(t, string(jsonSchema), string(got.ResponseFormat.JsonSchema))
+	require.Len(t, got.Tools, 1)
+	require.Equal(t, "get_weather", got.Tools[0].Function.Name)
+	require.Equal(t, "auto", got.ToolChoice)
+	require.Nil(t, got.StreamOptions)
 }
