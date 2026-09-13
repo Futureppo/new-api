@@ -14,7 +14,8 @@ func TestRequestOpenAI2MistralPreservesReasoningEffort(t *testing.T) {
 		ReasoningEffort: "max",
 	}
 
-	converted := requestOpenAI2Mistral(request)
+	converted, err := requestOpenAI2Mistral(request)
+	require.NoError(t, err)
 
 	require.Equal(t, "max", converted.ReasoningEffort)
 }

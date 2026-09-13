@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
+	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
@@ -235,6 +236,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 		return fmt.Sprintf("%s/v1/models", baseURL)
 	case constant.ChannelTypeModal:
 		return fmt.Sprintf("%s/v1/models", modalchannel.NormalizeBaseURL(baseURL))
+	case constant.ChannelTypeMistral:
+		return mistral.NormalizeBaseURL(baseURL) + "/v1/models"
 	default:
 		return fmt.Sprintf("%s/v1/models", baseURL)
 	}

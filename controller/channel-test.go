@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
+	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -257,6 +258,15 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
 		return normalized
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeMistral {
+		if mistral.IsTranscriptionModel(modelName) {
+			return string(constant.EndpointTypeAudioTranscription)
+		}
+		if strings.Contains(strings.ToLower(modelName), "embed") {
+			return string(constant.EndpointTypeEmbeddings)
+		}
+		return string(constant.EndpointTypeOpenAI)
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeCohere {
 		if common.IsCohereRerankModel(modelName) {
@@ -583,6 +593,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	switch info.RelayMode {
 	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
 		if audioReq, ok := request.(*dto.AudioRequest); ok {
+			if channel.Type == constant.ChannelTypeMistral && info.RelayMode == relayconstant.RelayModeAudioTranscription {
+				if err = prepareMistralTranscriptionTest(c, audioReq.Model); err != nil {
+					return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed)}
+				}
+			}
 			convertedAudioReader, err = adaptor.ConvertAudioRequest(c, info, *audioReq)
 		} else {
 			return testResult{
@@ -704,7 +719,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//	}
 	//}
 
-	if len(info.ParamOverride) > 0 {
+	if len(info.ParamOverride) > 0 && !(channel.Type == constant.ChannelTypeMistral && convertedAudioReader != nil) {
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
 			if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
@@ -1322,6 +1337,9 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				ResponseFormat: "mp3",
 			}
 		case constant.EndpointTypeAudioTranscription:
+			if channel != nil && channel.Type == constant.ChannelTypeMistral {
+				return &dto.AudioRequest{Model: model, ResponseFormat: "json"}
+			}
 			return &dto.AudioRequest{
 				Model:          model,
 				ResponseFormat: "json",

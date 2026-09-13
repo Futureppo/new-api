@@ -1,7 +1,11 @@
 package mistral
 
 import (
+	"crypto/sha256"
+	"fmt"
+	"math"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -10,78 +14,118 @@ import (
 
 var mistralToolCallIdRegexp = regexp.MustCompile("^[a-zA-Z0-9]{9}$")
 
-func requestOpenAI2Mistral(request *dto.GeneralOpenAIRequest) *dto.GeneralOpenAIRequest {
-	messages := make([]dto.Message, 0, len(request.Messages))
+func requestOpenAI2Mistral(request *dto.GeneralOpenAIRequest) (*dto.GeneralOpenAIRequest, error) {
+	if request == nil {
+		return nil, invalidRequest("request is nil")
+	}
+	if len(request.Functions) > 0 || len(request.FunctionCall) > 0 {
+		return nil, invalidRequest("use tools and tool_choice instead of legacy functions")
+	}
+	// Keep the shared DTO so channel system prompts and parameter overrides still
+	// apply after conversion. Deep copy prevents rewriting reusable client history.
+	cloned, err := common.DeepCopy(request)
+	if err != nil {
+		return nil, err
+	}
+	messages := make([]dto.Message, 0, len(cloned.Messages))
+	usedIDs := make(map[string]bool)
+	for _, m := range cloned.Messages {
+		for _, t := range m.ParseToolCalls() {
+			if mistralToolCallIdRegexp.MatchString(t.ID) {
+				usedIDs[t.ID] = true
+			}
+		}
+		if mistralToolCallIdRegexp.MatchString(m.ToolCallId) {
+			usedIDs[m.ToolCallId] = true
+		}
+	}
 	idMap := make(map[string]string)
-	for _, message := range request.Messages {
-		// 1. tool_calls.id
-		toolCalls := message.ParseToolCalls()
-		if toolCalls != nil {
-			for i := range toolCalls {
-				if !mistralToolCallIdRegexp.MatchString(toolCalls[i].ID) {
-					if newId, ok := idMap[toolCalls[i].ID]; ok {
-						toolCalls[i].ID = newId
-					} else {
-						newId, err := common.GenerateRandomCharsKey(9)
-						if err == nil {
-							idMap[toolCalls[i].ID] = newId
-							toolCalls[i].ID = newId
-						}
-					}
+	convertID := func(id string) string {
+		if mistralToolCallIdRegexp.MatchString(id) {
+			return id
+		}
+		if mapped, ok := idMap[id]; ok {
+			return mapped
+		}
+		for salt := 0; ; salt++ {
+			digest := sha256.Sum256([]byte(id + ":" + strconv.Itoa(salt)))
+			candidate := fmt.Sprintf("%x", digest)[:9]
+			if !usedIDs[candidate] {
+				usedIDs[candidate] = true
+				idMap[id] = candidate
+				return candidate
+			}
+		}
+	}
+	for _, m := range cloned.Messages {
+		if m.Role == "developer" {
+			m.Role = "system"
+		}
+		switch m.Role {
+		case "system", "user", "assistant", "tool":
+		default:
+			return nil, invalidRequest("unsupported message role: " + m.Role)
+		}
+		if len(m.ToolCalls) > 0 {
+			var calls []dto.ToolCallResponse
+			if err := common.Unmarshal(m.ToolCalls, &calls); err != nil {
+				return nil, invalidRequest("invalid tool_calls")
+			}
+			for i := range calls {
+				if calls[i].ID == "" {
+					return nil, invalidRequest("tool_calls require an id")
 				}
+				calls[i].ID = convertID(calls[i].ID)
 			}
-			message.SetToolCalls(toolCalls)
-		}
-
-		// 2. tool_call_id
-		if message.ToolCallId != "" {
-			if newId, ok := idMap[message.ToolCallId]; ok {
-				message.ToolCallId = newId
-			} else {
-				if !mistralToolCallIdRegexp.MatchString(message.ToolCallId) {
-					newId, err := common.GenerateRandomCharsKey(9)
-					if err == nil {
-						idMap[message.ToolCallId] = newId
-						message.ToolCallId = newId
-					}
-				}
+			m.ToolCalls, err = common.Marshal(calls)
+			if err != nil {
+				return nil, err
 			}
 		}
-
-		mediaMessages := message.ParseContent()
-		if message.Role == "assistant" && message.ToolCalls != nil && message.Content == "" {
-			mediaMessages = []dto.MediaContent{}
+		if m.ToolCallId != "" {
+			m.ToolCallId = convertID(m.ToolCallId)
 		}
-		for j, mediaMessage := range mediaMessages {
-			if mediaMessage.Type == dto.ContentTypeImageURL {
-				imageUrl := mediaMessage.GetImageMedia()
-				mediaMessage.ImageUrl = imageUrl.Url
-				mediaMessages[j] = mediaMessage
-			}
+		// Native Mistral accepts the OpenAI image_url and input_audio object forms.
+		// Do not flatten through ParseContent: that loses detail and null/string shape.
+		converted := dto.Message{Role: m.Role, Content: m.Content, ToolCalls: m.ToolCalls, ToolCallId: m.ToolCallId}
+		if m.Role == "tool" {
+			converted.Name = m.Name
 		}
-		message.SetMediaContent(mediaMessages)
-		messages = append(messages, dto.Message{
-			Role:       message.Role,
-			Content:    message.Content,
-			ToolCalls:  message.ToolCalls,
-			ToolCallId: message.ToolCallId,
-		})
+		if m.Role == "assistant" {
+			converted.Prefix = m.Prefix
+		}
+		messages = append(messages, converted)
+	}
+	for _, tool := range cloned.Tools {
+		if tool.Type != "function" {
+			return nil, invalidRequest("only function tools are supported by this Mistral adapter")
+		}
 	}
 	out := &dto.GeneralOpenAIRequest{
-		Model:           request.Model,
-		Stream:          request.Stream,
-		Messages:        messages,
-		ReasoningEffort: request.ReasoningEffort,
-		Temperature:     request.Temperature,
-		TopP:            request.TopP,
-		Tools:           request.Tools,
-		ToolChoice:      request.ToolChoice,
+		Model: cloned.Model, Stream: cloned.Stream, Messages: messages,
+		ReasoningEffort: cloned.ReasoningEffort, Temperature: cloned.Temperature,
+		TopP: cloned.TopP, Tools: cloned.Tools, ToolChoice: cloned.ToolChoice,
+		Stop: cloned.Stop, N: cloned.N, FrequencyPenalty: cloned.FrequencyPenalty,
+		PresencePenalty: cloned.PresencePenalty, ResponseFormat: cloned.ResponseFormat,
+		ParallelTooCalls: cloned.ParallelTooCalls, Prediction: cloned.Prediction,
+		Metadata: cloned.Metadata, PromptCacheKey: cloned.PromptCacheKey, ServiceTier: cloned.ServiceTier,
+		MaxTokens: cloned.MaxTokens, RandomSeed: cloned.RandomSeed,
 	}
-	if request.MaxTokens != nil || request.MaxCompletionTokens != nil {
-		maxTokens := request.GetMaxTokens()
-		out.MaxTokens = &maxTokens
+	if cloned.MaxCompletionTokens != nil {
+		out.MaxTokens = cloned.MaxCompletionTokens
 	}
-	return out
+	if cloned.Seed != nil {
+		seed := *cloned.Seed
+		if math.IsNaN(seed) || math.IsInf(seed, 0) || seed < 0 || seed >= math.Exp2(63) || math.Trunc(seed) != seed {
+			return nil, invalidRequest("seed must be a non-negative int64")
+		}
+		value := int64(seed)
+		out.RandomSeed = &value
+	}
+	if out.RandomSeed != nil && *out.RandomSeed < 0 {
+		return nil, invalidRequest("random_seed must be non-negative")
+	}
+	return out, nil
 }
 
 func normalizeMistralStreamData(data string) (string, error) {
@@ -97,17 +141,30 @@ func normalizeMistralResponseData(data []byte) ([]byte, error) {
 	if err := common.Unmarshal(data, &response); err != nil {
 		return nil, err
 	}
+	if response == nil {
+		return nil, fmt.Errorf("empty Mistral response")
+	}
+	if normalized := normalizeErrorBody(data, 502); normalized != nil {
+		return normalized, nil
+	}
+	changed := normalizeUsageMap(response)
+	if _, ok := response["p"]; ok {
+		delete(response, "p") // Provider SSE padding is not part of the completion.
+		changed = true
+	}
 
 	choices, ok := response["choices"].([]any)
 	if !ok {
-		return data, nil
+		return nil, fmt.Errorf("Mistral chat response has no choices")
 	}
 
-	changed := false
 	for _, choiceValue := range choices {
 		choice, ok := choiceValue.(map[string]any)
 		if !ok {
 			continue
+		}
+		if choice["finish_reason"] == "error" {
+			return nil, fmt.Errorf("Mistral generation failed (finish_reason=error)")
 		}
 		for _, field := range []string{"message", "delta"} {
 			message, ok := choice[field].(map[string]any)
@@ -116,6 +173,20 @@ func normalizeMistralResponseData(data []byte) ([]byte, error) {
 			}
 			if normalizeMistralMessageContent(message) {
 				changed = true
+			}
+			if calls, ok := message["tool_calls"].([]any); ok {
+				for _, value := range calls {
+					call, _ := value.(map[string]any)
+					function, _ := call["function"].(map[string]any)
+					if arguments, ok := function["arguments"].(map[string]any); ok {
+						encoded, err := common.Marshal(arguments)
+						if err != nil {
+							return nil, err
+						}
+						function["arguments"] = string(encoded)
+						changed = true
+					}
+				}
 			}
 		}
 	}
