@@ -266,16 +266,9 @@ const JSONEditor = ({
   // 添加键值对
   const addKeyValue = useCallback(() => {
     const newPairs = [...keyValuePairs];
-    const existingKeys = newPairs.map((p) => p.key);
-    let counter = 1;
-    let newKey = `field_${counter}`;
-    while (existingKeys.includes(newKey)) {
-      counter += 1;
-      newKey = `field_${counter}`;
-    }
     newPairs.push({
       id: generateUniqueId(),
-      key: newKey,
+      key: '',
       value: '',
     });
     handleVisualChange(newPairs);
