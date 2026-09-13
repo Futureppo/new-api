@@ -16,6 +16,9 @@ var ModelList = []string{
 	"magistral-medium-latest",
 	"voxtral-small-latest",
 	"voxtral-mini-latest",
+	"mistral-ocr-latest",
+	"voxtral-mini-tts-latest",
+	"voxtral-mini-transcribe-realtime-2602",
 }
 
 var ChannelName = "mistral"

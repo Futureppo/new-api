@@ -14,6 +14,8 @@ const (
 	RelayFormatOpenAILocalSearch                     = "openai_local_search"
 	RelayFormatRerank                                = "rerank"
 	RelayFormatEmbedding                             = "embedding"
+	RelayFormatMistralNative                         = "mistral_native"
+	RelayFormatMistralRealtime                       = "mistral_realtime"
 
 	RelayFormatTask    = "task"
 	RelayFormatMjProxy = "mj_proxy"

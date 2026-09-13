@@ -78,6 +78,9 @@ func SetRelayRouter(router *gin.Engine) {
 		wsRouter.GET("/realtime", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIRealtime)
 		})
+		wsRouter.GET("/audio/transcriptions/realtime", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatMistralRealtime)
+		})
 	}
 	{
 		relayV1Router.GET("/editable-file-tasks", controller.OpenAILocalEditableFileTasks)
@@ -86,6 +89,9 @@ func SetRelayRouter(router *gin.Engine) {
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
+		for _, path := range []string{"/ocr", "/fim/completions", "/agents/completions"} {
+			httpRouter.POST(path, func(c *gin.Context) { controller.Relay(c, types.RelayFormatMistralNative) })
+		}
 
 		// claude related routes
 		httpRouter.POST("/messages", func(c *gin.Context) {

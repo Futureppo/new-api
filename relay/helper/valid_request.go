@@ -23,6 +23,11 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
 
 	switch format {
+	case types.RelayFormatMistralNative, types.RelayFormatMistralRealtime:
+		request, err = dto.ParseMistralNativeRequest(c)
+		if err != nil && !common.IsRequestBodyTooLargeError(err) {
+			err = types.NewOpenAIError(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 	case types.RelayFormatOpenAI:
 		request, err = GetAndValidateTextRequest(c, relayMode)
 	case types.RelayFormatGemini:

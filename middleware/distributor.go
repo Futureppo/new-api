@@ -188,6 +188,18 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
+	if c.Request.URL.Path == "/v1/audio/transcriptions/realtime" {
+		return &ModelRequest{Model: c.Query("model")}, true, nil
+	}
+	if c.Request.URL.Path == "/v1/agents/completions" {
+		var request struct {
+			AgentID string `json:"agent_id"`
+		}
+		if err := common.UnmarshalBodyReusable(c, &request); err != nil {
+			return nil, false, err
+		}
+		return &ModelRequest{Model: request.AgentID}, true, nil
+	}
 	var modelRequest ModelRequest
 	shouldSelectChannel := true
 	var err error

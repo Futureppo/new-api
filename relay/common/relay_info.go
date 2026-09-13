@@ -556,6 +556,11 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 	var info *RelayInfo
 	var err error
 	switch relayFormat {
+	case types.RelayFormatMistralNative, types.RelayFormatMistralRealtime:
+		info = genBaseRelayInfo(c, request)
+		info.RelayFormat = relayFormat
+		info.ClientWs = ws
+		info.DisablePing = true // Native SSE event framing must remain unchanged.
 	case types.RelayFormatOpenAI:
 		info = GenRelayInfoOpenAI(c, request)
 	case types.RelayFormatOpenAIAudio:

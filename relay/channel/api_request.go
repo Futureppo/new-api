@@ -377,26 +377,7 @@ func (e *wssDialError) HTTPStatusCode() int {
 }
 
 func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody io.Reader) (*websocket.Conn, error) {
-	fullRequestURL, err := a.GetRequestURL(info)
-	if err != nil {
-		return nil, fmt.Errorf("get request url failed: %w", err)
-	}
-	targetHeader := http.Header{}
-	err = a.SetupRequestHeader(c, &targetHeader, info)
-	if err != nil {
-		return nil, fmt.Errorf("setup request header failed: %w", err)
-	}
-	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
-	// 这样可以覆盖默认的 Authorization header 设置
-	headerOverride, err := processHeaderOverride(info, c)
-	if err != nil {
-		return nil, err
-	}
-	for key, value := range headerOverride {
-		targetHeader.Set(key, value)
-	}
-	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
-	targetConn, resp, err := websocket.DefaultDialer.Dial(fullRequestURL, targetHeader)
+	conn, resp, err := DoWssRequestWithResponse(a, c, info)
 	if err != nil {
 		statusCode := 0
 		if resp != nil {
@@ -405,12 +386,44 @@ func DoWssRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 				_ = resp.Body.Close()
 			}
 		}
-		return nil, &wssDialError{url: fullRequestURL, statusCode: statusCode, err: err}
+		return nil, &wssDialError{url: info.ChannelBaseUrl, statusCode: statusCode, err: err}
 	}
-	// send request body
-	//all, err := io.ReadAll(requestBody)
-	//err = service.WssString(c, targetConn, string(all))
-	return targetConn, nil
+	return conn, nil
+}
+
+// DoWssRequestWithResponse retains failed handshake responses for native relays.
+// The caller owns resp.Body when the handshake fails.
+func DoWssRequestWithResponse(a Adaptor, c *gin.Context, info *common.RelayInfo) (*websocket.Conn, *http.Response, error) {
+	fullRequestURL, err := a.GetRequestURL(info)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get request url failed: %w", err)
+	}
+	targetHeader := http.Header{}
+	err = a.SetupRequestHeader(c, &targetHeader, info)
+	if err != nil {
+		return nil, nil, fmt.Errorf("setup request header failed: %w", err)
+	}
+	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
+	// 这样可以覆盖默认的 Authorization header 设置
+	headerOverride, err := processHeaderOverride(info, c)
+	if err != nil {
+		return nil, nil, err
+	}
+	for key, value := range headerOverride {
+		targetHeader.Set(key, value)
+	}
+	targetHeader.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+	dialer := *websocket.DefaultDialer
+	if info.ChannelSetting.Proxy != "" {
+		client, err := service.NewProxyHttpClient(info.ChannelSetting.Proxy)
+		if err != nil {
+			return nil, nil, err
+		}
+		if transport, ok := client.Transport.(*http.Transport); ok {
+			dialer.Proxy, dialer.NetDialContext = transport.Proxy, transport.DialContext
+		}
+	}
+	return dialer.DialContext(c.Request.Context(), fullRequestURL, targetHeader)
 }
 
 func startPingKeepAlive(c *gin.Context, pingInterval time.Duration) context.CancelFunc {

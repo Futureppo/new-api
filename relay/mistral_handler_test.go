@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -100,18 +101,28 @@ func mistralGatewayRequest(t *testing.T, path, contentType string, body []byte, 
 	case relayconstant.RelayModeAudioTranscription:
 		format = types.RelayFormatOpenAIAudio
 	}
+	if mistral.UsesNativeProtocol(c) {
+		format = types.RelayFormatMistralNative
+	}
 	request, err := helper.GetAndValidateRequest(c, format)
 	require.NoError(t, err)
 	billing := &mistralBillingRecorder{}
 	info := &relaycommon.RelayInfo{Request: request, OriginModelName: "test-alias", RequestURLPath: path, RelayMode: mode, RelayFormat: format, IsStream: request.IsStream(c), StartTime: time.Now(), DisablePing: true, UserId: 9001, UserQuota: 1000000000, UsingGroup: "default", Billing: billing, PriceData: types.PriceData{ModelRatio: 1, GroupRatioInfo: types.GroupRatioInfo{GroupRatio: 1}}}
+	if format == types.RelayFormatMistralNative && mistral.RequiresCallPrice(path) {
+		info.PriceData.UsePrice, info.PriceData.ModelPrice = true, 0.001
+	}
 	var apiErr *types.NewAPIError
-	switch mode {
-	case relayconstant.RelayModeEmbeddings:
-		apiErr = EmbeddingHelper(c, info)
-	case relayconstant.RelayModeAudioTranscription:
-		apiErr = AudioHelper(c, info)
-	default:
-		apiErr = TextHelper(c, info)
+	if format == types.RelayFormatMistralNative {
+		apiErr = MistralNativeHelper(c, info)
+	} else {
+		switch mode {
+		case relayconstant.RelayModeEmbeddings:
+			apiErr = EmbeddingHelper(c, info)
+		case relayconstant.RelayModeAudioTranscription:
+			apiErr = AudioHelper(c, info)
+		default:
+			apiErr = TextHelper(c, info)
+		}
 	}
 	if apiErr == nil {
 		require.Equal(t, 1, billing.calls, "request must settle exactly once")

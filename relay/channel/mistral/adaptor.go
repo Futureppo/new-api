@@ -18,10 +18,12 @@ import (
 )
 
 type Adaptor struct {
-	embeddingFormat  string
-	audioFormat      string
-	audioGranularity string
-	audioDuration    *float64
+	nativePath        string
+	nativeContentType string
+	embeddingFormat   string
+	audioFormat       string
+	audioGranularity  string
+	audioDuration     *float64
 }
 
 func unsupported() error {
@@ -48,6 +50,9 @@ func NormalizeBaseURL(base string) string {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if a.nativePath != "" {
+		return nativeURL(info, a.nativePath)
+	}
 	base, err := url.Parse(NormalizeBaseURL(info.ChannelBaseUrl))
 	if err != nil || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") {
 		return "", errors.New("invalid Mistral base URL")
@@ -71,6 +76,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
 	req.Set("Authorization", "Bearer "+info.ApiKey)
+	if a.nativeContentType != "" {
+		req.Set("Content-Type", a.nativeContentType)
+	}
 	return nil
 }
 
@@ -102,7 +110,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 	} else {
 		resp, err = channel.DoApiRequest(a, c, info, body)
 	}
-	if err != nil || resp == nil || resp.StatusCode == http.StatusOK {
+	if err != nil || resp == nil || resp.StatusCode == http.StatusOK || a.nativePath != "" {
 		return resp, err
 	}
 	// Normalize before the shared error handler consumes the body. Preserve status
