@@ -89,6 +89,13 @@ type ChannelOtherSettings struct {
 	OpenRouterFreeModelNameSimplificationEnabled bool              `json:"openrouter_free_model_name_simplification_enabled,omitempty"`  // 是否将 provider/model:free 简化为 model 并生成映射
 	OpenRouterFreeModelGeneratedMappings         map[string]string `json:"openrouter_free_model_generated_mappings,omitempty"`           // 已自动生成的免费模型名称映射
 	OpenRouterFreeModelPendingMappings           map[string]string `json:"openrouter_free_model_pending_mappings,omitempty"`             // 待应用的免费模型名称映射
+
+	KiloAnonymousEnabled                   bool              `json:"kilo_anonymous_enabled,omitempty"`
+	KiloFreeModelSyncEnabled               bool              `json:"kilo_auto_sync_free_models_enabled,omitempty"`
+	KiloFreeModelNameSimplificationEnabled bool              `json:"kilo_free_model_name_simplification_enabled,omitempty"`
+	KiloFreeModelManagedModels             []string          `json:"kilo_free_model_managed_models,omitempty"`
+	KiloFreeModelGeneratedMappings         map[string]string `json:"kilo_free_model_generated_mappings,omitempty"`
+	KiloFreeModelPendingMappings           map[string]string `json:"kilo_free_model_pending_mappings,omitempty"`
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

@@ -315,6 +315,7 @@ func (info *RelayInfo) ToString() string {
 
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
+	constant.ChannelTypeKilo:        true, // https://kilo.ai/docs/gateway/streaming
 	constant.ChannelTypeAgnesAI:     true, // Verified with stream_options.include_usage on 2026-09-10.
 	constant.ChannelTypeOpenAI:      true,
 	constant.ChannelTypeAnthropic:   true,

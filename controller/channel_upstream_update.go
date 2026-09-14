@@ -118,7 +118,7 @@ func isOpenRouterManagedModelSyncEnabled(channel *model.Channel, settings dto.Ch
 }
 
 func isChannelUpstreamModelUpdateEnabled(channel *model.Channel, settings dto.ChannelOtherSettings) bool {
-	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings)
+	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings) || isKiloManagedModelSyncEnabled(channel, settings)
 }
 
 func mergeModelNames(base []string, appended []string) []string {
@@ -578,6 +578,9 @@ func checkAndPersistChannelUpstreamModelUpdates(
 	force bool,
 	allowAutoApply bool,
 ) (modelsChanged bool, autoApplyResult channelUpstreamAutoApplyResult, err error) {
+	if isKiloManagedModelSyncEnabled(channel, *settings) {
+		return checkAndPersistKiloModelUpdates(channel, settings, force, allowAutoApply)
+	}
 	now := common.GetTimestamp()
 	if !force {
 		minInterval := getUpstreamModelUpdateMinCheckIntervalSeconds()
@@ -1045,6 +1048,9 @@ func applyChannelUpstreamModelUpdates(
 	err error,
 ) {
 	settings := channel.GetOtherSettings()
+	if isKiloManagedModelSyncEnabled(channel, settings) {
+		return applyKiloModelUpdates(channel, addModelsInput, ignoreModelsInput, removeModelsInput)
+	}
 	pendingAddModels := normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
 	pendingRemoveModels := normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
 	isOpenRouterManagedSync := isOpenRouterManagedModelSyncEnabled(channel, settings)

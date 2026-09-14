@@ -1,5 +1,15 @@
 {
   "translation": {
+    "请输入 Kilo API Key；匿名模式无需密钥": "Enter your Kilo API key; anonymous mode does not require a key",
+    "Kilo 匿名模式仅支持单渠道": "Kilo anonymous mode only supports a single channel",
+    "自动维护 Kilo 免费模型": "Automatically manage Kilo free models",
+    "按 Kilo 的免费标记自动增删模型，保留其他手动模型；站内计费仍使用现有定价。": "Automatically add and remove models using Kilo’s free flag while preserving other manually configured models. Site billing uses existing pricing.",
+    "简化 Kilo 免费模型名称": "Simplify Kilo free model names",
+    "将 provider/model:free 简化为 model 并添加重定向；免费路由模型保持原名，名称冲突时保留完整名称。": "Shorten provider/model:free to model and add a redirect. Free routers keep their original names; conflicting names keep the full ID.",
+    "Kilo 免费模型同步已开启，全部模型巡检设置暂时停用": "Kilo free model sync is enabled. All-model inspection settings are temporarily disabled",
+    "Kilo 匿名调用": "Anonymous Kilo requests",
+    "匿名模式无需密钥，仅适用于上游允许匿名访问的免费模型；关闭后使用已保存或新填写的密钥。": "Anonymous mode requires no key and only works with free models that allow anonymous access. Turn it off to use the saved or newly entered key.",
+    "Kilo 默认网关为 https://api.kilo.ai/api/gateway，可获取最新模型列表；开启免费模型同步后仅获取免费模型。": "The default Kilo gateway is https://api.kilo.ai/api/gateway. Fetch the latest model list; enabling free model sync limits fetching to free models.",
     "永久清理已禁用用户": "Permanently purge disabled users",
     "确定永久清理所有已禁用普通用户？": "Permanently purge all disabled regular users?",
     "将从数据库永久删除所有已禁用的普通用户，此操作不可撤销。": "This will permanently delete every disabled regular user from the database. This action cannot be undone.",

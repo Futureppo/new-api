@@ -101,6 +101,12 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelType == constant.ChannelTypeKilo {
+		if info.RelayMode != relayconstant.RelayModeChatCompletions {
+			return "", errors.New("Kilo channel supports chat completions only")
+		}
+		return strings.TrimRight(strings.TrimSpace(info.ChannelBaseUrl), "/") + "/chat/completions", nil
+	}
 	if info.ChannelType == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(info.UpstreamModelName) {
 		return "", fmt.Errorf("model %s is asynchronous; use POST /v1/batch/generations", info.UpstreamModelName)
 	}
@@ -201,6 +207,10 @@ func realtimeRequestPathWithModel(requestPath string, modelName string) string {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, header)
+	if info.ChannelType == constant.ChannelTypeKilo && info.ChannelOtherSettings.KiloAnonymousEnabled {
+		header.Del("Authorization")
+		return nil
+	}
 	if info.ChannelType == constant.ChannelTypeAzure {
 		header.Set("api-key", info.ApiKey)
 		return nil
@@ -279,7 +289,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	// model names may start with "o" (for example, "orcarouter/...") without
 	// being OpenAI o-series reasoning models, so preserve the request instead
 	// of applying OpenAI-specific model-name heuristics below.
-	if info.ChannelType == constant.ChannelTypeModal {
+	if info.ChannelType == constant.ChannelTypeModal || info.ChannelType == constant.ChannelTypeKilo {
 		return request, nil
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
@@ -707,6 +717,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 
 func (a *Adaptor) GetModelList() []string {
 	switch a.ChannelType {
+	case constant.ChannelTypeKilo:
+		return []string{} // Kilo's model catalogue is fetched dynamically.
 	case constant.ChannelType360:
 		return ai360.ModelList
 	case constant.ChannelTypeLingYiWanWu:
@@ -734,6 +746,8 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	switch a.ChannelType {
+	case constant.ChannelTypeKilo:
+		return "Kilo"
 	case constant.ChannelType360:
 		return ai360.ChannelName
 	case constant.ChannelTypeLingYiWanWu:

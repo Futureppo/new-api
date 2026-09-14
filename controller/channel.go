@@ -206,6 +206,9 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 		}
 		headers.Set(k, str)
 	}
+	if channel.Type == constant.ChannelTypeKilo && (channel.GetOtherSettings().KiloAnonymousEnabled || strings.TrimSpace(key) == "") {
+		headers.Del("Authorization")
+	}
 
 	return headers, nil
 }
@@ -217,6 +220,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeKilo:
+		return baseURL + "/models"
 	case constant.ChannelTypeAli:
 		return fmt.Sprintf("%s/compatible-mode/v1/models", baseURL)
 	case constant.ChannelTypeZhipu_v4:
@@ -455,6 +460,9 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	}
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
+	if channel.Type == constant.ChannelTypeKilo {
+		return fetchKiloModelIDs(channel, fetchURL, key, channel.GetOtherSettings().KiloFreeModelSyncEnabled)
+	}
 	return fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 }
 
@@ -475,6 +483,18 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	if channel.Type == constant.ChannelTypeKilo {
+		settings := channel.GetOtherSettings()
+		if value, exists := c.GetQuery("kilo_free_only"); exists {
+			freeOnly, parseErr := strconv.ParseBool(value)
+			if parseErr != nil {
+				common.ApiError(c, fmt.Errorf("invalid kilo_free_only"))
+				return
+			}
+			settings.KiloFreeModelSyncEnabled = freeOnly
+		}
+		channel.SetOtherSettings(settings)
+	}
 	ids, err := fetchChannelUpstreamModelIDs(channel)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -698,6 +718,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 
 // validateChannel 通用的渠道校验函数
 func validateChannel(channel *model.Channel, isAdd bool) error {
+	if channel == nil {
+		return fmt.Errorf("channel cannot be empty")
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -711,7 +734,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel == nil || channel.Key == "" {
+		if channel.Key == "" && !(channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled) {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -856,6 +879,17 @@ func AddChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if ch := addChannelRequest.Channel; ch != nil && ch.Type == constant.ChannelTypeKilo {
+		settings := ch.GetOtherSettings()
+		if strings.TrimSpace(ch.Key) == "" {
+			settings.KiloAnonymousEnabled = true
+		}
+		ch.SetOtherSettings(settings)
+		if settings.KiloAnonymousEnabled && addChannelRequest.Mode != "single" {
+			common.ApiError(c, fmt.Errorf("Kilo 匿名模式仅支持单渠道创建"))
+			return
+		}
+	}
 
 	// 使用统一的校验函数
 	if err := validateChannel(addChannelRequest.Channel, true); err != nil {
@@ -927,7 +961,7 @@ func AddChannel(c *gin.Context) {
 
 	channels := make([]model.Channel, 0, len(keys))
 	for _, key := range keys {
-		if key == "" {
+		if key == "" && !(addChannelRequest.Channel.Type == constant.ChannelTypeKilo && addChannelRequest.Channel.GetOtherSettings().KiloAnonymousEnabled) {
 			continue
 		}
 		localChannel := addChannelRequest.Channel
@@ -1177,6 +1211,32 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	if channel.Type == constant.ChannelTypeKilo {
+		settings := channel.GetOtherSettings()
+		if settings.KiloAnonymousEnabled && originChannel.ChannelInfo.IsMultiKey {
+			common.ApiError(c, fmt.Errorf("Kilo 匿名模式仅支持单渠道"))
+			return
+		}
+		if !settings.KiloAnonymousEnabled && strings.TrimSpace(channel.Key) == "" && strings.TrimSpace(originChannel.Key) == "" {
+			common.ApiError(c, fmt.Errorf("Kilo 密钥模式需要填写密钥"))
+			return
+		}
+		// Model management state is maintained by the backend, not a stale edit form.
+		originSettings := originChannel.GetOtherSettings()
+		settings.KiloFreeModelManagedModels = originSettings.KiloFreeModelManagedModels
+		settings.KiloFreeModelGeneratedMappings = originSettings.KiloFreeModelGeneratedMappings
+		settings.KiloFreeModelPendingMappings = originSettings.KiloFreeModelPendingMappings
+		settings.UpstreamModelUpdateLastDetectedModels = originSettings.UpstreamModelUpdateLastDetectedModels
+		settings.UpstreamModelUpdateLastRemovedModels = originSettings.UpstreamModelUpdateLastRemovedModels
+		settings.UpstreamModelUpdateLastCheckTime = originSettings.UpstreamModelUpdateLastCheckTime
+		if settings.KiloFreeModelSyncEnabled != originSettings.KiloFreeModelSyncEnabled || settings.KiloFreeModelNameSimplificationEnabled != originSettings.KiloFreeModelNameSimplificationEnabled {
+			settings.KiloFreeModelPendingMappings = nil
+			settings.UpstreamModelUpdateLastDetectedModels = nil
+			settings.UpstreamModelUpdateLastRemovedModels = nil
+			settings.UpstreamModelUpdateLastCheckTime = 0
+		}
+		channel.SetOtherSettings(settings)
+	}
 	channel.DailySuccessCount = originChannel.DailySuccessCount
 	channel.DailySuccessDate = originChannel.DailySuccessDate
 	if c.GetInt("role") < common.RoleRootUser {
@@ -1305,6 +1365,8 @@ func UpdateChannel(c *gin.Context) {
 
 func FetchModels(c *gin.Context) {
 	var req struct {
+		KiloFreeOnly       bool              `json:"kilo_free_only"`
+		KiloAnonymous      bool              `json:"kilo_anonymous_enabled"`
 		BaseURL            string            `json:"base_url"`
 		Type               int               `json:"type"`
 		Key                string            `json:"key"`
@@ -1344,9 +1406,11 @@ func FetchModels(c *gin.Context) {
 	}
 	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
 	channel.SetOtherSettings(dto.ChannelOtherSettings{
-		VertexKeyType:      req.VertexKeyType,
-		AwsKeyType:         req.AwsKeyType,
-		CustomModelListURL: req.CustomModelListURL,
+		KiloFreeModelSyncEnabled: req.KiloFreeOnly,
+		KiloAnonymousEnabled:     req.KiloAnonymous || (req.Type == constant.ChannelTypeKilo && strings.TrimSpace(key) == ""),
+		VertexKeyType:            req.VertexKeyType,
+		AwsKeyType:               req.AwsKeyType,
+		CustomModelListURL:       req.CustomModelListURL,
 	})
 	if req.HeaderOverride != "" {
 		channel.HeaderOverride = common.GetPointer(req.HeaderOverride)

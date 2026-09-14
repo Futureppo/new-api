@@ -1,5 +1,15 @@
 {
   "translation": {
+    "请输入 Kilo API Key；匿名模式无需密钥": "Nhập khóa API Kilo; chế độ ẩn danh không cần khóa",
+    "Kilo 匿名模式仅支持单渠道": "Chế độ ẩn danh Kilo chỉ hỗ trợ một kênh",
+    "自动维护 Kilo 免费模型": "Tự động quản lý mô hình miễn phí Kilo",
+    "按 Kilo 的免费标记自动增删模型，保留其他手动模型；站内计费仍使用现有定价。": "Tự động thêm và xóa mô hình theo cờ miễn phí của Kilo, giữ lại các mô hình khác được cấu hình thủ công. Trang web vẫn dùng giá hiện tại.",
+    "简化 Kilo 免费模型名称": "Rút gọn tên mô hình miễn phí Kilo",
+    "将 provider/model:free 简化为 model 并添加重定向；免费路由模型保持原名，名称冲突时保留完整名称。": "Rút gọn provider/model:free thành model và thêm chuyển hướng. Bộ định tuyến miễn phí giữ nguyên tên; nếu trùng tên thì giữ tên đầy đủ.",
+    "Kilo 免费模型同步已开启，全部模型巡检设置暂时停用": "Đồng bộ mô hình miễn phí Kilo đang bật. Tạm tắt cài đặt kiểm tra tất cả mô hình",
+    "Kilo 匿名调用": "Gọi Kilo ẩn danh",
+    "匿名模式无需密钥，仅适用于上游允许匿名访问的免费模型；关闭后使用已保存或新填写的密钥。": "Chế độ ẩn danh không cần khóa và chỉ dùng được với mô hình miễn phí cho phép truy cập ẩn danh. Tắt để dùng khóa đã lưu hoặc khóa mới nhập.",
+    "Kilo 默认网关为 https://api.kilo.ai/api/gateway，可获取最新模型列表；开启免费模型同步后仅获取免费模型。": "Cổng Kilo mặc định là https://api.kilo.ai/api/gateway. Có thể lấy danh sách mô hình mới nhất; khi bật đồng bộ miễn phí, chỉ lấy mô hình miễn phí.",
     "永久清理已禁用用户": "Xóa vĩnh viễn người dùng đã bị vô hiệu hóa",
     "确定永久清理所有已禁用普通用户？": "Xóa vĩnh viễn tất cả người dùng thông thường đã bị vô hiệu hóa?",
     "将从数据库永久删除所有已禁用的普通用户，此操作不可撤销。": "Tất cả người dùng thông thường đã bị vô hiệu hóa sẽ bị xóa vĩnh viễn khỏi cơ sở dữ liệu. Không thể hoàn tác thao tác này.",

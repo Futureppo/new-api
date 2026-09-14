@@ -1,5 +1,15 @@
 {
   "translation": {
+    "请输入 Kilo API Key；匿名模式无需密钥": "Saisissez votre clé API Kilo ; le mode anonyme ne nécessite pas de clé",
+    "Kilo 匿名模式仅支持单渠道": "Le mode anonyme Kilo ne prend en charge qu’un seul canal",
+    "自动维护 Kilo 免费模型": "Gérer automatiquement les modèles gratuits de Kilo",
+    "按 Kilo 的免费标记自动增删模型，保留其他手动模型；站内计费仍使用现有定价。": "Ajouter et supprimer les modèles selon l’indicateur gratuit de Kilo, en conservant les autres modèles configurés manuellement. La tarification du site reste inchangée.",
+    "简化 Kilo 免费模型名称": "Simplifier les noms des modèles gratuits de Kilo",
+    "将 provider/model:free 简化为 model 并添加重定向；免费路由模型保持原名，名称冲突时保留完整名称。": "Raccourcir provider/model:free en model et ajouter une redirection. Les routeurs gratuits conservent leur nom ; en cas de conflit, conserver le nom complet.",
+    "Kilo 免费模型同步已开启，全部模型巡检设置暂时停用": "La synchronisation des modèles gratuits Kilo est activée. La vérification de tous les modèles est temporairement désactivée",
+    "Kilo 匿名调用": "Requêtes Kilo anonymes",
+    "匿名模式无需密钥，仅适用于上游允许匿名访问的免费模型；关闭后使用已保存或新填写的密钥。": "Le mode anonyme ne nécessite pas de clé et fonctionne uniquement avec les modèles gratuits autorisant un accès anonyme. Désactivez-le pour utiliser la clé enregistrée ou nouvellement saisie.",
+    "Kilo 默认网关为 https://api.kilo.ai/api/gateway，可获取最新模型列表；开启免费模型同步后仅获取免费模型。": "La passerelle Kilo par défaut est https://api.kilo.ai/api/gateway. Récupérez la liste actuelle ; la synchronisation gratuite limite la récupération aux modèles gratuits.",
     "永久清理已禁用用户": "Purger définitivement les utilisateurs désactivés",
     "确定永久清理所有已禁用普通用户？": "Purger définitivement tous les utilisateurs standard désactivés ?",
     "将从数据库永久删除所有已禁用的普通用户，此操作不可撤销。": "Tous les utilisateurs standard désactivés seront définitivement supprimés de la base de données. Cette action est irréversible.",

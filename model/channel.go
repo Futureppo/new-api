@@ -108,6 +108,9 @@ func (channel *Channel) GetKeys() []string {
 }
 
 func (channel *Channel) GetNextEnabledKey() (string, int, *types.NewAPIError) {
+	if channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled {
+		return "", 0, nil
+	}
 	// If not in multi-key mode, return the original key string directly.
 	if !channel.ChannelInfo.IsMultiKey {
 		return channel.Key, 0, nil
