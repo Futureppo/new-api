@@ -67,7 +67,13 @@ func sweepTimedOutTasks(ctx context.Context) {
 			task.FailReason = reason
 		}
 
-		won, err := task.UpdateWithStatus(oldStatus)
+		var won bool
+		var err error
+		if task.HasDeferredBilling() {
+			won, err = completeDeferredTask(ctx, task, oldStatus, nil)
+		} else {
+			won, err = task.UpdateWithStatus(oldStatus)
+		}
 		if err != nil {
 			logger.LogError(ctx, fmt.Sprintf("sweepTimedOutTasks CAS update error for task %s: %v", task.TaskID, err))
 			continue
@@ -77,7 +83,7 @@ func sweepTimedOutTasks(ctx context.Context) {
 			continue
 		}
 		timedOutCount++
-		if !isLegacy && task.Quota != 0 {
+		if !isLegacy && !task.HasDeferredBilling() && task.Quota != 0 {
 			RefundTaskQuota(ctx, task, reason)
 		}
 	}
@@ -174,7 +180,18 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 		var failedIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
+				if t.HasDeferredBilling() {
+					original := *t
+					t.Status, t.Progress = model.TaskStatusFailure, "100%"
+					t.FailReason = fmt.Sprintf("Failed to get channel info, channel ID: %d", channelId)
+					t.FinishTime = time.Now().Unix()
+					if _, settleErr := completeDeferredTask(ctx, t, original.Status, nil); settleErr != nil {
+						*t = original
+						logger.LogError(ctx, fmt.Sprintf("Failed to refund deferred task %s: %v", t.TaskID, settleErr))
+					}
+				} else {
+					failedIDs = append(failedIDs, t.ID)
+				}
 			}
 		}
 		err = model.TaskBulkUpdateByID(failedIDs, map[string]any{
@@ -222,6 +239,15 @@ func updateSunoTasks(ctx context.Context, channelId int, taskIds []string, taskM
 
 	for _, responseItem := range responseItems.Data {
 		task := taskM[responseItem.TaskID]
+		if task == nil {
+			continue
+		}
+		if task.HasDeferredBilling() {
+			if err := updateDeferredSunoTask(ctx, task, responseItem); err != nil {
+				logger.LogError(ctx, fmt.Sprintf("UpdateSunoTask deferred billing: %v", err))
+			}
+			continue
+		}
 		if !taskNeedsUpdate(task, responseItem) {
 			continue
 		}
@@ -308,7 +334,18 @@ func updateVideoTasks(ctx context.Context, platform constant.TaskPlatform, chann
 		var failedIDs []int64
 		for _, upstreamID := range taskIds {
 			if t, ok := taskM[upstreamID]; ok {
-				failedIDs = append(failedIDs, t.ID)
+				if t.HasDeferredBilling() {
+					original := *t
+					t.Status, t.Progress = model.TaskStatusFailure, "100%"
+					t.FailReason = fmt.Sprintf("Failed to get channel info, channel ID: %d", channelId)
+					t.FinishTime = time.Now().Unix()
+					if _, settleErr := completeDeferredTask(ctx, t, original.Status, nil); settleErr != nil {
+						*t = original
+						logger.LogError(ctx, fmt.Sprintf("Failed to refund deferred task %s: %v", t.TaskID, settleErr))
+					}
+				} else {
+					failedIDs = append(failedIDs, t.ID)
+				}
 			}
 		}
 		errUpdate := model.TaskBulkUpdateByID(failedIDs, map[string]any{
@@ -392,6 +429,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
 
 	snap := task.Snapshot()
+	originalTask := *task
 
 	taskResult := &relaycommon.TaskInfo{}
 	// try parse as New API response format
@@ -499,8 +537,17 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 
 	isDone := task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure
 	if isDone && snap.Status != task.Status {
-		won, err := task.UpdateWithStatus(snap.Status)
+		var won bool
+		var err error
+		if task.HasDeferredBilling() {
+			won, err = completeDeferredTask(ctx, task, snap.Status, taskResult)
+			shouldSettle, shouldRefund = false, false
+			shouldChargeViolationFee = false
+		} else {
+			won, err = task.UpdateWithStatus(snap.Status)
+		}
 		if err != nil {
+			*task = originalTask
 			logger.LogError(ctx, fmt.Sprintf("UpdateWithStatus failed for task %s: %s", task.TaskID, err.Error()))
 			return err
 		} else if !won {

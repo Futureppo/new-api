@@ -51,7 +51,7 @@ type billingRefundWork struct {
 func (s *BillingSession) Settle(actualQuota int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.settled {
+	if s.settled || s.refunded {
 		return nil
 	}
 	delta := actualQuota - s.preConsumedQuota
@@ -109,12 +109,16 @@ func (s *BillingSession) RefundSync(c *gin.Context) {
 
 func (s *BillingSession) prepareRefund(c *gin.Context) *billingRefundWork {
 	s.mu.Lock()
-	if s.settled || s.refunded || !s.needsRefundLocked() {
+	if s.settled || s.refunded {
 		s.mu.Unlock()
 		return nil
 	}
+	needsRefund := s.needsRefundLocked()
 	s.refunded = true
 	s.mu.Unlock()
+	if !needsRefund {
+		return nil
+	}
 
 	logger.LogInfo(c, fmt.Sprintf("用户 %d 请求失败, 返还预扣费（token_quota=%s, funding=%s）",
 		s.relayInfo.UserId,
@@ -216,7 +220,7 @@ func (s *BillingSession) Reserve(targetQuota int) error {
 // preConsume 执行预扣费：信任检查 -> 令牌预扣 -> 资金来源预扣。
 // 任一步骤失败时原子回滚已完成的步骤。
 func (s *BillingSession) preConsume(c *gin.Context, quota int) *types.NewAPIError {
-	effectiveQuota := quota
+	effectiveQuota := max(0, quota)
 
 	// ---- 信任额度旁路 ----
 	if s.shouldTrust(c) {
@@ -376,6 +380,8 @@ func NewBillingSession(c *gin.Context, relayInfo *relaycommon.RelayInfo, preCons
 		return nil, types.NewError(fmt.Errorf("relayInfo is nil"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
+	// A negative estimate is a future credit, never money already reserved.
+	preConsumedQuota = max(0, preConsumedQuota)
 	pref := common.NormalizeBillingPreference(relayInfo.UserSetting.BillingPreference)
 
 	// 钱包路径需要先检查用户额度

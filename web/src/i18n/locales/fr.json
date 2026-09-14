@@ -4353,7 +4353,15 @@
     "JSON 接口必须允许浏览器跨域访问。第三方图片或接口仍可看到访客 IP，请勿在地址中填写密钥。": "Les API JSON doivent autoriser l’accès CORS du navigateur. Les services tiers peuvent voir l’adresse IP des visiteurs ; n’ajoutez aucun secret aux URL.",
     "JSON 图片接口": "API d’image JSON",
     "完全重定向": "Redirection complète",
-    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "Lorsque cette option est activée, les noms de modèle dans les corps de réponse et tous les journaux externes affichent le modèle demandé avant la redirection. Le modèle amont réel est utilisé uniquement pour les requêtes internes et la facturation."
+    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "Lorsque cette option est activée, les noms de modèle dans les corps de réponse et tous les journaux externes affichent le modèle demandé avant la redirection. Le modèle amont réel est utilisé uniquement pour les requêtes internes et la facturation.",
+    "负数价格提醒": "Avertissement de prix négatif",
+    "检测到负数价格。负数费用会增加用户余额；存在正数费用时，按合计净费用结算。订阅计费将恢复套餐额度，最多恢复至套餐总额度。是否继续保存？": "Des prix négatifs ont été détectés. Les frais négatifs augmentent le solde de l’utilisateur ; si des frais positifs s’appliquent aussi, le total net est facturé. Pour un abonnement, le quota est restauré dans la limite du forfait. Enregistrer ces prix ?",
+    "模型 {{name}} 的价格必须是完整的有限数字": "Les prix du modèle {{name}} doivent être des nombres complets et finis",
+    "模型 {{name}} 的基础价格为零或倍率超出范围，无法换算依赖价格": "Le modèle {{name}} a un prix de base nul ou un ratio hors limites ; les prix dépendants ne peuvent pas être convertis",
+    "配置 {{key}} 必须是模型名称到有限数字的 JSON 对象": "La configuration {{key}} doit être un objet JSON associant les noms des modèles à des nombres finis",
+    "确认保存": "Confirmer l’enregistrement",
+    "音频输出价格": "Prix de sortie audio",
+    "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Sortie audio : {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
   },
   "??": "D?sactiver",
   "24h": "24 h",

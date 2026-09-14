@@ -713,7 +713,7 @@ export const calculateModelPrice = ({
     const formatTokenPrice = (priceUSD) => {
       const rawDisplayPrice = displayPrice(priceUSD);
       const numericPrice =
-        parseFloat(rawDisplayPrice.replace(/[^0-9.]/g, '')) / unitDivisor;
+        parseFloat(rawDisplayPrice.replace(/[^0-9.\-]/g, '')) / unitDivisor;
       return `${symbol}${numericPrice.toFixed(precision)}`;
     };
 

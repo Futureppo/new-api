@@ -16,8 +16,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
+import { PRICE_INPUT_PATTERN, isCompletePrice } from '../negativePricing';
+import { confirmNegativePricing } from '../components/confirmNegativePricing';
 import {
   combineBillingExpr,
   splitBillingExprAndRequestRules,
@@ -54,8 +56,6 @@ const EMPTY_MODEL = {
   hasConflict: false,
 };
 
-const NUMERIC_INPUT_REGEX = /^(\d+(\.\d*)?|\.\d*)?$/;
-
 export const hasValue = (value) =>
   value !== '' && value !== null && value !== undefined && value !== false;
 
@@ -80,7 +80,8 @@ const formatNumber = (value) => {
   if (num === null) {
     return '';
   }
-  return parseFloat(num.toFixed(12)).toString();
+  const rounded = parseFloat(num.toFixed(12));
+  return String(rounded === 0 && num !== 0 ? num : rounded);
 };
 
 const toNormalizedNumber = (value) => {
@@ -225,7 +226,8 @@ const buildModelState = (name, sourceMaps) => {
 
 export const isBasePricingUnset = (model) =>
   model.billingMode !== 'tiered_expr' &&
-  !hasValue(model.fixedPrice) && !hasValue(model.inputPrice);
+  !hasValue(model.fixedPrice) &&
+  !hasValue(model.inputPrice);
 
 export const getModelWarnings = (model, t) => {
   if (!model) {
@@ -291,8 +293,8 @@ export const getModelWarnings = (model, t) => {
 export const buildSummaryText = (model, t) => {
   const requestRuleSuffix =
     model.billingMode === 'tiered_expr' && model.requestRuleExpr
-    ? `，${t('请求规则')}`
-    : '';
+      ? `，${t('请求规则')}`
+      : '';
   if (model.billingMode === 'tiered_expr') {
     const expr = model.billingExpr;
     if (!expr) return `${t('表达式计费')}${requestRuleSuffix}`;
@@ -334,7 +336,26 @@ export const buildOptionalFieldToggles = (model) => ({
   audioOutputPrice: hasValue(model.audioOutputPrice),
 });
 
-const serializeModel = (model, t) => {
+export const serializeModel = (model, t) => {
+  const activeFields =
+    model.billingMode === 'per-request'
+      ? ['fixedPrice']
+      : [
+          'inputPrice',
+          'completionPrice',
+          'cachePrice',
+          'createCachePrice',
+          'imagePrice',
+          'audioInputPrice',
+          'audioOutputPrice',
+        ];
+  for (const field of activeFields) {
+    if (hasValue(model[field]) && !isCompletePrice(model[field])) {
+      throw new Error(
+        t('模型 {{name}} 的价格必须是完整的有限数字', { name: model.name }),
+      );
+    }
+  }
   const result = {
     ModelPrice: null,
     ModelRatio: null,
@@ -412,10 +433,23 @@ const serializeModel = (model, t) => {
     return result;
   }
 
-  result.ModelRatio = toNormalizedNumber(inputPrice / 2);
+  const dividePrice = (price, base) => {
+    if (base === 0 && price === 0) return 0;
+    const ratio = price / base;
+    if (!Number.isFinite(ratio) || (price !== 0 && ratio === 0)) {
+      throw new Error(
+        t('模型 {{name}} 的基础价格为零或倍率超出范围，无法换算依赖价格', {
+          name: model.name,
+        }),
+      );
+    }
+    return toNormalizedNumber(ratio);
+  };
+
+  result.ModelRatio = dividePrice(inputPrice, 2);
 
   if (!model.completionRatioLocked && completionPrice !== null) {
-    result.CompletionRatio = toNormalizedNumber(completionPrice / inputPrice);
+    result.CompletionRatio = dividePrice(completionPrice, inputPrice);
   } else if (
     model.completionRatioLocked &&
     hasValue(model.rawRatios.completionRatio)
@@ -425,27 +459,28 @@ const serializeModel = (model, t) => {
     );
   }
   if (cachePrice !== null) {
-    result.CacheRatio = toNormalizedNumber(cachePrice / inputPrice);
+    result.CacheRatio = dividePrice(cachePrice, inputPrice);
   }
   if (createCachePrice !== null) {
-    result.CreateCacheRatio = toNormalizedNumber(createCachePrice / inputPrice);
+    result.CreateCacheRatio = dividePrice(createCachePrice, inputPrice);
   }
   if (imagePrice !== null) {
-    result.ImageRatio = toNormalizedNumber(imagePrice / inputPrice);
+    result.ImageRatio = dividePrice(imagePrice, inputPrice);
   }
   if (audioInputPrice !== null) {
-    result.AudioRatio = toNormalizedNumber(audioInputPrice / inputPrice);
+    result.AudioRatio = dividePrice(audioInputPrice, inputPrice);
   }
   if (audioOutputPrice !== null) {
-    if (audioInputPrice === null || audioInputPrice === 0) {
+    if (audioInputPrice === null) {
       throw new Error(
         t('模型 {{name}} 缺少音频输入价格，无法计算音频补全倍率', {
           name: model.name,
         }),
       );
     }
-    result.AudioCompletionRatio = toNormalizedNumber(
-      audioOutputPrice / audioInputPrice,
+    result.AudioCompletionRatio = dividePrice(
+      audioOutputPrice,
+      audioInputPrice,
     );
   }
 
@@ -632,6 +667,7 @@ export function useModelPricingEditorState({
   const [searchText, setSearchText] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
   const [conflictOnly, setConflictOnly] = useState(false);
   const [optionalFieldToggles, setOptionalFieldToggles] = useState({});
 
@@ -646,8 +682,12 @@ export function useModelPricingEditorState({
       ImageRatio: parseOptionJSON(options.ImageRatio),
       AudioRatio: parseOptionJSON(options.AudioRatio),
       AudioCompletionRatio: parseOptionJSON(options.AudioCompletionRatio),
-      ModelBillingMode: parseOptionJSON(options['billing_setting.billing_mode']),
-      ModelBillingExpr: parseOptionJSON(options['billing_setting.billing_expr']),
+      ModelBillingMode: parseOptionJSON(
+        options['billing_setting.billing_mode'],
+      ),
+      ModelBillingExpr: parseOptionJSON(
+        options['billing_setting.billing_expr'],
+      ),
     };
 
     const names = new Set([
@@ -857,7 +897,7 @@ export function useModelPricingEditorState({
   };
 
   const handleNumericFieldChange = (field, value) => {
-    if (!selectedModel || !NUMERIC_INPUT_REGEX.test(value)) {
+    if (!selectedModel || !PRICE_INPUT_PATTERN.test(value)) {
       return;
     }
 
@@ -1021,6 +1061,8 @@ export function useModelPricingEditorState({
   };
 
   const handleSubmit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     setLoading(true);
     try {
       const output = {
@@ -1046,8 +1088,10 @@ export function useModelPricingEditorState({
             model.requestRuleExpr,
           );
           if (finalBillingExpr) {
-            tieredOutput['billing_setting.billing_mode'][model.name] = 'tiered_expr';
-            tieredOutput['billing_setting.billing_expr'][model.name] = finalBillingExpr;
+            tieredOutput['billing_setting.billing_mode'][model.name] =
+              'tiered_expr';
+            tieredOutput['billing_setting.billing_expr'][model.name] =
+              finalBillingExpr;
           }
         }
         if (model.billingMode === 'tiered_expr') {
@@ -1061,6 +1105,15 @@ export function useModelPricingEditorState({
           }
         });
       }
+
+      if (
+        !(await confirmNegativePricing(
+          { ...options, ...output, ...tieredOutput },
+          Object.keys(output),
+          t,
+        ))
+      )
+        return;
 
       const requestQueue = [
         ...Object.entries(output).map(([key, value]) =>
@@ -1090,6 +1143,7 @@ export function useModelPricingEditorState({
       console.error('保存失败:', error);
       showError(error.message || t('保存失败，请重试'));
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };

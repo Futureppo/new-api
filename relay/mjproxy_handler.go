@@ -262,6 +262,22 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 			Description: "quota_not_enough",
 		}
 	}
+	deferredBilling := priceData.Quota < 0 ||
+		(priceData.UsePrice && priceData.ModelPrice < 0) || (!priceData.UsePrice && priceData.ModelRatio < 0)
+	billingTransferred := false
+	if deferredBilling {
+		info.PriceData = priceData
+		info.ForcePreConsume = true
+		if apiErr := service.PreConsumeBilling(c, priceData.Quota, info); apiErr != nil {
+			return service.MidjourneyErrorWrapper(constant.MjRequestError, apiErr.Error())
+		}
+		defer func() {
+			if !billingTransferred {
+				service.RefundBilling(c, info)
+			}
+		}()
+	}
+
 	reservation, dailyErr := reserveMidjourneyDailySuccess(c)
 	if dailyErr != nil {
 		return dailyErr
@@ -289,7 +305,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		return &mjResp.Response
 	}
 	defer func() {
-		if mjResp.StatusCode == 200 && mjResp.Response.Code == 1 {
+		if !deferredBilling && mjResp.StatusCode == 200 && mjResp.Response.Code == 1 {
 			err := service.PostConsumeQuota(info, priceData.Quota, 0, true)
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
@@ -333,10 +349,31 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		ChannelId:   c.GetInt("channel_id"),
 		Quota:       priceData.Quota,
 	}
+	completedOnSubmit := midjourneyTask.Status == "SUCCESS"
+	if deferredBilling {
+		midjourneyTask.Quota = 0
+		if isMidjourneySubmitSuccess(mjResp.StatusCode, midjResponse.Code) && midjResponse.Result != "" {
+			service.AttachDeferredMidjourneyBilling(midjourneyTask, info, priceData.Quota)
+			if completedOnSubmit {
+				midjourneyTask.Status, midjourneyTask.Progress = "", "0%"
+			}
+		}
+	}
+
 	err = midjourneyTask.Insert()
 	if err != nil {
 		return service.MidjourneyErrorWrapper(constant.MjRequestError, "insert_midjourney_task_failed")
 	}
+	if midjourneyTask.HasDeferredBilling() {
+		billingTransferred = true
+		if completedOnSubmit {
+			midjourneyTask.Status, midjourneyTask.Progress = "SUCCESS", "100%"
+			if _, settleErr := service.CompleteDeferredMidjourney(midjourneyTask, ""); settleErr != nil {
+				common.SysError("settle deferred midjourney task: " + settleErr.Error())
+			}
+		}
+	}
+
 	c.Writer.WriteHeader(mjResp.StatusCode)
 	respBody, err := json.Marshal(midjResponse)
 	if err != nil {
@@ -591,6 +628,22 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		}
 	}
 
+	deferredBilling := consumeQuota && (priceData.Quota < 0 ||
+		(priceData.UsePrice && priceData.ModelPrice < 0) || (!priceData.UsePrice && priceData.ModelRatio < 0))
+	billingTransferred := false
+	if deferredBilling {
+		relayInfo.PriceData = priceData
+		relayInfo.ForcePreConsume = true
+		if apiErr := service.PreConsumeBilling(c, priceData.Quota, relayInfo); apiErr != nil {
+			return service.MidjourneyErrorWrapper(constant.MjRequestError, apiErr.Error())
+		}
+		defer func() {
+			if !billingTransferred {
+				service.RefundBilling(c, relayInfo)
+			}
+		}()
+	}
+
 	reservation, dailyErr := reserveMidjourneyDailySuccess(c)
 	if dailyErr != nil {
 		return dailyErr
@@ -618,7 +671,7 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	midjResponse := &midjResponseWithStatus.Response
 
 	defer func() {
-		if consumeQuota && midjResponseWithStatus.StatusCode == 200 {
+		if !deferredBilling && consumeQuota && midjResponseWithStatus.StatusCode == 200 {
 			err := service.PostConsumeQuota(relayInfo, priceData.Quota, 0, true)
 			if err != nil {
 				common.SysLog("error consuming token remain quota: " + err.Error())
@@ -712,11 +765,31 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		midjourneyTask.Progress = "100%"
 		midjourneyTask.Status = "SUCCESS"
 	}
+	completedOnSubmit := midjourneyTask.Status == "SUCCESS"
+	if deferredBilling {
+		midjourneyTask.Quota = 0
+		if consumeQuota && isMidjourneySubmitSuccess(midjResponseWithStatus.StatusCode, midjResponse.Code) && midjResponse.Result != "" {
+			service.AttachDeferredMidjourneyBilling(midjourneyTask, relayInfo, priceData.Quota)
+			if completedOnSubmit {
+				midjourneyTask.Status, midjourneyTask.Progress = "", "0%"
+			}
+		}
+	}
+
 	err = midjourneyTask.Insert()
 	if err != nil {
 		return &dto.MidjourneyResponse{
 			Code:        4,
 			Description: "insert_midjourney_task_failed",
+		}
+	}
+	if midjourneyTask.HasDeferredBilling() {
+		billingTransferred = true
+		if completedOnSubmit {
+			midjourneyTask.Status, midjourneyTask.Progress = "SUCCESS", "100%"
+			if _, settleErr := service.CompleteDeferredMidjourney(midjourneyTask, ""); settleErr != nil {
+				common.SysError("settle deferred midjourney task: " + settleErr.Error())
+			}
 		}
 	}
 

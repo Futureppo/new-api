@@ -599,7 +599,11 @@ export const useLogsData = ({
             displayMode: billingDisplayMode,
           };
           const isTaskLog = other?.is_task === true || other?.task_id != null;
-          if (isTaskLog && other?.model_price === -1) {
+          if (
+            isTaskLog &&
+            (other?.use_price === false ||
+              (other?.use_price == null && other?.model_price === -1))
+          ) {
             content = renderTaskBillingProcess(other, logs[i].content);
           } else if (other?.ws || other?.audio) {
             content = renderAudioModelPrice(logOpts);

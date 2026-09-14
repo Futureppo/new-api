@@ -48,6 +48,16 @@ func hasCustomModelRatio(modelName string, currentRatio float64) bool {
 	return currentRatio != defaultRatio
 }
 
+// Minimum consumption applies only to a positive cost. Credits retain the
+// existing precision, and an exactly balanced request costs zero.
+func roundSignedQuota(cost decimal.Decimal, minimumPositive bool) int {
+	quota := int(cost.Round(0).IntPart())
+	if minimumPositive && cost.IsPositive() && quota == 0 {
+		return 1
+	}
+	return quota
+}
+
 func calculateAudioQuota(info QuotaInfo) int {
 	if info.UsePrice {
 		modelPrice := decimal.NewFromFloat(info.ModelPrice)
@@ -79,12 +89,7 @@ func calculateAudioQuota(info QuotaInfo) int {
 
 	quota = quota.Mul(ratio)
 
-	// If ratio is not zero and quota is less than or equal to zero, set quota to 1
-	if !ratio.IsZero() && quota.LessThanOrEqual(decimal.Zero) {
-		quota = decimal.NewFromInt(1)
-	}
-
-	return int(quota.Round(0).IntPart())
+	return roundSignedQuota(quota, !ratio.IsZero())
 }
 
 func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.RealtimeUsage) error {
@@ -138,7 +143,11 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	}
 
 	quota := calculateAudioQuota(quotaInfo)
-
+	// Incremental realtime usage only reserves positive amounts. Credits are
+	// applied once, from the aggregate usage at final settlement.
+	if quota <= 0 {
+		return nil
+	}
 	if userQuota < quota {
 		return fmt.Errorf("user quota is not enough, user quota: %s, need quota: %s", logger.FormatQuota(userQuota), logger.FormatQuota(quota))
 	}
@@ -146,11 +155,15 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if !token.UnlimitedQuota && token.RemainQuota < quota {
 		return fmt.Errorf("token quota is not enough, token remain quota: %s, need quota: %s", logger.FormatQuota(token.RemainQuota), logger.FormatQuota(quota))
 	}
+	if relayInfo.Billing != nil {
+		return relayInfo.Billing.Reserve(relayInfo.Billing.GetPreConsumedQuota() + quota)
+	}
 
 	err = PostConsumeQuota(relayInfo, quota, 0, false)
 	if err != nil {
 		return err
 	}
+	relayInfo.FinalPreConsumedQuota += quota
 	logger.LogInfo(ctx, "realtime streaming consume quota success, quota: "+fmt.Sprintf("%d", quota))
 	return nil
 }
@@ -196,6 +209,7 @@ func PostWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, mod
 		},
 		ModelName:  modelName,
 		UsePrice:   usePrice,
+		ModelPrice: modelPrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
 	}
@@ -321,6 +335,7 @@ func PostAudioConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, u
 		},
 		ModelName:  relayInfo.OriginModelName,
 		UsePrice:   usePrice,
+		ModelPrice: modelPrice,
 		ModelRatio: modelRatio,
 		GroupRatio: groupRatio,
 	}

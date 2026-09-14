@@ -37,7 +37,25 @@ func UpdateMidjourneyTaskBulk() {
 		taskM := make(map[string]*model.Midjourney)
 		nullTaskIds := make([]int, 0)
 		for _, task := range tasks {
+			if task.HasDeferredBilling() && task.SubmitTime > 0 && time.Now().UnixMilli()-task.SubmitTime > 3600000 {
+				from := task.Status
+				task.Status, task.Progress = "FAILURE", "100%"
+				task.FailReason = "上游任务超时（超过1小时）"
+				task.FinishTime = time.Now().UnixMilli()
+				if _, err := service.CompleteDeferredMidjourney(task, from); err != nil {
+					logger.LogError(ctx, err.Error())
+				}
+				continue
+			}
 			if task.MjId == "" {
+				if task.HasDeferredBilling() {
+					from := task.Status
+					task.Status, task.Progress = "FAILURE", "100%"
+					if _, err := service.CompleteDeferredMidjourney(task, from); err != nil {
+						logger.LogError(ctx, err.Error())
+					}
+					continue
+				}
 				// 统计失败的未完成任务
 				nullTaskIds = append(nullTaskIds, task.Id)
 				continue
@@ -68,7 +86,20 @@ func UpdateMidjourneyTaskBulk() {
 			midjourneyChannel, err := model.CacheGetChannel(channelId)
 			if err != nil {
 				logger.LogError(ctx, fmt.Sprintf("CacheGetChannel: %v", err))
-				err := model.MjBulkUpdate(taskIds, map[string]any{
+				legacyTaskIds := make([]string, 0, len(taskIds))
+				for _, id := range taskIds {
+					task := taskM[id]
+					if task != nil && task.HasDeferredBilling() {
+						from := task.Status
+						task.Status, task.Progress = "FAILURE", "100%"
+						if _, settleErr := service.CompleteDeferredMidjourney(task, from); settleErr != nil {
+							logger.LogError(ctx, settleErr.Error())
+						}
+					} else {
+						legacyTaskIds = append(legacyTaskIds, id)
+					}
+				}
+				err := model.MjBulkUpdate(legacyTaskIds, map[string]any{
 					"fail_reason": fmt.Sprintf("获取渠道信息失败，请联系管理员，渠道ID：%d", channelId),
 					"status":      "FAILURE",
 					"progress":    "100%",
@@ -170,11 +201,24 @@ func UpdateMidjourneyTaskBulk() {
 				if (task.Progress != "100%" && responseItem.FailReason != "") || (task.Progress == "100%" && task.Status == "FAILURE") {
 					logger.LogInfo(ctx, task.MjId+" 构建失败，"+task.FailReason)
 					task.Progress = "100%"
+					if task.HasDeferredBilling() {
+						task.Status = "FAILURE"
+					}
 					if task.Quota != 0 {
 						shouldReturnQuota = true
 					}
 				}
-				won, err := task.UpdateWithStatus(preStatus)
+				var won bool
+				var err error
+				if task.HasDeferredBilling() && (task.Status == "SUCCESS" || task.Status == "FAILURE" || shouldReturnQuota) {
+					if task.FailReason != "" {
+						task.Status = "FAILURE"
+					}
+					won, err = service.CompleteDeferredMidjourney(task, preStatus)
+					shouldReturnQuota = false
+				} else {
+					won, err = task.UpdateWithStatus(preStatus)
+				}
 				if err != nil {
 					logger.LogError(ctx, "UpdateMidjourneyTask task error: "+err.Error())
 				} else if won && shouldReturnQuota {

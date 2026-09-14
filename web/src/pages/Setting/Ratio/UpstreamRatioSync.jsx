@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+} from 'react';
 import {
   Button,
   Table,
@@ -52,6 +58,8 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import ChannelSelectorModal from '../../../components/settings/ChannelSelectorModal';
+import { confirmNegativePricing } from './components/confirmNegativePricing';
+import { isCompletePrice } from './negativePricing';
 
 const OFFICIAL_RATIO_PRESET_ID = -100;
 const OFFICIAL_RATIO_PRESET_NAME = '官方倍率预设';
@@ -102,6 +110,7 @@ export default function UpstreamRatioSync(props) {
   const { t } = useTranslation();
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submitting = useRef(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const isMobile = useIsMobile();
 
@@ -388,12 +397,24 @@ export default function UpstreamRatioSync(props) {
             .split('_')
             .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
             .join('');
-          finalRatios[optionKey][model] = parseFloat(value);
+          finalRatios[optionKey][model] = isCompletePrice(value)
+            ? Number(value)
+            : NaN;
         });
       });
 
+      if (submitting.current) return;
+      submitting.current = true;
       setLoading(true);
       try {
+        if (
+          !(await confirmNegativePricing(
+            { ...props.options, ...finalRatios },
+            Object.keys(finalRatios),
+            t,
+          ))
+        )
+          return;
         const updates = Object.entries(finalRatios).map(([key, value]) =>
           API.put('/api/option/', {
             key,
@@ -430,8 +451,9 @@ export default function UpstreamRatioSync(props) {
           showError(t('部分保存失败'));
         }
       } catch (error) {
-        showError(t('保存失败'));
+        showError(error.message || t('保存失败'));
       } finally {
+        submitting.current = false;
         setLoading(false);
       }
     },

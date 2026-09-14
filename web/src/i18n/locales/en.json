@@ -4450,7 +4450,15 @@
     "JSON 接口必须允许浏览器跨域访问。第三方图片或接口仍可看到访客 IP，请勿在地址中填写密钥。": "JSON APIs must allow browser CORS access. Third-party image services can still see visitor IP addresses; do not put secrets in URLs.",
     "JSON 图片接口": "JSON image API",
     "完全重定向": "Full model redirect",
-    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "When enabled, model names in response bodies and all externally visible logs are shown as the pre-redirect requested model. The actual upstream model is used only for internal requests and billing."
+    "开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费": "When enabled, model names in response bodies and all externally visible logs are shown as the pre-redirect requested model. The actual upstream model is used only for internal requests and billing.",
+    "负数价格提醒": "Negative price warning",
+    "检测到负数价格。负数费用会增加用户余额；存在正数费用时，按合计净费用结算。订阅计费将恢复套餐额度，最多恢复至套餐总额度。是否继续保存？": "Negative prices detected. Negative charges increase the user’s balance; when positive charges also apply, the net total is settled. Subscription billing restores plan quota, up to the plan’s total allowance. Save these prices?",
+    "模型 {{name}} 的价格必须是完整的有限数字": "Prices for model {{name}} must be complete, finite numbers",
+    "模型 {{name}} 的基础价格为零或倍率超出范围，无法换算依赖价格": "Model {{name}} has a zero base price or an out-of-range ratio; dependent prices cannot be converted",
+    "配置 {{key}} 必须是模型名称到有限数字的 JSON 对象": "Configuration {{key}} must be a JSON object mapping model names to finite numbers",
+    "确认保存": "Confirm save",
+    "音频输出价格": "Audio output price",
+    "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Audio output: {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
   },
   "??": "Disable",
   "24h": "24h",
