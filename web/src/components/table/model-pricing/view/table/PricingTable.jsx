@@ -24,6 +24,7 @@ import {
   IllustrationNoResultDark,
 } from '@douyinfe/semi-illustrations';
 import { getPricingTableColumns } from './PricingTableColumns';
+import { useIsMobile } from '../../../../../hooks/common/useIsMobile';
 
 const PricingTable = ({
   filteredModels,
@@ -31,6 +32,11 @@ const PricingTable = ({
   rowSelection,
   pageSize,
   setPageSize,
+  currentPage,
+  setCurrentPage,
+  sortBy,
+  tableSortOrder,
+  setTableSortOrder,
   selectedGroup,
   groupRatio,
   copyText,
@@ -40,15 +46,16 @@ const PricingTable = ({
   siteDisplayType,
   tokenUnit,
   displayPrice,
-  searchValue,
   showRatio,
   compactMode = false,
   openModelDetail,
   t,
 }) => {
+  const isMobile = useIsMobile();
   const columns = useMemo(() => {
     return getPricingTableColumns({
       t,
+      isMobile,
       selectedGroup,
       groupRatio,
       copyText,
@@ -62,6 +69,7 @@ const PricingTable = ({
     });
   }, [
     t,
+    isMobile,
     selectedGroup,
     groupRatio,
     copyText,
@@ -74,13 +82,14 @@ const PricingTable = ({
     showRatio,
   ]);
 
-  // 更新列定义中的 searchValue
+  // 搜索已由共享 hook 完成；只有默认排序允许表格列单独排序。
   const processedColumns = useMemo(() => {
     const cols = columns.map((column) => {
-      if (column.dataIndex === 'model_name') {
+      if (column.dataIndex === 'quota_type') {
         return {
           ...column,
-          filteredValue: searchValue ? [searchValue] : [],
+          sorter: sortBy === 'default',
+          sortOrder: sortBy === 'default' ? tableSortOrder : false,
         };
       }
       return column;
@@ -91,16 +100,37 @@ const PricingTable = ({
       return cols.map(({ fixed, ...rest }) => rest);
     }
     return cols;
-  }, [columns, searchValue, compactMode]);
+  }, [columns, sortBy, tableSortOrder, compactMode]);
+
+  // Semi treats controlled pagination as remote data: slice only after sorting
+  // the complete result, including the legacy quota-type column order.
+  const paginatedModels = useMemo(() => {
+    const models =
+      sortBy === 'default' && tableSortOrder
+        ? [...filteredModels].sort(
+            (a, b) =>
+              (a.quota_type - b.quota_type) *
+              (tableSortOrder === 'descend' ? -1 : 1),
+          )
+        : filteredModels;
+    const start = (currentPage - 1) * pageSize;
+    return models.slice(start, start + pageSize);
+  }, [filteredModels, sortBy, tableSortOrder, currentPage, pageSize]);
 
   const ModelTable = useMemo(
     () => (
       <Card className='!rounded-xl overflow-hidden' bordered={false}>
         <Table
           columns={processedColumns}
-          dataSource={filteredModels}
+          dataSource={paginatedModels}
           loading={loading}
           rowSelection={rowSelection}
+          onChange={({ sorter, extra }) => {
+            if (sortBy === 'default' && extra?.changeType === 'sorter') {
+              setTableSortOrder(sorter?.sortOrder || false);
+              setCurrentPage(1);
+            }
+          }}
           scroll={compactMode ? undefined : { x: 'max-content' }}
           onRow={(record) => ({
             onClick: () => openModelDetail && openModelDetail(record),
@@ -119,22 +149,32 @@ const PricingTable = ({
             />
           }
           pagination={{
-            defaultPageSize: 20,
+            currentPage,
+            total: filteredModels.length,
             pageSize: pageSize,
             showSizeChanger: true,
             pageSizeOptions: [10, 20, 50, 100],
-            onPageSizeChange: (size) => setPageSize(size),
+            onPageChange: setCurrentPage,
+            onPageSizeChange: (size) => {
+              setPageSize(size);
+              setCurrentPage(1);
+            },
           }}
         />
       </Card>
     ),
     [
       filteredModels,
+      paginatedModels,
       loading,
       processedColumns,
       rowSelection,
       pageSize,
       setPageSize,
+      currentPage,
+      setCurrentPage,
+      sortBy,
+      setTableSortOrder,
       openModelDetail,
       t,
       compactMode,

@@ -1,5 +1,12 @@
 {
   "translation": {
+    "默认排序": "Thứ tự mặc định",
+    "排序依据": "Sắp xếp theo",
+    "排序方向": "Chiều sắp xếp",
+    "单次价格": "Giá mỗi yêu cầu",
+    "从低到高": "Thấp đến cao",
+    "从高到低": "Cao đến thấp",
+    "按当前分组价格排序，无对应固定价格的模型置后": "Sắp xếp theo giá của nhóm hiện tại; mô hình không có giá cố định tương ứng được đặt cuối",
     "请输入 Kilo API Key；匿名模式无需密钥": "Nhập khóa API Kilo; chế độ ẩn danh không cần khóa",
     "Kilo 匿名模式仅支持单渠道": "Chế độ ẩn danh Kilo chỉ hỗ trợ một kênh",
     "自动维护 Kilo 免费模型": "Tự động quản lý mô hình miễn phí Kilo",

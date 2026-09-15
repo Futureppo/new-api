@@ -24,6 +24,7 @@ import PricingQuotaTypes from '../../filter/PricingQuotaTypes';
 import PricingEndpointTypes from '../../filter/PricingEndpointTypes';
 import PricingVendors from '../../filter/PricingVendors';
 import PricingTags from '../../filter/PricingTags';
+import PricingSort from '../../filter/PricingSort';
 import { usePricingFilterCounts } from '../../../../../hooks/model-pricing/usePricingFilterCounts';
 
 const FilterModalContent = ({ sidebarProps, t }) => {
@@ -73,6 +74,15 @@ const FilterModalContent = ({ sidebarProps, t }) => {
 
   return (
     <>
+      <PricingSort
+        sortBy={sidebarProps.sortBy}
+        setSortBy={sidebarProps.setSortBy}
+        sortDirection={sidebarProps.sortDirection}
+        setSortDirection={sidebarProps.setSortDirection}
+        loading={loading}
+        t={t}
+      />
+
       <PricingDisplaySettings
         showWithRecharge={showWithRecharge}
         setShowWithRecharge={setShowWithRecharge}

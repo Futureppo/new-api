@@ -24,6 +24,7 @@ import PricingQuotaTypes from '../filter/PricingQuotaTypes';
 import PricingEndpointTypes from '../filter/PricingEndpointTypes';
 import PricingVendors from '../filter/PricingVendors';
 import PricingTags from '../filter/PricingTags';
+import PricingSort from '../filter/PricingSort';
 
 import { resetPricingFilters } from '../../../../helpers/utils';
 import { usePricingFilterCounts } from '../../../../hooks/model-pricing/usePricingFilterCounts';
@@ -50,6 +51,11 @@ const PricingSidebar = ({
   setFilterVendor,
   filterTag,
   setFilterTag,
+  sortBy,
+  setSortBy,
+  sortDirection,
+  setSortDirection,
+  setTableSortOrder,
   currentPage,
   setCurrentPage,
   tokenUnit,
@@ -88,6 +94,9 @@ const PricingSidebar = ({
       setFilterTag,
       setCurrentPage,
       setTokenUnit,
+      setSortBy,
+      setSortDirection,
+      setTableSortOrder,
     });
 
   return (
@@ -103,6 +112,15 @@ const PricingSidebar = ({
           {t('重置')}
         </Button>
       </div>
+
+      <PricingSort
+        sortBy={sortBy}
+        setSortBy={setSortBy}
+        sortDirection={sortDirection}
+        setSortDirection={setSortDirection}
+        loading={loading}
+        t={t}
+      />
 
       <PricingVendors
         filterVendor={filterVendor}

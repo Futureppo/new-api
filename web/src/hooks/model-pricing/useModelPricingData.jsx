@@ -23,6 +23,7 @@ import { API, copy, showError, showInfo, showSuccess } from '../../helpers';
 import { Modal } from '@douyinfe/semi-ui';
 import { UserContext } from '../../context/User';
 import { StatusContext } from '../../context/Status';
+import { sortPricingModels } from '../../helpers/modelPricing';
 
 export const useModelPricingData = () => {
   const { t } = useTranslation();
@@ -31,7 +32,6 @@ export const useModelPricingData = () => {
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [modalImageUrl, setModalImageUrl] = useState('');
   const [isModalOpenurl, setIsModalOpenurl] = useState(false);
-  const [selectedGroup, setSelectedGroup] = useState('all');
   const [showModelDetail, setShowModelDetail] = useState(false);
   const [selectedModel, setSelectedModel] = useState(null);
   const [filterGroup, setFilterGroup] = useState('all'); // 用于 Table 的可用分组筛选，"all" 表示不过滤
@@ -39,6 +39,9 @@ export const useModelPricingData = () => {
   const [filterEndpointType, setFilterEndpointType] = useState('all'); // 端点类型筛选: 'all' | string
   const [filterVendor, setFilterVendor] = useState('all'); // 供应商筛选: 'all' | 'unknown' | string
   const [filterTag, setFilterTag] = useState('all'); // 模型标签筛选: 'all' | string
+  const [sortBy, setSortBy] = useState('default');
+  const [sortDirection, setSortDirection] = useState('asc');
+  const [tableSortOrder, setTableSortOrder] = useState(false);
   const [pageSize, setPageSize] = useState(20);
   const [currentPage, setCurrentPage] = useState(1);
   const [currency, setCurrency] = useState('USD');
@@ -95,7 +98,7 @@ export const useModelPricingData = () => {
     }
   }, [siteDisplayType]);
 
-  const filteredModels = useMemo(() => {
+  const matchingModels = useMemo(() => {
     let result = models;
 
     // 分组筛选
@@ -167,6 +170,21 @@ export const useModelPricingData = () => {
     filterVendor,
     filterTag,
   ]);
+
+  const filteredModels = useMemo(
+    () =>
+      sortPricingModels(matchingModels, {
+        sortBy,
+        sortDirection,
+        selectedGroup: filterGroup,
+        groupRatio,
+      }),
+    [matchingModels, sortBy, sortDirection, filterGroup, groupRatio],
+  );
+
+  useEffect(() => {
+    if (sortBy !== 'default') setTableSortOrder(false);
+  }, [sortBy]);
 
   const rowSelection = useMemo(
     () => ({
@@ -242,7 +260,7 @@ export const useModelPricingData = () => {
     if (success) {
       setGroupRatio(group_ratio);
       setUsableGroup(usable_group);
-      setSelectedGroup('all');
+      setFilterGroup('all');
       // 构建供应商 Map 方便查找
       const vendorMap = {};
       if (Array.isArray(vendors)) {
@@ -289,7 +307,6 @@ export const useModelPricingData = () => {
   };
 
   const handleGroupClick = (group) => {
-    setSelectedGroup(group);
     setFilterGroup(group);
     if (group === 'all') {
       showInfo(t('已切换至最优倍率视图，每个模型使用其最低倍率分组'));
@@ -329,6 +346,8 @@ export const useModelPricingData = () => {
     filterVendor,
     filterTag,
     searchValue,
+    sortBy,
+    sortDirection,
   ]);
 
   return {
@@ -341,8 +360,8 @@ export const useModelPricingData = () => {
     setModalImageUrl,
     isModalOpenurl,
     setIsModalOpenurl,
-    selectedGroup,
-    setSelectedGroup,
+    selectedGroup: filterGroup,
+    setSelectedGroup: setFilterGroup,
     showModelDetail,
     setShowModelDetail,
     selectedModel,
@@ -357,6 +376,12 @@ export const useModelPricingData = () => {
     setFilterVendor,
     filterTag,
     setFilterTag,
+    sortBy,
+    setSortBy,
+    sortDirection,
+    setSortDirection,
+    tableSortOrder,
+    setTableSortOrder,
     pageSize,
     setPageSize,
     currentPage,

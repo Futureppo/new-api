@@ -1,5 +1,12 @@
 {
   "translation": {
+    "默认排序": "Default order",
+    "排序依据": "Sort by",
+    "排序方向": "Sort direction",
+    "单次价格": "Price per request",
+    "从低到高": "Low to high",
+    "从高到低": "High to low",
+    "按当前分组价格排序，无对应固定价格的模型置后": "Sorted by current group prices; models without a corresponding fixed price appear last",
     "请输入 Kilo API Key；匿名模式无需密钥": "Enter your Kilo API key; anonymous mode does not require a key",
     "Kilo 匿名模式仅支持单渠道": "Kilo anonymous mode only supports a single channel",
     "自动维护 Kilo 免费模型": "Automatically manage Kilo free models",

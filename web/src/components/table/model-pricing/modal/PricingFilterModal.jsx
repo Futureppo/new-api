@@ -38,6 +38,9 @@ const PricingFilterModal = ({ visible, onClose, sidebarProps, t }) => {
       setFilterTag: sidebarProps.setFilterTag,
       setCurrentPage: sidebarProps.setCurrentPage,
       setTokenUnit: sidebarProps.setTokenUnit,
+      setSortBy: sidebarProps.setSortBy,
+      setSortDirection: sidebarProps.setSortDirection,
+      setTableSortOrder: sidebarProps.setTableSortOrder,
     });
 
   const footer = (
