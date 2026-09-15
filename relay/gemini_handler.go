@@ -145,6 +145,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
 		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetReasoningEffortFromRequest(info, upstreamBytes)
 			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
 		}
 		requestBody = common.ReaderOnly(storage)
@@ -170,6 +171,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 
 		logger.LogDebug(c, "Gemini request body: "+string(jsonData))
 
+		relaycommon.SetReasoningEffortFromRequest(info, jsonData)
 		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewReader(jsonData)
 	}

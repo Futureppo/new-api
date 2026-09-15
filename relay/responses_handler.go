@@ -87,6 +87,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			return types.NewError(err, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
 		}
 		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetReasoningEffortFromRequest(info, upstreamBytes)
 			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
 		}
 		requestBody = common.ReaderOnly(storage)
@@ -130,6 +131,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		if common.DebugEnabled {
 			println("requestBody: ", string(jsonData))
 		}
+		relaycommon.SetReasoningEffortFromRequest(info, jsonData)
 		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}

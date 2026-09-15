@@ -738,11 +738,23 @@ export const getLogsColumns = ({
       title: t('模型'),
       dataIndex: 'model_name',
       render: (text, record, index) => {
+        const effort = getLogOther(record.other)?.reasoning_effort;
         return record.type === 0 ||
           record.type === 2 ||
           record.type === 5 ||
           record.type === 6 ? (
-          <>{renderModelName(record, copyText, t)}</>
+          <div className='flex flex-wrap items-center gap-1'>
+            {renderModelName(record, copyText, t)}
+            {record.type === 2 &&
+              typeof effort === 'string' &&
+              effort.trim() !== '' && (
+                <Tooltip content={`${t('思考强度')}：${effort}`}>
+                  <Tag color='purple' size='small' shape='circle'>
+                    {effort}
+                  </Tag>
+                </Tooltip>
+              )}
+          </div>
         ) : (
           <></>
         );

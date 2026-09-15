@@ -108,6 +108,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 		if upstreamBytes, bErr := storage.Bytes(); bErr == nil {
+			relaycommon.SetReasoningEffortFromRequest(info, upstreamBytes)
 			relaycommon.SetConversationUpstreamRequest(info, upstreamBytes)
 		}
 		requestBody = common.ReaderOnly(storage)
@@ -181,6 +182,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 
 		logger.LogDebug(c, fmt.Sprintf("text request body: %s", string(jsonData)))
 
+		relaycommon.SetReasoningEffortFromRequest(info, jsonData)
 		relaycommon.SetConversationUpstreamRequest(info, jsonData)
 		requestBody = bytes.NewBuffer(jsonData)
 	}

@@ -617,9 +617,12 @@ export const useLogsData = ({
             value: content,
           });
         }
-        if (other?.reasoning_effort) {
+        if (
+          typeof other?.reasoning_effort === 'string' &&
+          other.reasoning_effort.trim() !== ''
+        ) {
           expandDataLocal.push({
-            key: t('Reasoning Effort'),
+            key: t('思考强度'),
             value: other.reasoning_effort,
           });
         }
