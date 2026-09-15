@@ -111,6 +111,10 @@ const getSectionFromSearch = (search) => {
 const MODEL_STATUS_PUBLIC_PATH = '/model-status';
 const MODEL_STATUS_WINDOWS = [
   { label: '今日', value: 'today' },
+  { label: '0.5h', value: '0.5h' },
+  { label: '1h', value: '1h' },
+  { label: '6h', value: '6h' },
+  { label: '12h', value: '12h' },
   { label: '24h', value: '24h' },
   { label: '7天', value: '7d' },
   { label: '30天', value: '30d' },

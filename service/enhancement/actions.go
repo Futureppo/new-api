@@ -885,7 +885,7 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 			minutes, err = strconv.Atoi(value)
 		}
 		if err != nil || !IsAllowedModelStatusWindowMinutes(minutes) {
-			return errors.New("time window must be today, 24h, 7d, or 30d")
+			return errors.New("time window must be today, 0.5h, 1h, 6h, 12h, 24h, 7d, or 30d")
 		}
 	case "model_status_refresh_seconds":
 		seconds, err := strconv.Atoi(value)

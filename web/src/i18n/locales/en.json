@@ -4479,6 +4479,10 @@
     "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Audio output: {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
   },
   "??": "Disable",
+  "0.5h": "0.5h",
+  "1h": "1h",
+  "6h": "6h",
+  "12h": "12h",
   "24h": "24h",
   "7?": "7 days",
   "30?": "30 days",

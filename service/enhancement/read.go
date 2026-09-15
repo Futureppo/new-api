@@ -956,10 +956,14 @@ func IPLogCoverageStats() (IPLogCoverage, error) {
 }
 
 const (
-	ModelStatusWindowToday = "today"
-	ModelStatusWindow24h   = "24h"
-	ModelStatusWindow7d    = "7d"
-	ModelStatusWindow30d   = "30d"
+	ModelStatusWindowToday    = "today"
+	ModelStatusWindowHalfHour = "0.5h"
+	ModelStatusWindow1h       = "1h"
+	ModelStatusWindow6h       = "6h"
+	ModelStatusWindow12h      = "12h"
+	ModelStatusWindow24h      = "24h"
+	ModelStatusWindow7d       = "7d"
+	ModelStatusWindow30d      = "30d"
 
 	recentModelStatusLogLimit = 10
 )
@@ -1069,6 +1073,10 @@ func availableModelStatusTargets(public bool) ([]modelStatusTarget, error) {
 func ModelStatusTimeWindows() []map[string]interface{} {
 	return []map[string]interface{}{
 		{"label": "今日", "value": ModelStatusWindowToday, "minutes": 0},
+		{"label": "0.5h", "value": ModelStatusWindowHalfHour, "minutes": 30},
+		{"label": "1h", "value": ModelStatusWindow1h, "minutes": 60},
+		{"label": "6h", "value": ModelStatusWindow6h, "minutes": 6 * 60},
+		{"label": "12h", "value": ModelStatusWindow12h, "minutes": 12 * 60},
 		{"label": "24h", "value": ModelStatusWindow24h, "minutes": 24 * 60},
 		{"label": "7天", "value": ModelStatusWindow7d, "minutes": 7 * 24 * 60},
 		{"label": "30天", "value": ModelStatusWindow30d, "minutes": 30 * 24 * 60},
@@ -1079,6 +1087,14 @@ func NormalizeModelStatusWindow(window string) string {
 	switch strings.ToLower(strings.TrimSpace(window)) {
 	case ModelStatusWindowToday:
 		return ModelStatusWindowToday
+	case ModelStatusWindowHalfHour:
+		return ModelStatusWindowHalfHour
+	case ModelStatusWindow1h:
+		return ModelStatusWindow1h
+	case ModelStatusWindow6h:
+		return ModelStatusWindow6h
+	case ModelStatusWindow12h:
+		return ModelStatusWindow12h
 	case ModelStatusWindow24h, "1d":
 		return ModelStatusWindow24h
 	case ModelStatusWindow7d:
@@ -1092,6 +1108,14 @@ func NormalizeModelStatusWindow(window string) string {
 
 func ModelStatusWindowFromMinutes(minutes int) string {
 	switch {
+	case minutes == 30:
+		return ModelStatusWindowHalfHour
+	case minutes == 60:
+		return ModelStatusWindow1h
+	case minutes == 6*60:
+		return ModelStatusWindow6h
+	case minutes == 12*60:
+		return ModelStatusWindow12h
 	case minutes <= 0:
 		return ModelStatusWindow24h
 	case minutes <= 24*60:
@@ -1118,6 +1142,14 @@ func ModelStatusWindowToMinutes(window string) int {
 	switch NormalizeModelStatusWindow(window) {
 	case ModelStatusWindowToday:
 		return 0
+	case ModelStatusWindowHalfHour:
+		return 30
+	case ModelStatusWindow1h:
+		return 60
+	case ModelStatusWindow6h:
+		return 6 * 60
+	case ModelStatusWindow12h:
+		return 12 * 60
 	case ModelStatusWindow7d:
 		return 7 * 24 * 60
 	case ModelStatusWindow30d:
@@ -1129,7 +1161,7 @@ func ModelStatusWindowToMinutes(window string) int {
 
 func IsAllowedModelStatusWindowMinutes(minutes int) bool {
 	switch minutes {
-	case 0, 24 * 60, 7 * 24 * 60, 30 * 24 * 60:
+	case 0, 30, 60, 6 * 60, 12 * 60, 24 * 60, 7 * 24 * 60, 30 * 24 * 60:
 		return true
 	default:
 		return false
@@ -1172,6 +1204,18 @@ func resolveModelStatusWindow(window string) modelStatusWindow {
 	slotSeconds := int64(ModelStatusSlotMinutes() * 60)
 	key := NormalizeModelStatusWindow(window)
 	switch key {
+	case ModelStatusWindowHalfHour, ModelStatusWindow1h, ModelStatusWindow6h, ModelStatusWindow12h:
+		minutes := ModelStatusWindowToMinutes(key)
+		start := now.Add(-time.Duration(minutes) * time.Minute).Unix()
+		return modelStatusWindow{
+			Key:         key,
+			Label:       key,
+			Start:       start,
+			End:         end,
+			SlotCount:   int((end - start + slotSeconds - 1) / slotSeconds),
+			SlotSeconds: slotSeconds,
+			Minutes:     minutes,
+		}
 	case ModelStatusWindowToday:
 		startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location()).Unix()
 		seconds := end - startOfDay

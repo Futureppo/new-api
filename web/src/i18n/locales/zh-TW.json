@@ -4363,6 +4363,10 @@
     "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "音訊輸出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
   },
   "??": "??",
+  "0.5h": "0.5h",
+  "1h": "1h",
+  "6h": "6h",
+  "12h": "12h",
   "24h": "24h",
   "7?": "7 ?",
   "30?": "30 ?",

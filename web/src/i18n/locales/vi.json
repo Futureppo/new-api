@@ -4891,6 +4891,10 @@
     "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Đầu ra âm thanh: {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
   },
   "??": "T?t",
+  "0.5h": "0.5h",
+  "1h": "1h",
+  "6h": "6h",
+  "12h": "12h",
   "24h": "24 gi?",
   "7?": "7 ng?y",
   "30?": "30 ng?y",

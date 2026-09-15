@@ -213,6 +213,57 @@ func TestSaveModelStatusRequestCountHideThreshold(t *testing.T) {
 	require.Equal(t, "12", option.Value)
 }
 
+func TestSaveModelStatusShortWindowsAppliesTimeRange(t *testing.T) {
+	for _, tc := range []struct {
+		window  string
+		minutes int
+	}{
+		{window: "0.5h", minutes: 30},
+		{window: "1h", minutes: 60},
+		{window: "6h", minutes: 360},
+		{window: "12h", minutes: 720},
+	} {
+		t.Run(tc.window, func(t *testing.T) {
+			setupModelStatusOptionTestDB(t)
+			require.NoError(t, model.DB.AutoMigrate(&model.Log{}))
+			configureModelStatusIgnoredErrorKeywords(t, false, nil)
+
+			cfg := setting.GetEnhancementSetting()
+			originalMinutes := cfg.ModelStatusTimeWindowMins
+			t.Cleanup(func() {
+				cfg.ModelStatusTimeWindowMins = originalMinutes
+				ClearModelStatusPublicCache()
+			})
+
+			now := common.GetTimestamp()
+			seedModelStatusLogs(t, model.DB,
+				model.Log{ModelName: "short-window", Group: "default", Type: model.LogTypeConsume, CreatedAt: now - 60},
+				model.Log{ModelName: "short-window", Group: "default", Type: model.LogTypeError, CreatedAt: now - int64(tc.minutes*60) - 60},
+			)
+
+			for _, value := range []string{tc.window, fmt.Sprint(tc.minutes)} {
+				require.NoError(t, SaveModelStatusOption("model_status_time_window_mins", value, 1))
+				require.Equal(t, tc.window, ModelStatusConfig(true)["current_window"])
+				require.Equal(t, tc.window, ModelStatusWindowFromMinutes(tc.minutes))
+
+				var option model.Option
+				require.NoError(t, model.DB.Where("key = ?", "enhancement_setting.model_status_time_window_mins").First(&option).Error)
+				require.Equal(t, fmt.Sprint(tc.minutes), option.Value)
+
+				status, err := ModelStatusForGroupWindow("default", "short-window", ModelStatusConfiguredWindow(), false)
+				require.NoError(t, err)
+				require.Equal(t, tc.window, status.TimeWindow)
+				require.Equal(t, tc.minutes, status.TimeWindowMinutes)
+				require.Equal(t, int64(1), status.TotalRequests)
+				require.Equal(t, int64(1), status.SuccessCount)
+				require.Zero(t, status.ErrorCount)
+				require.NotEmpty(t, status.SlotData)
+				require.Equal(t, int64(tc.minutes*60), status.SlotData[len(status.SlotData)-1].EndTime-status.SlotData[0].StartTime)
+			}
+		})
+	}
+}
+
 func TestSaveModelStatusRequestCountHideThresholdRejectsInvalidValues(t *testing.T) {
 	setupModelStatusOptionTestDB(t)
 
