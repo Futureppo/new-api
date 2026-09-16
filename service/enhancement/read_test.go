@@ -668,6 +668,7 @@ func TestPublicModelStatusHidesRequestsAtOrBelowDefaultThreshold(t *testing.T) {
 	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-two", 2)
 	seedModelStatusRequestLogs(t, db, "visible", "zz-threshold-three", 3)
 
+	require.NoError(t, runModelStatusRefreshOnce())
 	statuses, err := ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 
@@ -716,12 +717,17 @@ func TestPublicModelStatusCacheVariesByGroupDisplay(t *testing.T) {
 	seedModelStatusRequestLogs(t, db, "visible", "zz-visible-model", 3)
 	seedModelStatusRequestLogs(t, db, "hidden", "zz-hidden-model", 3)
 
+	require.NoError(t, runModelStatusRefreshOnce())
 	statuses, err := ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 	require.NotContains(t, statusKeys(statuses), "hidden:zz-hidden-model")
 
 	require.NoError(t, ratio_setting.UpdateGroupDisplayByJSONString(`{"visible":true,"hidden":true}`))
 
+	snapshot, err := GetModelStatusPublicSnapshot()
+	require.NoError(t, err)
+	require.False(t, snapshot.Ready)
+	require.NoError(t, runModelStatusRefreshOnce())
 	statuses, err = ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 	require.Contains(t, statusKeys(statuses), "hidden:zz-hidden-model")
@@ -747,12 +753,14 @@ func TestPublicModelStatusCacheVariesByRequestCountHideThreshold(t *testing.T) {
 
 	cfg.ModelStatusRequestCountHideThreshold = 1
 	ClearModelStatusPublicCache()
+	require.NoError(t, runModelStatusRefreshOnce())
 	statuses, err := ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 	require.Contains(t, statusKeys(statuses), "visible:zz-threshold-two")
 	require.Contains(t, statusKeys(statuses), "visible:zz-threshold-three")
 
 	cfg.ModelStatusRequestCountHideThreshold = 2
+	require.NoError(t, runModelStatusRefreshOnce())
 	statuses, err = ModelStatusesForPublicConfig()
 	require.NoError(t, err)
 	require.NotContains(t, statusKeys(statuses), "visible:zz-threshold-two")

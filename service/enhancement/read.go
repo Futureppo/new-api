@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -991,13 +990,6 @@ func isPublicModelStatusGroupDisplayed(group string) bool {
 	return ok
 }
 
-var modelStatusPublicCache = struct {
-	sync.Mutex
-	key       string
-	expiresAt int64
-	data      []ModelStatus
-}{}
-
 func AvailableModels(public bool) ([]string, error) {
 	if public {
 		if err := requirePublicEmbedEnabled(); err != nil {
@@ -1172,9 +1164,6 @@ func ModelStatusSlotMinutes() int {
 	minutes := setting.GetEnhancementSetting().ModelStatusSlotMinutes
 	if minutes <= 0 {
 		minutes = 30
-	}
-	if minutes < 5 {
-		return 5
 	}
 	if minutes > 24*60 {
 		return 24 * 60
@@ -1747,25 +1736,6 @@ func ModelStatuses(modelNames []string, minutes int, public bool) ([]ModelStatus
 	return ModelStatusesForWindow(modelNames, ModelStatusWindowFromMinutes(minutes), public)
 }
 
-func publicModelStatusCacheTTL() int64 {
-	seconds := setting.GetEnhancementSetting().ModelStatusRefreshSeconds
-	if seconds < 60 {
-		seconds = 60
-	}
-	if seconds > 24*60*60 {
-		seconds = 24 * 60 * 60
-	}
-	return int64(seconds)
-}
-
-func ClearModelStatusPublicCache() {
-	modelStatusPublicCache.Lock()
-	defer modelStatusPublicCache.Unlock()
-	modelStatusPublicCache.key = ""
-	modelStatusPublicCache.expiresAt = 0
-	modelStatusPublicCache.data = nil
-}
-
 func filterLowRequestModelStatuses(statuses []ModelStatus, threshold int) []ModelStatus {
 	if threshold < 0 {
 		threshold = 0
@@ -1780,42 +1750,8 @@ func filterLowRequestModelStatuses(statuses []ModelStatus, threshold int) []Mode
 }
 
 func ModelStatusesForPublicConfig() ([]ModelStatus, error) {
-	if err := requirePublicEmbedEnabled(); err != nil {
-		return nil, err
-	}
-	window := ModelStatusConfiguredWindow()
-	greenThreshold, yellowThreshold := ModelStatusThresholds()
-	requestCountHideThreshold := setting.GetEnhancementSetting().ModelStatusRequestCountHideThreshold
-	key := "public:" + window + ":" +
-		strconv.Itoa(ModelStatusSlotMinutes()) + ":" +
-		strconv.FormatFloat(greenThreshold, 'f', -1, 64) + ":" +
-		strconv.FormatFloat(yellowThreshold, 'f', -1, 64) + ":" +
-		strconv.Itoa(requestCountHideThreshold) + ":" +
-		ratio_setting.GroupDisplay2JSONString() + ":" +
-		setting.UserUsableGroups2JSONString()
-	now := common.GetTimestamp()
-
-	modelStatusPublicCache.Lock()
-	if modelStatusPublicCache.key == key && modelStatusPublicCache.expiresAt > now {
-		cached := append([]ModelStatus(nil), modelStatusPublicCache.data...)
-		modelStatusPublicCache.Unlock()
-		return cached, nil
-	}
-	modelStatusPublicCache.Unlock()
-
-	statuses, err := ModelStatusesForWindow(nil, window, true)
-	if err != nil {
-		return nil, err
-	}
-	statuses = filterLowRequestModelStatuses(statuses, requestCountHideThreshold)
-
-	modelStatusPublicCache.Lock()
-	modelStatusPublicCache.key = key
-	modelStatusPublicCache.expiresAt = now + publicModelStatusCacheTTL()
-	modelStatusPublicCache.data = append([]ModelStatus(nil), statuses...)
-	modelStatusPublicCache.Unlock()
-
-	return statuses, nil
+	snapshot, err := GetModelStatusPublicSnapshot()
+	return snapshot.Statuses, err
 }
 
 func ModelStatusConfig(public bool) map[string]interface{} {

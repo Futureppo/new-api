@@ -1,5 +1,8 @@
 {
   "translation": {
+    "服务器统计周期（分钟）": "Server statistics interval (minutes)",
+    "等待服务器生成统计，页面会自动显示结果": "Waiting for server statistics. Results will appear automatically.",
+    "统计更新暂时失败，服务器将自动重试；已有数据仍保留显示": "Statistics could not be updated. The server will retry automatically; existing data remains visible.",
     "思考强度": "Reasoning Effort",
     "默认排序": "Default order",
     "排序依据": "Sort by",

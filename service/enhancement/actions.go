@@ -894,8 +894,8 @@ func SaveModelStatusOption(key string, value string, operatorId int) error {
 		}
 	case "model_status_slot_minutes":
 		minutes, err := strconv.Atoi(value)
-		if err != nil || minutes < 5 || minutes > 24*60 {
-			return errors.New("slot granularity must be between 5 and 1440 minutes")
+		if err != nil || minutes < 1 || minutes > 24*60 {
+			return errors.New("slot granularity must be between 1 and 1440 minutes")
 		}
 	case "model_status_green_threshold", "model_status_yellow_threshold":
 		threshold, err := strconv.ParseFloat(value, 64)

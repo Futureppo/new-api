@@ -1,5 +1,8 @@
 {
   "translation": {
+    "服务器统计周期（分钟）": "Chu kỳ thống kê máy chủ (phút)",
+    "等待服务器生成统计，页面会自动显示结果": "Đang chờ máy chủ tạo thống kê. Kết quả sẽ tự động hiển thị.",
+    "统计更新暂时失败，服务器将自动重试；已有数据仍保留显示": "Chưa thể cập nhật thống kê. Máy chủ sẽ tự động thử lại; dữ liệu hiện có vẫn được hiển thị.",
     "思考强度": "Mức độ suy luận",
     "默认排序": "Thứ tự mặc định",
     "排序依据": "Sắp xếp theo",

@@ -213,6 +213,30 @@ func TestSaveModelStatusRequestCountHideThreshold(t *testing.T) {
 	require.Equal(t, "12", option.Value)
 }
 
+func TestSaveModelStatusOneMinuteSlots(t *testing.T) {
+	setupModelStatusOptionTestDB(t)
+	require.NoError(t, model.DB.AutoMigrate(&model.Log{}))
+	cfg := setting.GetEnhancementSetting()
+	original := cfg.ModelStatusSlotMinutes
+	t.Cleanup(func() {
+		cfg.ModelStatusSlotMinutes = original
+		ClearModelStatusPublicCache()
+	})
+
+	require.NoError(t, SaveModelStatusOption("model_status_slot_minutes", "1", 1))
+	require.Equal(t, 1, ModelStatusConfig(false)["slot_minutes"])
+	status, err := ModelStatusForGroupWindow("default", "one-minute-model", ModelStatusWindowHalfHour, false)
+	require.NoError(t, err)
+	require.Len(t, status.SlotData, 30)
+	for _, slot := range status.SlotData {
+		require.Equal(t, int64(60), slot.EndTime-slot.StartTime)
+	}
+	for _, value := range []string{"0", "-1", "1441", "1.5"} {
+		require.Error(t, SaveModelStatusOption("model_status_slot_minutes", value, 1))
+	}
+	require.Equal(t, 1, cfg.ModelStatusSlotMinutes)
+}
+
 func TestSaveModelStatusShortWindowsAppliesTimeRange(t *testing.T) {
 	for _, tc := range []struct {
 		window  string

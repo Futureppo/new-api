@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service/enhancement"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -136,4 +137,48 @@ func TestModelStatusRequestCountHideThresholdAPI(t *testing.T) {
 	require.False(t, invalidResponse.Success)
 	require.Contains(t, invalidResponse.Message, "request count hide threshold")
 	require.Equal(t, 5, setting.GetEnhancementSetting().ModelStatusRequestCountHideThreshold)
+}
+
+func TestPublicModelStatusAPIReadsPendingSnapshotWithoutQueries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	db := setupEnhancementOptionControllerTestDB(t)
+	cfg := setting.GetEnhancementSetting()
+	original := cfg.PublicEmbedEnabled
+	cfg.PublicEmbedEnabled = true
+	enhancement.ClearModelStatusPublicCache()
+	t.Cleanup(func() {
+		cfg.PublicEmbedEnabled = original
+		enhancement.ClearModelStatusPublicCache()
+	})
+	queries := 0
+	require.NoError(t, db.Callback().Query().Before("gorm:query").Register("count_public_status_queries", func(tx *gorm.DB) {
+		queries++
+	}))
+	router := gin.New()
+	RegisterEnhancementModelStatusEmbedRoutes(router.Group("/api/enhancements/model-status/embed"))
+	for i := 0; i < 3; i++ {
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/enhancements/model-status/embed/status/all", nil))
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Equal(t, "no-store", recorder.Header().Get("Cache-Control"))
+		var response struct {
+			Success       bool                      `json:"success"`
+			Data          []enhancement.ModelStatus `json:"data"`
+			GeneratedAt   int64                     `json:"generated_at"`
+			Ready         bool                      `json:"ready"`
+			RefreshFailed bool                      `json:"refresh_failed"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success)
+		require.NotNil(t, response.Data)
+		require.Empty(t, response.Data)
+		require.Zero(t, response.GeneratedAt)
+		require.False(t, response.Ready)
+		require.False(t, response.RefreshFailed)
+	}
+	require.Zero(t, queries)
+	cfg.PublicEmbedEnabled = false
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/enhancements/model-status/embed/status/all", nil))
+	require.Equal(t, http.StatusNotFound, recorder.Code)
 }

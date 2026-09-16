@@ -1,5 +1,8 @@
 {
   "translation": {
+    "服务器统计周期（分钟）": "Intervalle des statistiques du serveur (minutes)",
+    "等待服务器生成统计，页面会自动显示结果": "En attente des statistiques du serveur. Les résultats s’afficheront automatiquement.",
+    "统计更新暂时失败，服务器将自动重试；已有数据仍保留显示": "La mise à jour des statistiques a échoué. Le serveur réessaiera automatiquement ; les données existantes restent affichées.",
     "思考强度": "Effort de raisonnement",
     "默认排序": "Ordre par défaut",
     "排序依据": "Trier par",

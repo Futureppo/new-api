@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -462,7 +462,7 @@ function getModelStatusRefreshMinutes(config = {}) {
 function getModelStatusSlotMinutes(config = {}) {
   const minutes = Number(config.slot_minutes || 30);
   if (!Number.isFinite(minutes)) return 30;
-  return Math.min(1440, Math.max(5, Math.round(minutes)));
+  return Math.min(1440, Math.max(1, Math.round(minutes)));
 }
 
 function getModelStatusThreshold(config = {}, key, fallback) {
@@ -4395,7 +4395,7 @@ function ModelStatusTimeline({ status }) {
   );
 }
 
-function ModelStatusCard({ status }) {
+const ModelStatusCard = React.memo(function ModelStatusCard({ status }) {
   const { t } = useTranslation();
   const meta = getModelStatusMeta(status?.current_status);
   const Icon = meta.icon;
@@ -4470,7 +4470,7 @@ function ModelStatusCard({ status }) {
       </div>
     </Card>
   );
-}
+});
 
 function ModelStatusBoard({
   statuses,
@@ -4645,7 +4645,7 @@ function ModelStatusPanel({ data }) {
       const minutes = Math.min(1440, Math.max(1, Number(refreshMinutes || 1)));
       const nextSlotMinutes = Math.min(
         1440,
-        Math.max(5, Number(slotMinutes || 30)),
+        Math.max(1, Number(slotMinutes || 30)),
       );
       const nextGreenThreshold = Math.min(
         100,
@@ -4784,7 +4784,7 @@ function ModelStatusPanel({ data }) {
               />
             </label>
             <label className='space-y-1'>
-              <Text type='secondary'>{t('刷新间隔（分钟）')}</Text>
+              <Text type='secondary'>{t('服务器统计周期（分钟）')}</Text>
               <InputNumber
                 min={1}
                 max={1440}
@@ -4796,7 +4796,7 @@ function ModelStatusPanel({ data }) {
             <label className='space-y-1'>
               <Text type='secondary'>{t('状态粒度（分钟）')}</Text>
               <InputNumber
-                min={5}
+                min={1}
                 max={1440}
                 value={slotMinutes}
                 onChange={(value) => setSlotMinutes(value || 30)}
@@ -4892,24 +4892,50 @@ export function ModelStatusPublicPage() {
   const [loading, setLoading] = useState(false);
   const [available, setAvailable] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [snapshotReady, setSnapshotReady] = useState(false);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const snapshotTimeRef = useRef(null);
+  const requestInFlightRef = useRef(false);
 
   const loadPublicStatus = useCallback(async () => {
-    setLoading(true);
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setLoading(snapshotTimeRef.current === null);
     try {
-      const [nextConfig, nextStatuses] = await Promise.all([
-        API.get('/api/enhancements/model-status/embed/config').then(unwrap),
-        API.get('/api/enhancements/model-status/embed/status/all').then(unwrap),
+      const [nextConfig, statusResponse] = await Promise.all([
+        API.get('/api/enhancements/model-status/embed/config', {
+          skipErrorHandler: true,
+        }).then(unwrap),
+        API.get('/api/enhancements/model-status/embed/status/all', {
+          skipErrorHandler: true,
+        }),
       ]);
+      const nextStatuses = unwrap(statusResponse) || [];
+      const snapshot = statusResponse.data;
+      const generatedAt = Number(snapshot.generated_at || 0);
       setConfig(nextConfig || {});
-      setStatuses(nextStatuses || []);
+      if (snapshotTimeRef.current !== generatedAt) {
+        setStatuses(nextStatuses);
+        snapshotTimeRef.current = generatedAt;
+      }
       setAvailable(true);
-      setLastUpdated(new Date());
+      setSnapshotReady(!!snapshot.ready);
+      setRefreshFailed(!!snapshot.refresh_failed);
+      setLastUpdated(generatedAt > 0 ? generatedAt * 1000 : null);
     } catch (error) {
-      setAvailable(false);
-      setConfig(null);
-      setStatuses([]);
+      if (error.response?.status === 404) {
+        setAvailable(false);
+        setConfig(null);
+        setStatuses([]);
+        setLastUpdated(null);
+        setSnapshotReady(false);
+        snapshotTimeRef.current = null;
+      } else {
+        setRefreshFailed(true);
+      }
     } finally {
       setLoading(false);
+      requestInFlightRef.current = false;
     }
   }, []);
 
@@ -4917,14 +4943,16 @@ export function ModelStatusPublicPage() {
     loadPublicStatus();
   }, [loadPublicStatus]);
 
+  const pollIntervalMs = snapshotReady
+    ? getModelStatusRefreshMinutes(config || {}) * 60 * 1000
+    : 5000;
   useEffect(() => {
-    if (!available || !config) return undefined;
-    const intervalMs = getModelStatusRefreshMinutes(config) * 60 * 1000;
+    if (!available) return undefined;
     const timer = window.setInterval(() => {
       loadPublicStatus();
-    }, intervalMs);
+    }, pollIntervalMs);
     return () => window.clearInterval(timer);
-  }, [available, config, loadPublicStatus]);
+  }, [available, pollIntervalMs, loadPublicStatus]);
 
   const groupOptions = useMemo(() => {
     const groups = Array.from(
@@ -4989,6 +5017,15 @@ export function ModelStatusPublicPage() {
   return (
     <div className='site-background-page-surface min-h-screen bg-semi-color-bg-0 px-4 py-6 md:py-8'>
       <div className='mx-auto max-w-6xl space-y-5'>
+        {refreshFailed ? (
+          <div role='status' className='text-sm text-semi-color-warning'>
+            {t('统计更新暂时失败，服务器将自动重试；已有数据仍保留显示')}
+          </div>
+        ) : !snapshotReady ? (
+          <div role='status' className='text-sm text-semi-color-text-2'>
+            {t('等待服务器生成统计，页面会自动显示结果')}
+          </div>
+        ) : null}
         <ModelStatusBoard
           statuses={visibleStatuses}
           loading={loading}
