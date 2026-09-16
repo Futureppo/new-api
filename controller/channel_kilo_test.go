@@ -117,6 +117,69 @@ func TestKiloAnonymousChannelCreateAndEdit(t *testing.T) {
 	require.Equal(t, "saved-key", key)
 }
 
+func TestKiloCreateRespectsExplicitAuthMode(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		settings  string
+		key       string
+		success   bool
+		anonymous bool
+	}{
+		{"explicit key mode without key", `{"kilo_anonymous_enabled":false}`, "", false, false},
+		{"explicit key mode with key", `{"kilo_anonymous_enabled":false}`, "saved-key", true, false},
+		{"explicit anonymous mode", `{"kilo_anonymous_enabled":true}`, "", true, true},
+		{"anonymous preserves key", `{"kilo_anonymous_enabled":true}`, "saved-key", true, true},
+		{"legacy empty key", "", "", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := openChannelRetryControllerTestDB(t)
+			ch := model.Channel{Type: constant.ChannelTypeKilo, Name: tc.name, Key: tc.key, OtherSettings: tc.settings, Models: "openrouter/free", Group: "default", Status: common.ChannelStatusEnabled}
+			body, err := common.Marshal(AddChannelRequest{Mode: "single", Channel: &ch})
+			require.NoError(t, err)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/api/channel/", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			c.Set("role", common.RoleRootUser)
+			AddChannel(c)
+			var response struct {
+				Success bool `json:"success"`
+			}
+			require.NoError(t, common.Unmarshal(w.Body.Bytes(), &response))
+			require.Equal(t, tc.success, response.Success, w.Body.String())
+			var channels []model.Channel
+			require.NoError(t, db.Where("name = ?", tc.name).Find(&channels).Error)
+			if !tc.success {
+				require.Empty(t, channels, "key mode must not silently create an anonymous channel")
+				return
+			}
+			require.Len(t, channels, 1)
+			require.Equal(t, tc.anonymous, channels[0].GetOtherSettings().KiloAnonymousEnabled)
+			require.Equal(t, tc.key, channels[0].Key)
+		})
+	}
+}
+
+func TestKiloFetchModelsRespectsExplicitAuthMode(t *testing.T) {
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		require.Empty(t, r.Header.Get("Authorization"))
+		_, _ = w.Write([]byte(`{"data":[{"id":"free","isFree":true}]}`))
+	}))
+	defer upstream.Close()
+	req := map[string]any{"type": constant.ChannelTypeKilo, "base_url": upstream.URL, "kilo_anonymous_enabled": false}
+	status, response := runFetchModelsRequest(t, req)
+	require.Equal(t, http.StatusBadRequest, status)
+	require.False(t, response.Success)
+	require.Zero(t, requests, "explicit key mode must not make an anonymous upstream request")
+	req["kilo_anonymous_enabled"] = true
+	status, response = runFetchModelsRequest(t, req)
+	require.Equal(t, http.StatusOK, status)
+	require.True(t, response.Success)
+	require.Equal(t, 1, requests)
+}
+
 func TestKiloSyncLifecycle(t *testing.T) {
 	db := openChannelRetryControllerTestDB(t)
 	payload := `{"data":[{"id":"vendor/a:free","isFree":true},{"id":"opaque","isFree":true},{"id":"kilo-auto/free","isFree":true},{"id":"openrouter/free","isFree":true},{"id":"ignored","isFree":true}]}`

@@ -880,8 +880,18 @@ func AddChannel(c *gin.Context) {
 		return
 	}
 	if ch := addChannelRequest.Channel; ch != nil && ch.Type == constant.ChannelTypeKilo {
+		var authSettings struct {
+			Anonymous *bool `json:"kilo_anonymous_enabled"`
+		}
+		if ch.OtherSettings != "" {
+			if err := common.UnmarshalJsonStr(ch.OtherSettings, &authSettings); err != nil {
+				common.ApiError(c, err)
+				return
+			}
+		}
 		settings := ch.GetOtherSettings()
-		if strings.TrimSpace(ch.Key) == "" {
+		// Keep empty-key creation compatible, but never override an explicit choice.
+		if authSettings.Anonymous == nil && strings.TrimSpace(ch.Key) == "" {
 			settings.KiloAnonymousEnabled = true
 		}
 		ch.SetOtherSettings(settings)
@@ -1366,7 +1376,7 @@ func UpdateChannel(c *gin.Context) {
 func FetchModels(c *gin.Context) {
 	var req struct {
 		KiloFreeOnly       bool              `json:"kilo_free_only"`
-		KiloAnonymous      bool              `json:"kilo_anonymous_enabled"`
+		KiloAnonymous      *bool             `json:"kilo_anonymous_enabled"`
 		BaseURL            string            `json:"base_url"`
 		Type               int               `json:"type"`
 		Key                string            `json:"key"`
@@ -1398,6 +1408,14 @@ func FetchModels(c *gin.Context) {
 	// Service account JSON may contain formatted newlines. Other channel keys
 	// retain the existing first-line behavior used by the creation form.
 	key := normalizeFetchModelsKey(req.Type, req.VertexKeyType, req.Key)
+	kiloAnonymous := req.Type == constant.ChannelTypeKilo && strings.TrimSpace(key) == ""
+	if req.KiloAnonymous != nil {
+		kiloAnonymous = *req.KiloAnonymous
+	}
+	if req.Type == constant.ChannelTypeKilo && !kiloAnonymous && strings.TrimSpace(key) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"success": false, "message": "Kilo 密钥模式需要填写密钥"})
+		return
+	}
 
 	channel := &model.Channel{
 		Type:  req.Type,
@@ -1407,7 +1425,7 @@ func FetchModels(c *gin.Context) {
 	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
 	channel.SetOtherSettings(dto.ChannelOtherSettings{
 		KiloFreeModelSyncEnabled: req.KiloFreeOnly,
-		KiloAnonymousEnabled:     req.KiloAnonymous || (req.Type == constant.ChannelTypeKilo && strings.TrimSpace(key) == ""),
+		KiloAnonymousEnabled:     kiloAnonymous,
 		VertexKeyType:            req.VertexKeyType,
 		AwsKeyType:               req.AwsKeyType,
 		CustomModelListURL:       req.CustomModelListURL,

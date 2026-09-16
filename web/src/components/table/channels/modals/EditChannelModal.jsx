@@ -240,7 +240,7 @@ const EditChannelModal = (props) => {
     modal_keepalive_interval_seconds: 30,
     openrouter_auto_sync_free_and_alpha_models_enabled: false,
     openrouter_free_model_name_simplification_enabled: false,
-    kilo_anonymous_enabled: true,
+    kilo_anonymous_enabled: false,
     kilo_auto_sync_free_models_enabled: false,
     kilo_free_model_name_simplification_enabled: false,
     upstream_model_update_check_enabled: false,
@@ -700,11 +700,9 @@ const EditChannelModal = (props) => {
             ...prev,
             base_url: '',
             models: [],
-            kilo_anonymous_enabled: true,
           }));
           formApiRef.current?.setValue('base_url', '');
           formApiRef.current?.setValue('models', []);
-          formApiRef.current?.setValue('kilo_anonymous_enabled', true);
           break;
         case MODAL_CHANNEL_TYPE:
           // Modal deployments define their own models; do not retain the
@@ -1223,7 +1221,7 @@ const EditChannelModal = (props) => {
         }
       }
 
-      if (!fetchKey && inputs.type !== KILO_CHANNEL_TYPE) {
+      if (!fetchKey && !isKiloAnonymous) {
         errorMessage = errorMessage || t('请填写密钥');
         err = true;
       } else {
@@ -1555,6 +1553,10 @@ const EditChannelModal = (props) => {
       system_prompt_override: false,
     });
     // 重置密钥模式状态
+    setIsMultiKeyChannel(false);
+    setBatch(false);
+    setMultiToSingle(false);
+    setMultiKeyMode('random');
     setKeyMode('append');
     // 重置企业账户状态
     setIsEnterpriseAccount(false);
@@ -3274,7 +3276,7 @@ const EditChannelModal = (props) => {
                         label={t('Kilo 匿名调用')}
                         checkedText={t('开')}
                         uncheckedText={t('关')}
-                        disabled={isMultiKeyChannel}
+                        disabled={isEdit && isMultiKeyChannel && !isKiloAnonymous}
                         onChange={(value) => {
                           handleChannelOtherSettingsChange(
                             'kilo_anonymous_enabled',
