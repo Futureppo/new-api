@@ -38,6 +38,7 @@ const ChannelsTable = (channelsData) => {
     compactMode,
     visibleColumns,
     setSelectedChannels,
+    selectedChannels,
     handlePageChange,
     handlePageSizeChange,
     handleRow,
@@ -151,6 +152,7 @@ const ChannelsTable = (channelsData) => {
       rowSelection={
         enableBatchDelete
           ? {
+              selectedRowKeys: selectedChannels.map((channel) => channel.key),
               onChange: (selectedRowKeys, selectedRows) => {
                 setSelectedChannels(selectedRows);
               },

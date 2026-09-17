@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Button,
   Dropdown,
@@ -31,6 +31,8 @@ import CompactModeToggle from '../../common/ui/CompactModeToggle';
 const ChannelsActions = ({
   enableBatchDelete,
   batchDeleteChannels,
+  setShowDeleteChannelRange,
+  setShowDeleteChannelName,
   setShowBatchSetTag,
   testAllChannels,
   fixChannelsAbilities,
@@ -58,6 +60,8 @@ const ChannelsActions = ({
   setActivePage,
   t,
 }) => {
+  const [batchMenuVisible, setBatchMenuVisible] = useState(false);
+
   return (
     <div className='flex flex-col gap-2'>
       {/* 第一行：批量操作按钮 + 设置开关 */}
@@ -93,6 +97,8 @@ const ChannelsActions = ({
           <Dropdown
             size='small'
             trigger='click'
+            visible={batchMenuVisible}
+            onVisibleChange={setBatchMenuVisible}
             render={
               <Dropdown.Menu>
                 <Dropdown.Item>
@@ -208,6 +214,32 @@ const ChannelsActions = ({
                     }}
                   >
                     {t('删除禁用通道')}
+                  </Button>
+                </Dropdown.Item>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='danger'
+                    className='w-full'
+                    onClick={() => {
+                      setBatchMenuVisible(false);
+                      setShowDeleteChannelRange(true);
+                    }}
+                  >
+                    {t('按 ID 范围删除渠道')}
+                  </Button>
+                </Dropdown.Item>
+                <Dropdown.Item>
+                  <Button
+                    size='small'
+                    type='danger'
+                    className='w-full'
+                    onClick={() => {
+                      setBatchMenuVisible(false);
+                      setShowDeleteChannelName(true);
+                    }}
+                  >
+                    {t('按名称删除渠道')}
                   </Button>
                 </Dropdown.Item>
               </Dropdown.Menu>

@@ -37,6 +37,7 @@ import { useIsMobile } from '../common/useIsMobile';
 import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useChannelUpstreamUpdates } from './useChannelUpstreamUpdates';
 import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
+import { parseChannelIdRange } from '../../helpers/channelRange';
 import { Modal, Button } from '@douyinfe/semi-ui';
 import { openCodexUsageModal } from '../../components/table/channels/modals/CodexUsageModal';
 
@@ -64,6 +65,10 @@ export const useChannelsData = () => {
   const [enableTagMode, setEnableTagMode] = useState(false);
   const [showBatchSetTag, setShowBatchSetTag] = useState(false);
   const [batchSetTagValue, setBatchSetTagValue] = useState('');
+  const [showDeleteChannelRange, setShowDeleteChannelRange] = useState(false);
+  const [showDeleteChannelName, setShowDeleteChannelName] = useState(false);
+  const [channelDeletionLoading, setChannelDeletionLoading] = useState(false);
+  const channelDeletionPending = useRef(false);
   const [compactMode, setCompactMode] = useTableCompactMode('channels');
 
   // Column visibility states
@@ -726,6 +731,78 @@ export const useChannelsData = () => {
     setLoading(false);
   };
 
+  const closeDeleteChannelRange = () => {
+    if (!channelDeletionPending.current) setShowDeleteChannelRange(false);
+  };
+
+  const closeDeleteChannelName = () => {
+    if (!channelDeletionPending.current) setShowDeleteChannelName(false);
+  };
+
+  const submitChannelDeletion = async (url, payload, emptyMessage) => {
+    if (channelDeletionPending.current) return;
+    channelDeletionPending.current = true;
+    setChannelDeletionLoading(true);
+    try {
+      const res = await API.post(url, payload, {
+        skipErrorHandler: true,
+      });
+      const { success, message, data } = res.data;
+      if (!success) {
+        showError(message || t('删除失败'));
+        return;
+      }
+      if (data === 0) {
+        showInfo(emptyMessage);
+      } else {
+        showSuccess(t('已删除 {{count}} 个渠道', { count: data }));
+      }
+      setShowDeleteChannelRange(false);
+      setShowDeleteChannelName(false);
+      setSelectedChannels([]);
+      setActivePage(1);
+      try {
+        await refresh(1);
+      } catch {
+        showError(t('渠道已删除，但列表刷新失败，请手动刷新'));
+      } finally {
+        setLoading(false);
+      }
+    } catch (error) {
+      showError(
+        error?.response?.data?.message || error?.message || t('删除失败'),
+      );
+    } finally {
+      channelDeletionPending.current = false;
+      setChannelDeletionLoading(false);
+    }
+  };
+
+  const deleteChannelsByRange = async (startId, endId) => {
+    const range = parseChannelIdRange(startId, endId);
+    if (!range) {
+      showError(t('渠道 ID 范围无效'));
+      return;
+    }
+    await submitChannelDeletion(
+      '/api/channel/batch/range',
+      range,
+      t('范围内没有可删除的渠道'),
+    );
+  };
+
+  const deleteChannelsByName = async (name) => {
+    if (typeof name !== 'string' || name.trim() === '') {
+      showError(t('渠道名称不能为空'));
+      return;
+    }
+    await submitChannelDeletion(
+      '/api/channel/batch/name',
+      { name },
+      t('没有名称完全匹配的渠道'),
+    );
+  };
+
   // Channel operations
   const testAllChannels = async () => {
     const res = await API.get(`/api/channel/test`);
@@ -1173,6 +1250,16 @@ export const useChannelsData = () => {
     setShowBatchSetTag,
     batchSetTagValue,
     setBatchSetTagValue,
+    showDeleteChannelRange,
+    setShowDeleteChannelRange,
+    deleteChannelRangeLoading: channelDeletionLoading,
+    closeDeleteChannelRange,
+    deleteChannelsByRange,
+    showDeleteChannelName,
+    setShowDeleteChannelName,
+    deleteChannelNameLoading: channelDeletionLoading,
+    closeDeleteChannelName,
+    deleteChannelsByName,
 
     // Column states
     visibleColumns,
