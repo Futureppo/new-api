@@ -519,9 +519,12 @@ func enhancementBanUser(c *gin.Context) {
 		return
 	}
 	var req enhancement.BanUserRequest
-	_ = common.DecodeJson(c.Request.Body, &req)
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	operatorId, role := operator(c)
-	err = enhancement.BanUser(userId, operatorId, role, req.Reason)
+	err = enhancement.BanUser(userId, operatorId, role, req.Reason, int64(req.DurationMinutes))
 	respondPublic(c, gin.H{"banned": true}, err)
 }
 
@@ -625,14 +628,17 @@ func enhancementSharedTokenIPs(c *gin.Context) {
 
 func enhancementBanSharedTokenIPUsers(c *gin.Context) {
 	var req enhancement.BanUserRequest
-	_ = common.DecodeJson(c.Request.Body, &req)
+	if err := common.DecodeJson(c.Request.Body, &req); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	ip, err := url.PathUnescape(c.Param("ip"))
 	if err != nil {
 		common.ApiError(c, err)
 		return
 	}
 	operatorId, role := operator(c)
-	data, err := enhancement.BanSharedTokenIPUsers(ip, ipRiskQuery(c), operatorId, role, req.Reason, req.UserIds)
+	data, err := enhancement.BanSharedTokenIPUsers(ip, ipRiskQuery(c), operatorId, role, req.Reason, req.UserIds, int64(req.DurationMinutes))
 	respondPublic(c, data, err)
 }
 

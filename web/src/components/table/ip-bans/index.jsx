@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { UserDisableInfo } from '../../common/UserDisableInfo';
 import React, {
   useCallback,
   useEffect,
@@ -621,9 +622,7 @@ const BatchOperationModal = ({
             label={t('过期时间')}
             type='dateTime'
             placeholder={t('请选择临时封禁过期时间')}
-            rules={[
-              { required: true, message: t('请选择临时封禁过期时间') },
-            ]}
+            rules={[{ required: true, message: t('请选择临时封禁过期时间') }]}
             style={{ width: '100%' }}
           />
         )}
@@ -638,9 +637,7 @@ const BatchOperationModal = ({
             label={t('命中后封禁账号')}
             checkedText={t('开')}
             uncheckedText={t('关')}
-            extraText={t(
-              '仅对永久封禁生效；所选临时封禁不会被修改。',
-            )}
+            extraText={t('仅对永久封禁生效；所选临时封禁不会被修改。')}
           />
         )}
       </Form>
@@ -683,7 +680,9 @@ const RelatedUsersModal = ({ visible, record, onClose }) => {
       render: (text, r) => (
         <span>
           {text}
-          {r.display_name && r.display_name !== text ? ` (${r.display_name})` : ''}
+          {r.display_name && r.display_name !== text
+            ? ` (${r.display_name})`
+            : ''}
         </span>
       ),
     },
@@ -703,7 +702,12 @@ const RelatedUsersModal = ({ visible, record, onClose }) => {
     {
       title: t('封禁原因'),
       dataIndex: 'disable_reason',
-      render: (text) => <span className='break-all'>{text}</span>,
+      render: (text, user) => (
+        <div>
+          <span className='break-all'>{text}</span>
+          <UserDisableInfo user={user} t={t} />
+        </div>
+      ),
     },
   ];
 
@@ -984,11 +988,7 @@ const IPBanSection = ({ type, title, description }) => {
                 <Text strong>
                   {t('已选')} {selectedRowKeys.length} {t('项')}
                 </Text>
-                <Button
-                  size='small'
-                  type='tertiary'
-                  onClick={selectAllOnPage}
-                >
+                <Button size='small' type='tertiary' onClick={selectAllOnPage}>
                   {t('全选本页')}
                 </Button>
                 <Button size='small' type='tertiary' onClick={clearSelection}>

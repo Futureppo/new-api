@@ -69,7 +69,7 @@ func TestUserAuthDisabledUserMessageWithoutReasonUsesDefault(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	body := decodeAuthMiddlewareResponse(t, recorder.Body.Bytes())
 	require.False(t, body.Success)
-	require.Equal(t, "用户已被封禁", body.Message)
+	require.Equal(t, "用户已被封禁 (永久封禁)", body.Message)
 	require.NotContains(t, body.Message, "原因：")
 }
 

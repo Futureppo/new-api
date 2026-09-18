@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { UserDisableInfo } from '../../../common/UserDisableInfo';
 import React from 'react';
 import { Modal, Badge, Button, Space, Tag, Tooltip } from '@douyinfe/semi-ui';
 import { renderQuota, renderNumber } from '../../../../helpers';
@@ -193,6 +194,7 @@ const UserInfoModal = ({
                 <Tag color='red' shape='circle'>
                   {t('已禁用')}
                 </Tag>
+                <UserDisableInfo user={userInfoData} t={t} />
                 {disableReason ? (
                   <Tooltip content={disableReason} position='top'>
                     <span

@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -180,7 +181,19 @@ func ensureCanOperateUser(operatorId int, operatorRole int, target model.User) e
 	return nil
 }
 
-func BanUser(userId int, operatorId int, operatorRole int, reason string) error {
+func BanUser(userId int, operatorId int, operatorRole int, reason string, durationMinutes ...int64) error {
+	minutes := int64(0)
+	if len(durationMinutes) > 0 {
+		minutes = durationMinutes[0]
+	}
+	period, err := model.NewUserDisablePeriod(minutes, time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	return banUserWithPeriod(userId, operatorId, operatorRole, reason, period)
+}
+
+func banUserWithPeriod(userId int, operatorId int, operatorRole int, reason string, period model.UserDisablePeriod) error {
 	var user model.User
 	if err := model.DB.Where("id = ?", userId).First(&user).Error; err != nil {
 		return err
@@ -195,16 +208,16 @@ func BanUser(userId int, operatorId int, operatorRole int, reason string) error 
 	if reason == "" {
 		reason = "enhancement ban"
 	}
-	user.Status = common.UserStatusDisabled
-	user.DisableReason = reason
-	if err := user.Update(false); err != nil {
+	if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(period.Updates(reason)).Error; err != nil {
 		return err
 	}
 	_ = model.InvalidateUserCache(user.Id)
 	_ = model.InvalidateUserTokensCache(user.Id)
 	audit(operatorId, "enhancements.users", "ban", map[string]interface{}{
-		"target_user_id": user.Id,
-		"reason":         reason,
+		"target_user_id":           user.Id,
+		"reason":                   reason,
+		"disable_duration_minutes": period.Minutes,
+		"disable_until":            period.Until,
 	})
 	return nil
 }
@@ -217,9 +230,7 @@ func UnbanUser(userId int, operatorId int, operatorRole int) error {
 	if err := ensureCanOperateUser(operatorId, operatorRole, user); err != nil {
 		return err
 	}
-	user.Status = common.UserStatusEnabled
-	user.DisableReason = ""
-	if err := user.Update(false); err != nil {
+	if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(model.UserEnableUpdates()).Error; err != nil {
 		return err
 	}
 	_ = model.InvalidateUserCache(user.Id)
@@ -277,7 +288,7 @@ func BatchDeleteUsers(ids []int, operatorId int, operatorRole int) (map[string]i
 	}, nil
 }
 
-func BatchManageUsers(action string, reason string, operatorId int, operatorRole int) (BatchManageUsersResult, error) {
+func BatchManageUsers(action string, reason string, operatorId int, operatorRole int, durationMinutes ...int64) (BatchManageUsersResult, error) {
 	result := BatchManageUsersResult{Action: action}
 	if operatorRole < common.RoleAdminUser {
 		return result, errors.New("admin permission required")
@@ -287,6 +298,18 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 	result.Action = action
 	reason = strings.TrimSpace(reason)
 
+	var period model.UserDisablePeriod
+	if action == "disable_enabled" {
+		minutes := int64(0)
+		if len(durationMinutes) > 0 {
+			minutes = durationMinutes[0]
+		}
+		var err error
+		period, err = model.NewUserDisablePeriod(minutes, time.Now().Unix())
+		if err != nil {
+			return result, err
+		}
+	}
 	var targetStatus int
 	var updates map[string]interface{}
 	softDelete := false
@@ -294,10 +317,7 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 	switch action {
 	case "enable_disabled":
 		targetStatus = common.UserStatusDisabled
-		updates = map[string]interface{}{
-			"status":         common.UserStatusEnabled,
-			"disable_reason": "",
-		}
+		updates = model.UserEnableUpdates()
 	case "disable_enabled":
 		if reason == "" {
 			return result, errors.New("disable reason cannot be empty")
@@ -306,10 +326,7 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 			return result, errors.New("disable reason cannot exceed 255 characters")
 		}
 		targetStatus = common.UserStatusEnabled
-		updates = map[string]interface{}{
-			"status":         common.UserStatusDisabled,
-			"disable_reason": reason,
-		}
+		updates = period.Updates(reason)
 	case "delete_disabled":
 		targetStatus = common.UserStatusDisabled
 		softDelete = true
@@ -320,6 +337,9 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 		return result, fmt.Errorf("unsupported batch user action: %s", action)
 	}
 
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return result, err
+	}
 	userIds := make([]int, 0)
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&model.User{}).
@@ -329,6 +349,14 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 			return err
 		}
 
+		if action == "disable_enabled" {
+			var err error
+			period, err = model.NewUserDisablePeriod(period.Minutes, time.Now().Unix())
+			if err != nil {
+				return err
+			}
+			updates = period.Updates(reason)
+		}
 		for start := 0; start < len(userIds); start += batchUserChunkSize {
 			end := start + batchUserChunkSize
 			if end > len(userIds) {
@@ -362,6 +390,8 @@ func BatchManageUsers(action string, reason string, operatorId int, operatorRole
 	}
 	if action == "disable_enabled" {
 		auditPayload["reason"] = reason
+		auditPayload["disable_duration_minutes"] = period.Minutes
+		auditPayload["disable_until"] = period.Until
 	}
 	audit(operatorId, "users", action, auditPayload)
 	return result, nil
@@ -603,7 +633,15 @@ func selectedUserIDSet(userIds *[]int) (map[int]struct{}, bool, error) {
 	return set, true, nil
 }
 
-func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operatorRole int, reason string, userIds *[]int) (map[string]interface{}, error) {
+func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operatorRole int, reason string, userIds *[]int, durationMinutes ...int64) (map[string]interface{}, error) {
+	minutes := int64(0)
+	if len(durationMinutes) > 0 {
+		minutes = durationMinutes[0]
+	}
+	period, err := model.NewUserDisablePeriod(minutes, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
 	ip = strings.TrimSpace(ip)
 	if ip == "" {
 		return nil, errors.New("ip cannot be empty")
@@ -657,10 +695,14 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 	if reason == "" {
 		reason = fmt.Sprintf("risk shared ip ban: %s", ip)
 	}
+	period, err = model.NewUserDisablePeriod(period.Minutes, time.Now().Unix())
+	if err != nil {
+		return nil, err
+	}
 	success := 0
 	failures := make([]map[string]interface{}, 0)
 	for _, user := range users {
-		if err := BanUser(user.UserId, operatorId, operatorRole, reason); err != nil {
+		if err := banUserWithPeriod(user.UserId, operatorId, operatorRole, reason, period); err != nil {
 			failures = append(failures, map[string]interface{}{
 				"id":       user.UserId,
 				"username": user.Username,
@@ -672,13 +714,15 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 	}
 
 	audit(operatorId, "enhancements.risk", "ban_shared_ip_users", map[string]interface{}{
-		"ip":       ip,
-		"total":    len(users),
-		"success":  success,
-		"fail":     len(failures),
-		"start":    query.Start,
-		"end":      query.End,
-		"selected": hasSelectedIDs,
+		"ip":                       ip,
+		"disable_duration_minutes": period.Minutes,
+		"disable_until":            period.Until,
+		"total":                    len(users),
+		"success":                  success,
+		"fail":                     len(failures),
+		"start":                    query.Start,
+		"end":                      query.End,
+		"selected":                 hasSelectedIDs,
 	})
 	return map[string]interface{}{
 		"ip":          ip,

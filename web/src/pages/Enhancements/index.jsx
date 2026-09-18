@@ -17,7 +17,13 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -64,6 +70,12 @@ import {
   X,
 } from 'lucide-react';
 import dayjs from 'dayjs';
+import {
+  DisableDurationInput,
+  UserDisableInfo,
+  disableDurationText,
+  isDisableDurationValid,
+} from '../../components/common/UserDisableInfo';
 import {
   API,
   copy,
@@ -348,6 +360,7 @@ const USER_PREVIEW_KEYS = [
   'username',
   'display_name',
   'status',
+  'disable_reason',
   'email',
   'github_id',
   'quota',
@@ -2036,6 +2049,7 @@ function GitHubAgeBanCard({ onApplied }) {
     user_id_start: 0,
     user_id_end: 0,
     reason: '',
+    duration_minutes: 0,
   };
   const [form, setForm] = useState(defaultForm);
   const [loading, setLoading] = useState(false);
@@ -2049,6 +2063,10 @@ function GitHubAgeBanCard({ onApplied }) {
   const normalizedUserIdEnd = Math.trunc(Number(form.user_id_end || 0));
 
   const runGitHubAgeBan = async (dryRun, userIds = undefined) => {
+    if (!isDisableDurationValid(form.duration_minutes)) {
+      showError(t('禁用时长必须为有效范围内的非负整数'));
+      return false;
+    }
     if (!Number.isFinite(threshold) || normalizedThreshold <= 0) {
       showError(t('GitHub 账号年龄阈值必须大于 0'));
       return;
@@ -2078,6 +2096,7 @@ function GitHubAgeBanCard({ onApplied }) {
           user_id_start: normalizedUserIdStart,
           user_id_end: normalizedUserIdEnd,
           reason: form.reason,
+          duration_minutes: Number(form.duration_minutes),
           dry_run: dryRun,
           ...(Array.isArray(userIds) ? { user_ids: userIds } : {}),
         },
@@ -2117,6 +2136,7 @@ function GitHubAgeBanCard({ onApplied }) {
           </div>
           <div className='text-semi-color-text-1 break-words'>
             {t('封禁原因')}：{form.reason?.trim() || t('使用默认封禁原因')}
+            <div>{disableDurationText(form.duration_minutes, t)}</div>
           </div>
           <div className='text-semi-color-text-1 break-words'>
             {t('用户 ID 范围')}：
@@ -2224,6 +2244,12 @@ function GitHubAgeBanCard({ onApplied }) {
             {t('留空表示不限用户 ID 范围')}
           </div>
         </label>
+        <DisableDurationInput
+          value={form.duration_minutes}
+          onChange={(value) => patchForm({ duration_minutes: value })}
+          t={t}
+          disabled={loading}
+        />
         <label className='space-y-2'>
           <Text>{t('封禁原因')}</Text>
           <TextArea
@@ -2388,6 +2414,14 @@ function UsersPanel({ data }) {
   const formatUserValue = (value, key, t, record) => {
     if (key === 'status') {
       return formatUserStatus(value, t, record);
+    }
+    if (key === 'disable_reason') {
+      return (
+        <div>
+          {value || '-'}
+          <UserDisableInfo user={record} t={t} />
+        </div>
+      );
     }
     if (key === 'quota' || key === 'used_quota') {
       return formatQuotaAsAmount(value, currency);
@@ -3225,8 +3259,10 @@ function RiskUserBanConfirmContent({
   reason,
   onReasonChange,
   onSelectedUserIdsChange,
+  onDurationChange,
 }) {
   const { t } = useTranslation();
+  const [durationMinutes, setDurationMinutes] = useState(0);
   const [selectedUserIds, setSelectedUserIds] = useState(() =>
     users.map((user) => user.user_id),
   );
@@ -3277,6 +3313,17 @@ function RiskUserBanConfirmContent({
         }}
         empty={<Empty description={t('暂无数据')} />}
       />
+      <DisableDurationInput
+        value={durationMinutes}
+        onChange={(value) => {
+          setDurationMinutes(value);
+          onDurationChange(value);
+        }}
+        t={t}
+      />
+      {isDisableDurationValid(durationMinutes) && (
+        <div>{disableDurationText(durationMinutes, t)}</div>
+      )}
       <TextArea
         autosize
         rows={2}
@@ -3525,6 +3572,7 @@ function RiskPanel({ data }) {
       showError(t('该 IP 下没有可封禁用户'));
       return;
     }
+    let durationMinutes = 0;
     let reason = `共享 IP 风控封禁：${ip}`;
     let selectedUserIds = users.map((user) => user.user_id);
     Modal.confirm({
@@ -3534,6 +3582,9 @@ function RiskPanel({ data }) {
           ip={ip}
           users={users}
           reason={reason}
+          onDurationChange={(value) => {
+            durationMinutes = value;
+          }}
           onReasonChange={(value) => {
             reason = value;
           }}
@@ -3545,6 +3596,10 @@ function RiskPanel({ data }) {
       okText: t('确认封禁'),
       cancelText: t('取消'),
       onOk: async () => {
+        if (!isDisableDurationValid(durationMinutes)) {
+          showError(t('禁用时长必须为有效范围内的非负整数'));
+          return false;
+        }
         if (selectedUserIds.length === 0) {
           showError(t('请选择至少一个用户'));
           return false;
@@ -3553,7 +3608,11 @@ function RiskPanel({ data }) {
         try {
           const res = await API.post(
             `/api/enhancements/risk/shared-token-ips/${encodeURIComponent(ip)}/ban-users`,
-            { reason, user_ids: selectedUserIds },
+            {
+              reason,
+              user_ids: selectedUserIds,
+              duration_minutes: Number(durationMinutes),
+            },
             { params: riskParams(1, sharedPageSize, filters, sharedSort) },
           );
           const result = unwrap(res);

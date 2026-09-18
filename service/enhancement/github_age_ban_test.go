@@ -306,3 +306,22 @@ func TestBatchBanYoungGitHubUsersStopsOnRateLimit(t *testing.T) {
 	requireGitHubAgeBanUserStatus(t, 401, common.UserStatusEnabled, "")
 	requireGitHubAgeBanUserStatus(t, 402, common.UserStatusEnabled, "")
 }
+
+func TestGitHubAgeManualBanSharesDuration(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	now := time.Now()
+	seedGitHubAgeBanUser(t, 101, common.RoleCommonUser, common.UserStatusEnabled, "1001")
+	seedGitHubAgeBanUser(t, 102, common.RoleCommonUser, common.UserStatusEnabled, "1002")
+	stubGitHubAgeBanLookup(t, now, map[string]gitHubAgeBanMockResult{
+		"1001": {login: "first", createdAt: now.Add(-10 * time.Second)},
+		"1002": {login: "second", createdAt: now.Add(-10 * time.Second)},
+	})
+	result, err := BatchBanYoungGitHubUsers(context.Background(), GitHubAgeBanRequest{MinimumAgeSeconds: 60, DurationMinutes: 3, Reason: "timed"}, 900)
+	require.NoError(t, err)
+	require.Equal(t, 2, result.Banned)
+	var users []model.User
+	require.NoError(t, model.DB.Order("id").Find(&users).Error)
+	require.Equal(t, int64(3), users[0].DisableDurationMinutes)
+	require.Equal(t, users[0].DisableUntil, users[1].DisableUntil)
+	require.GreaterOrEqual(t, users[0].DisableUntil, now.Unix()+180)
+}

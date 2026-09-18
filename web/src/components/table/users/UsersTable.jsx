@@ -119,6 +119,7 @@ const UsersTable = (usersData) => {
     relatedUserIds = [],
     depth = 2,
     selectAllRelated = false,
+    durationMinutes = 0,
   ) => {
     if (enableDisableAction === 'disable') {
       const success = await batchDisableUsers(
@@ -127,6 +128,7 @@ const UsersTable = (usersData) => {
         reason,
         depth,
         selectAllRelated,
+        durationMinutes,
       );
       if (success) {
         setShowEnableDisableModal(false);

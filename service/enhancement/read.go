@@ -17,6 +17,9 @@ import (
 )
 
 func DashboardOverview() (map[string]interface{}, error) {
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return nil, err
+	}
 	var userCount, enabledUsers, disabledUsers int64
 	var tokenCount, channelCount, redemptionCount int64
 	if err := model.DB.Model(&model.User{}).Count(&userCount).Error; err != nil {
@@ -563,6 +566,9 @@ func sortUserSummaries(items []UserSummary, sortKey string, order string) {
 }
 
 func ListUsers(query ListQuery) (PageResult[UserSummary], error) {
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return PageResult[UserSummary]{}, err
+	}
 	query = normalizeListQuery(query)
 	var users []model.User
 	if err := model.DB.Model(&model.User{}).Omit("password").Order("id DESC").Find(&users).Error; err != nil {
@@ -589,6 +595,9 @@ func ListUsers(query ListQuery) (PageResult[UserSummary], error) {
 }
 
 func UserActivityStats(start int64, end int64) (map[string]interface{}, error) {
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return nil, err
+	}
 	start, end = queryWindow(start, end, MaxAdminQueryWindow)
 	var activeUsers int64
 	if err := model.LOG_DB.Model(&model.Log{}).
@@ -623,6 +632,9 @@ func SoftDeletedUserCount() (int64, error) {
 }
 
 func InvitedUsers(userId int, page int, pageSize int) (PageResult[UserSummary], error) {
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return PageResult[UserSummary]{}, err
+	}
 	page = clampPage(page)
 	pageSize = clampLimit(pageSize)
 	query := model.DB.Model(&model.User{}).Omit("password").Where("inviter_id = ?", userId)

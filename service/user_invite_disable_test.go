@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -469,4 +470,33 @@ func TestNormalizeUserInviteRelationDepth(t *testing.T) {
 	negative := -1
 	_, err = NormalizeUserInviteRelationDepth(&negative)
 	require.Error(t, err)
+}
+
+func TestBatchDisableRelatedUsersSharesDeadlineAndPreservesExistingBan(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+	target := seedUserInviteDisableTestUser(t, db, "duration-target", common.RoleCommonUser, common.UserStatusEnabled, 0)
+	child := seedUserInviteDisableTestUser(t, db, "duration-child", common.RoleCommonUser, common.UserStatusEnabled, target.Id)
+	existing := seedUserInviteDisableTestUser(t, db, "existing", common.RoleCommonUser, common.UserStatusDisabled, target.Id)
+	require.NoError(t, db.Model(&existing).Updates(map[string]interface{}{"disable_until": time.Now().Unix() + 600, "disable_duration_minutes": 10, "disable_reason": "old reason"}).Error)
+	result, err := BatchDisableRelatedUsers(target.Id, []int{child.Id, existing.Id}, "timed review", 2, false, 9999, common.RoleRootUser, 2)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []int{target.Id, child.Id}, result.DisabledIds)
+	require.Equal(t, []int{existing.Id}, result.AlreadyDisabledIds)
+	require.NoError(t, db.First(&target, target.Id).Error)
+	require.NoError(t, db.First(&child, child.Id).Error)
+	require.Equal(t, int64(2), target.DisableDurationMinutes)
+	require.Equal(t, target.DisableUntil, child.DisableUntil)
+	require.NoError(t, db.First(&existing, existing.Id).Error)
+	require.Equal(t, "old reason", existing.DisableReason)
+	require.Equal(t, int64(10), existing.DisableDurationMinutes)
+}
+
+func TestInviteRelationsResolvesExpiredBanBeforeEligibility(t *testing.T) {
+	db := setupUserInviteDisableTestDB(t)
+	target := seedUserInviteDisableTestUser(t, db, "expired-target", common.RoleCommonUser, common.UserStatusDisabled, 0)
+	require.NoError(t, db.Model(&target).Updates(map[string]interface{}{"disable_until": time.Now().Unix() - 1, "disable_duration_minutes": 1}).Error)
+	relations, err := GetUserInviteRelations(target.Id, 2, 9999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.True(t, relations.Target.Selectable)
+	require.Equal(t, common.UserStatusEnabled, relations.Target.Status)
 }

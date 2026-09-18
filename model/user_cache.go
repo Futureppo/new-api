@@ -14,14 +14,16 @@ import (
 )
 
 type UserBase struct {
-	Id            int    `json:"id"`
-	Group         string `json:"group"`
-	Email         string `json:"email"`
-	Quota         int    `json:"quota"`
-	Status        int    `json:"status"`
-	DisableReason string `json:"disable_reason,omitempty"`
-	Username      string `json:"username"`
-	Setting       string `json:"setting"`
+	Id                     int    `json:"id"`
+	Group                  string `json:"group"`
+	Email                  string `json:"email"`
+	Quota                  int    `json:"quota"`
+	Status                 int    `json:"status"`
+	DisableReason          string `json:"disable_reason,omitempty"`
+	DisableDurationMinutes int64  `json:"disable_duration_minutes"`
+	DisableUntil           int64  `json:"disable_until"`
+	Username               string `json:"username"`
+	Setting                string `json:"setting"`
 }
 
 func (user *UserBase) WriteContext(c *gin.Context) {
@@ -94,7 +96,7 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
-	if err == nil {
+	if err == nil && !(userCache.Status == common.UserStatusDisabled && userCache.DisableUntil > 0 && userCache.DisableUntil <= time.Now().Unix()) {
 		return userCache, nil
 	}
 
@@ -107,14 +109,16 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 
 	// Create cache object from user data
 	userCache = &UserBase{
-		Id:            user.Id,
-		Group:         user.Group,
-		Quota:         user.Quota,
-		Status:        user.Status,
-		DisableReason: user.DisableReason,
-		Username:      user.Username,
-		Setting:       user.Setting,
-		Email:         user.Email,
+		Id:                     user.Id,
+		Group:                  user.Group,
+		Quota:                  user.Quota,
+		Status:                 user.Status,
+		DisableReason:          user.DisableReason,
+		DisableDurationMinutes: user.DisableDurationMinutes,
+		DisableUntil:           user.DisableUntil,
+		Username:               user.Username,
+		Setting:                user.Setting,
+		Email:                  user.Email,
 	}
 
 	return userCache, nil

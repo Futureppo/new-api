@@ -44,14 +44,16 @@ func RecordIPBanUserBan(banId, userId int, bannedIP, reason string) error {
 
 // IPBanRelatedUser 查询结果条目
 type IPBanRelatedUser struct {
-	UserId        int    `json:"user_id"`
-	Username      string `json:"username"`
-	DisplayName   string `json:"display_name"`
-	Email         string `json:"email"`
-	Status        int    `json:"status"`
-	DisableReason string `json:"disable_reason"`
-	BannedIP      string `json:"banned_ip"`
-	BannedAt      int64  `json:"banned_at"`
+	UserId                 int    `json:"user_id"`
+	Username               string `json:"username"`
+	DisplayName            string `json:"display_name"`
+	Email                  string `json:"email"`
+	Status                 int    `json:"status"`
+	DisableReason          string `json:"disable_reason"`
+	DisableDurationMinutes int64  `json:"disable_duration_minutes"`
+	DisableUntil           int64  `json:"disable_until"`
+	BannedIP               string `json:"banned_ip"`
+	BannedAt               int64  `json:"banned_at"`
 }
 
 // GetIPBanRelatedUsersByBanId 按 ban_id 查询该规则关联封禁的账号列表
@@ -61,7 +63,7 @@ func GetIPBanRelatedUsersByBanId(banId int, limit int) ([]IPBanRelatedUser, erro
 	}
 	var rows []IPBanRelatedUser
 	err := DB.Table("ip_ban_user_bans AS b").
-		Select("b.user_id AS user_id, u.username AS username, u.display_name AS display_name, u.email AS email, u.status AS status, u.disable_reason AS disable_reason, b.banned_ip AS banned_ip, b.created_at AS banned_at").
+		Select("b.user_id AS user_id, u.username AS username, u.display_name AS display_name, u.email AS email, u.status AS status, u.disable_reason AS disable_reason, u.disable_duration_minutes AS disable_duration_minutes, u.disable_until AS disable_until, b.banned_ip AS banned_ip, b.created_at AS banned_at").
 		Joins("LEFT JOIN users u ON u.id = b.user_id").
 		Where("b.ban_id = ?", banId).
 		Order("b.created_at DESC").

@@ -312,6 +312,10 @@ func PasskeyLoginFinish(c *gin.Context) {
 		return
 	}
 
+	if err := model.ResolveUserDisableExpiry(modelUser, time.Now().Unix()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if modelUser.Status != common.UserStatusEnabled {
 		respondUserDisabled(c, modelUser)
 		return
@@ -509,7 +513,7 @@ func getSessionUser(c *gin.Context) (*model.User, error) {
 		return nil, err
 	}
 	if user.Status != common.UserStatusEnabled {
-		return nil, errors.New("该用户已被禁用")
+		return nil, errors.New(userDisabledMessage(c, user))
 	}
 	return user, nil
 }

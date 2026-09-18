@@ -50,6 +50,9 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		UserIdEnd:         req.UserIdEnd,
 		MatchedUsers:      []GitHubAgeBanUser{},
 	}
+	if _, err := model.NewUserDisablePeriod(int64(req.DurationMinutes), time.Now().Unix()); err != nil {
+		return result, err
+	}
 	if req.MinimumAgeSeconds <= 0 {
 		return result, errors.New("minimum_age_seconds must be greater than 0")
 	}
@@ -70,6 +73,9 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		return result, errors.New("user_ids cannot be empty")
 	}
 
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return result, err
+	}
 	var candidates []model.User
 	query := model.DB.Omit("password").
 		Where("role = ? AND status = ? AND github_id <> ?", common.RoleCommonUser, common.UserStatusEnabled, "").
@@ -134,7 +140,11 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		return result, nil
 	}
 
-	bannedIDs, err := applyGitHubAgeBan(matchedIDs, matchedUsersByID, reason, &result)
+	period, err := model.NewUserDisablePeriod(int64(req.DurationMinutes), time.Now().Unix())
+	if err != nil {
+		return result, err
+	}
+	bannedIDs, err := applyGitHubAgeBan(matchedIDs, matchedUsersByID, reason, &result, period)
 	if err != nil {
 		return result, err
 	}
@@ -145,14 +155,16 @@ func BatchBanYoungGitHubUsers(ctx context.Context, req GitHubAgeBanRequest, oper
 		_ = model.InvalidateUserTokensCache(userID)
 	}
 	audit(operatorId, "enhancements.users", "github_age_batch_ban", map[string]interface{}{
-		"minimum_age_seconds": req.MinimumAgeSeconds,
-		"matched":             result.Matched,
-		"banned":              result.Banned,
-		"reason":              reason,
-		"rate_limited":        result.RateLimited,
-		"selected":            len(selectedIDSet) > 0,
-		"user_id_start":       req.UserIdStart,
-		"user_id_end":         req.UserIdEnd,
+		"minimum_age_seconds":      req.MinimumAgeSeconds,
+		"matched":                  result.Matched,
+		"banned":                   result.Banned,
+		"reason":                   reason,
+		"disable_duration_minutes": period.Minutes,
+		"disable_until":            period.Until,
+		"rate_limited":             result.RateLimited,
+		"selected":                 len(selectedIDSet) > 0,
+		"user_id_start":            req.UserIdStart,
+		"user_id_end":              req.UserIdEnd,
 	})
 	return result, nil
 }
@@ -193,13 +205,17 @@ func normalizeGitHubAgeBanUserIDs(ids []int) (map[int]bool, []int) {
 	return idSet, normalized
 }
 
-func applyGitHubAgeBan(matchedIDs []int, matchedUsers map[int]model.User, reason string, result *GitHubAgeBanResult) ([]int, error) {
+func applyGitHubAgeBan(matchedIDs []int, matchedUsers map[int]model.User, reason string, result *GitHubAgeBanResult, periods ...model.UserDisablePeriod) ([]int, error) {
+	period := model.UserDisablePeriod{}
+	if len(periods) > 0 {
+		period = periods[0]
+	}
 	bannedIDs := make([]int, 0, len(matchedIDs))
 	err := model.DB.Transaction(func(tx *gorm.DB) error {
 		for _, userID := range matchedIDs {
 			statusUpdate := tx.Model(&model.User{}).
 				Where("id = ? AND role = ? AND status = ?", userID, common.RoleCommonUser, common.UserStatusEnabled).
-				UpdateColumn("status", common.UserStatusDisabled)
+				Updates(period.Updates(reason))
 			if statusUpdate.Error != nil {
 				return statusUpdate.Error
 			}
@@ -208,11 +224,6 @@ func applyGitHubAgeBan(matchedIDs []int, matchedUsers map[int]model.User, reason
 					appendGitHubAgeBanFailure(result, user, "user was not enabled when applying ban")
 				}
 				continue
-			}
-			if err := tx.Model(&model.User{}).
-				Where("id = ? AND status = ?", userID, common.UserStatusDisabled).
-				UpdateColumn("disable_reason", reason).Error; err != nil {
-				return err
 			}
 			bannedIDs = append(bannedIDs, userID)
 		}

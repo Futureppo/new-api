@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import { UserDisableInfo } from '../../common/UserDisableInfo';
 import React from 'react';
 import {
   Button,
@@ -135,6 +136,7 @@ const renderStatistics = (text, record, showEnableDisableModal, t) => {
       <Tooltip content={tooltipContent} position='top'>
         {content}
       </Tooltip>
+      <UserDisableInfo user={isDeleted ? null : record} t={t} />
       {disableReason ? (
         <Tooltip content={disableReason} position='top'>
           <span className='max-w-[140px] truncate text-xs text-red-600 dark:text-red-400'>

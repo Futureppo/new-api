@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  DisableDurationInput,
+  isDisableDurationValid,
+} from '../../common/UserDisableInfo';
 import React, { useState } from 'react';
 import {
   Button,
@@ -47,6 +51,7 @@ const UsersActions = ({
 }) => {
   const [pendingAction, setPendingAction] = useState('');
   const [disableReason, setDisableReason] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState(0);
   const [reasonError, setReasonError] = useState(false);
 
   // Add new user
@@ -56,6 +61,7 @@ const UsersActions = ({
 
   const openBatchAction = (action) => {
     setDisableReason('');
+    setDurationMinutes(0);
     setReasonError(false);
     setPendingAction(action);
   };
@@ -107,6 +113,11 @@ const UsersActions = ({
 
   const handleConfirmBatchAction = async () => {
     const reason = disableReason.trim();
+    if (
+      pendingAction === 'disable_enabled' &&
+      !isDisableDurationValid(durationMinutes)
+    )
+      return false;
     if (pendingAction === 'disable_enabled' && !reason) {
       setReasonError(true);
       return false;
@@ -115,7 +126,11 @@ const UsersActions = ({
     const succeeded =
       pendingAction === 'purge_soft_deleted'
         ? await purgeSoftDeletedUsers()
-        : await batchManageUsers(pendingAction, reason);
+        : await batchManageUsers(
+            pendingAction,
+            reason,
+            Number(durationMinutes),
+          );
     if (succeeded) {
       setPendingAction('');
     }
@@ -199,7 +214,12 @@ const UsersActions = ({
         closeOnEsc={!isLoading}
         confirmLoading={isLoading}
         maskClosable={false}
-        okButtonProps={{ type: currentAction?.danger ? 'danger' : 'primary' }}
+        okButtonProps={{
+          type: currentAction?.danger ? 'danger' : 'primary',
+          disabled:
+            pendingAction === 'disable_enabled' &&
+            !isDisableDurationValid(durationMinutes),
+        }}
         okText={currentAction?.okText}
         onCancel={closeBatchAction}
         onOk={handleConfirmBatchAction}
@@ -215,7 +235,13 @@ const UsersActions = ({
               )}
             </Text>
             {pendingAction === 'disable_enabled' && (
-              <div className='w-full'>
+              <div className='w-full space-y-3'>
+                <DisableDurationInput
+                  value={durationMinutes}
+                  onChange={setDurationMinutes}
+                  t={t}
+                  disabled={isLoading}
+                />
                 <TextArea
                   maxLength={MAX_DISABLE_REASON_LENGTH}
                   onChange={(value) => {

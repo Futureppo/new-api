@@ -4909,7 +4909,12 @@
     "配置 {{key}} 必须是模型名称到有限数字的 JSON 对象": "Cấu hình {{key}} phải là đối tượng JSON ánh xạ tên mô hình tới số hữu hạn",
     "确认保存": "Xác nhận lưu",
     "音频输出价格": "Giá đầu ra âm thanh",
-    "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Đầu ra âm thanh: {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}"
+    "音频输出：{{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}": "Đầu ra âm thanh: {{tokens}} / 1M * {{price}} * {{ratioType}} {{ratio}} = {{amount}}",
+    "禁用时长（分钟）": "Thời hạn khóa (phút)",
+    "0 为永久封禁，到期自动解禁": "0 là khóa vĩnh viễn; tự động mở khóa khi hết hạn",
+    "禁用时长必须为有效范围内的非负整数": "Thời hạn khóa phải là số nguyên không âm trong phạm vi hợp lệ",
+    "封禁 {{minutes}} 分钟": "Khóa trong {{minutes}} phút",
+    "解禁时间": "Thời điểm mở khóa"
   },
   "??": "T?t",
   "0.5h": "0.5h",

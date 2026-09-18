@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -430,6 +431,10 @@ func Verify2FALogin(c *gin.Context) {
 			"success": false,
 			"message": "用户不存在",
 		})
+		return
+	}
+	if err := model.ResolveUserDisableExpiry(user, time.Now().Unix()); err != nil {
+		common.ApiError(c, err)
 		return
 	}
 	if user.Status != common.UserStatusEnabled {

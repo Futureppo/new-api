@@ -1,6 +1,10 @@
 package enhancement
 
-import "time"
+import (
+	"time"
+
+	"github.com/QuantumNous/new-api/dto"
+)
 
 const (
 	DefaultPageSize       = 20
@@ -94,35 +98,38 @@ type TokenSummary struct {
 }
 
 type UserSummary struct {
-	Id                int    `json:"id"`
-	Username          string `json:"username"`
-	DisplayName       string `json:"display_name"`
-	Role              int    `json:"role"`
-	Status            int    `json:"status"`
-	DisableReason     string `json:"disable_reason,omitempty"`
-	Email             string `json:"email"`
-	GitHubId          string `json:"github_id,omitempty"`
-	Quota             int    `json:"quota"`
-	UsedQuota         int    `json:"used_quota"`
-	RequestCount      int    `json:"request_count"`
-	TodayRequestCount int64  `json:"today_request_count"`
-	TodayUsedTokens   int64  `json:"today_used_tokens"`
-	Group             string `json:"group"`
-	InviterId         int    `json:"inviter_id"`
-	AffCode           string `json:"aff_code,omitempty"`
-	AffCount          int    `json:"aff_count"`
-	RedemptionCount   int    `json:"redemption_count"`
-	RedemptionCodes   string `json:"redemption_codes,omitempty"`
-	LinuxDOId         string `json:"linux_do_id,omitempty"`
+	Id                     int    `json:"id"`
+	Username               string `json:"username"`
+	DisplayName            string `json:"display_name"`
+	Role                   int    `json:"role"`
+	Status                 int    `json:"status"`
+	DisableReason          string `json:"disable_reason,omitempty"`
+	DisableDurationMinutes int64  `json:"disable_duration_minutes"`
+	DisableUntil           int64  `json:"disable_until"`
+	Email                  string `json:"email"`
+	GitHubId               string `json:"github_id,omitempty"`
+	Quota                  int    `json:"quota"`
+	UsedQuota              int    `json:"used_quota"`
+	RequestCount           int    `json:"request_count"`
+	TodayRequestCount      int64  `json:"today_request_count"`
+	TodayUsedTokens        int64  `json:"today_used_tokens"`
+	Group                  string `json:"group"`
+	InviterId              int    `json:"inviter_id"`
+	AffCode                string `json:"aff_code,omitempty"`
+	AffCount               int    `json:"aff_count"`
+	RedemptionCount        int    `json:"redemption_count"`
+	RedemptionCodes        string `json:"redemption_codes,omitempty"`
+	LinuxDOId              string `json:"linux_do_id,omitempty"`
 }
 
 type GitHubAgeBanRequest struct {
-	MinimumAgeSeconds int64  `json:"minimum_age_seconds"`
-	Reason            string `json:"reason"`
-	DryRun            bool   `json:"dry_run"`
-	UserIds           []int  `json:"user_ids,omitempty"`
-	UserIdStart       int    `json:"user_id_start,omitempty"`
-	UserIdEnd         int    `json:"user_id_end,omitempty"`
+	DurationMinutes   dto.UserDisableDurationMinutes `json:"duration_minutes,omitempty"`
+	MinimumAgeSeconds int64                          `json:"minimum_age_seconds"`
+	Reason            string                         `json:"reason"`
+	DryRun            bool                           `json:"dry_run"`
+	UserIds           []int                          `json:"user_ids,omitempty"`
+	UserIdStart       int                            `json:"user_id_start,omitempty"`
+	UserIdEnd         int                            `json:"user_id_end,omitempty"`
 }
 
 type GitHubAgeBanUser struct {
@@ -292,8 +299,9 @@ type BatchIDsRequest struct {
 }
 
 type BanUserRequest struct {
-	Reason  string `json:"reason"`
-	UserIds *[]int `json:"user_ids,omitempty"`
+	DurationMinutes dto.UserDisableDurationMinutes `json:"duration_minutes,omitempty"`
+	Reason          string                         `json:"reason"`
+	UserIds         *[]int                         `json:"user_ids,omitempty"`
 }
 
 type RiskIPBanRequest struct {

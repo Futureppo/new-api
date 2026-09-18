@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -496,7 +497,7 @@ func TestBanSharedTokenIPUsersLimitsToSelectedIntersectedUsers(t *testing.T) {
 	}).Error)
 	selected := []int{second.Id, third.Id, 99999}
 
-	result, err := BanSharedTokenIPUsers("203.0.113.7", IPRiskQuery{Start: now - 60, End: now + 1}, 900, common.RoleRootUser, "selected risk", &selected)
+	result, err := BanSharedTokenIPUsers("203.0.113.7", IPRiskQuery{Start: now - 60, End: now + 1}, 900, common.RoleRootUser, "selected risk", &selected, 5)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, result["success"])
@@ -507,6 +508,8 @@ func TestBanSharedTokenIPUsersLimitsToSelectedIntersectedUsers(t *testing.T) {
 	require.Equal(t, common.UserStatusEnabled, users[0].Status)
 	require.Equal(t, common.UserStatusDisabled, users[1].Status)
 	require.Equal(t, "selected risk", users[1].DisableReason)
+	require.Equal(t, int64(5), users[1].DisableDurationMinutes)
+	require.GreaterOrEqual(t, users[1].DisableUntil, now+300)
 	require.Equal(t, common.UserStatusEnabled, users[2].Status)
 }
 
@@ -531,4 +534,39 @@ func TestBanSharedTokenIPUsersWithoutSelectionKeepsExistingAllUsersBehavior(t *t
 	var disabled int64
 	require.NoError(t, model.DB.Model(&model.User{}).Where("id IN ? AND status = ?", []int{first.Id, second.Id}, common.UserStatusDisabled).Count(&disabled).Error)
 	require.Equal(t, int64(2), disabled)
+}
+
+func TestManualBanAndEnableResetAllDisableFields(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	user := model.User{Username: "timed-user", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&user).Error)
+	require.NoError(t, BanUser(user.Id, 999, common.RoleRootUser, "timed", 5))
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	require.Equal(t, int64(5), user.DisableDurationMinutes)
+	require.Greater(t, user.DisableUntil, time.Now().Unix())
+	require.NoError(t, BanUser(user.Id, 999, common.RoleRootUser, "permanent"))
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	require.Zero(t, user.DisableUntil)
+	require.Zero(t, user.DisableDurationMinutes)
+	require.NoError(t, UnbanUser(user.Id, 999, common.RoleRootUser))
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	require.Empty(t, user.DisableReason)
+	require.Equal(t, common.UserStatusEnabled, user.Status)
+}
+
+func TestBatchUserDisableExpiryProtectsFromDeletion(t *testing.T) {
+	setupUserPurgeTestDB(t)
+	user := model.User{Username: "batch-timed", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
+	require.NoError(t, model.DB.Create(&user).Error)
+	result, err := BatchManageUsers("disable_enabled", "timed", 999, common.RoleRootUser, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), result.Affected)
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	require.Equal(t, int64(2), user.DisableDurationMinutes)
+	require.NoError(t, model.DB.Model(&user).Update("disable_until", time.Now().Unix()-1).Error)
+	result, err = BatchManageUsers("delete_disabled", "", 999, common.RoleRootUser)
+	require.NoError(t, err)
+	require.Zero(t, result.Affected)
+	require.NoError(t, model.DB.First(&user, user.Id).Error)
+	require.Equal(t, common.UserStatusEnabled, user.Status)
 }

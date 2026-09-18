@@ -17,6 +17,11 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  DisableDurationInput,
+  disableDurationText,
+  isDisableDurationValid,
+} from '../../../common/UserDisableInfo';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Banner,
@@ -78,6 +83,7 @@ const EnableDisableUserModal = ({
   const isDisable = action === 'disable';
   const [step, setStep] = useState('details');
   const [reason, setReason] = useState('');
+  const [durationMinutes, setDurationMinutes] = useState(0);
   const [relations, setRelations] = useState(null);
   const [relationsLoading, setRelationsLoading] = useState(false);
   const [relationsError, setRelationsError] = useState('');
@@ -96,6 +102,7 @@ const EnableDisableUserModal = ({
     if (visible) {
       setStep(isDisable ? 'details' : 'confirm');
       setReason('');
+      setDurationMinutes(0);
       setRelations(null);
       setRelationsError('');
       setSelectedRowKeys([]);
@@ -245,6 +252,7 @@ const EnableDisableUserModal = ({
 
   const targetSelectable = Boolean(relations?.target?.selectable);
   const canContinue =
+    isDisableDurationValid(durationMinutes) &&
     Boolean(trimmedReason) &&
     Boolean(relations) &&
     !relationsLoading &&
@@ -312,6 +320,7 @@ const EnableDisableUserModal = ({
         relatedUserIds,
         appliedQueryDepth,
         !selectionModified,
+        Number(durationMinutes),
       );
     } finally {
       setSubmitting(false);
@@ -521,6 +530,11 @@ const EnableDisableUserModal = ({
         {t('目标用户固定选中；查询范围内可封禁的关联用户已默认选中。')}
       </Text>
       {renderRelations()}
+      <DisableDurationInput
+        value={durationMinutes}
+        onChange={setDurationMinutes}
+        t={t}
+      />
       <Text>{t('请填写统一禁用原因，所选用户下次登录时将看到该原因。')}</Text>
       <TextArea
         value={reason}
@@ -581,6 +595,10 @@ const EnableDisableUserModal = ({
         </div>
       </div>
       <div>
+        <div className='mb-2'>
+          <Text strong>{t('禁用时长（分钟）')}：</Text>
+          <Text>{disableDurationText(durationMinutes, t)}</Text>
+        </div>
         <Text strong>{t('禁用原因')}：</Text>
         <Text>{trimmedReason}</Text>
       </div>

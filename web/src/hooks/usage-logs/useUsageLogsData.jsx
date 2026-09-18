@@ -186,7 +186,9 @@ export const useLogsData = ({
   };
 
   // Column visibility state
-  const [visibleColumns, setVisibleColumns] = useState(getInitialVisibleColumns);
+  const [visibleColumns, setVisibleColumns] = useState(
+    getInitialVisibleColumns,
+  );
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [billingDisplayMode, setBillingDisplayMode] = useState(
     getInitialBillingDisplayMode,
@@ -401,7 +403,13 @@ export const useLogsData = ({
     setShowDisableUserModal(false);
   };
 
-  const disableUserFromInfoModal = async (reason) => {
+  const disableUserFromInfoModal = async (
+    reason,
+    _relatedUserIds,
+    _depth,
+    _selectAllRelated,
+    durationMinutes = 0,
+  ) => {
     if (!isAdminUser || !userInfoData?.id) {
       return;
     }
@@ -410,6 +418,7 @@ export const useLogsData = ({
         id: userInfoData.id,
         action: 'disable',
         reason,
+        duration_minutes: durationMinutes,
       });
       const { success, message, data } = res.data;
       if (success) {
@@ -419,6 +428,8 @@ export const useLogsData = ({
             ? {
                 ...prev,
                 status: data?.status ?? 2,
+                disable_duration_minutes: data?.disable_duration_minutes ?? 0,
+                disable_until: data?.disable_until ?? 0,
                 disable_reason: data?.disable_reason || reason || '',
               }
             : prev,
@@ -477,7 +488,10 @@ export const useLogsData = ({
       let other = getLogOther(logs[i].other);
       let expandDataLocal = [];
 
-      if (isAdminUser && (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)) {
+      if (
+        isAdminUser &&
+        (logs[i].type === 0 || logs[i].type === 2 || logs[i].type === 6)
+      ) {
         expandDataLocal.push({
           key: t('渠道信息'),
           value: `${logs[i].channel} - ${logs[i].channel_name || '[未知]'}`,
@@ -510,7 +524,14 @@ export const useLogsData = ({
           expandDataLocal.push({
             key: t('错误'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.error}
               </div>
             ),
@@ -552,7 +573,10 @@ export const useLogsData = ({
           expandDataLocal.push({
             key: t('日志详情'),
             value: other?.claude
-              ? renderClaudeLogContent({ ...other, displayMode: billingDisplayMode })
+              ? renderClaudeLogContent({
+                  ...other,
+                  displayMode: billingDisplayMode,
+                })
               : renderLogContent({ ...other, displayMode: billingDisplayMode }),
           });
         }
@@ -649,7 +673,14 @@ export const useLogsData = ({
           expandDataLocal.push({
             key: t('失败原因'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'normal',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {other.reason}
               </div>
             ),
@@ -666,7 +697,8 @@ export const useLogsData = ({
         const ss = other.stream_status;
         const isOk = ss.status === 'ok';
         const statusLabel = isOk ? '✓ ' + t('正常') : '✗ ' + t('异常');
-        let streamValue = statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
+        let streamValue =
+          statusLabel + ' (' + (ss.end_reason || 'unknown') + ')';
         if (ss.error_count > 0) {
           streamValue += ` [${t('软错误')}: ${ss.error_count}]`;
         }
@@ -681,7 +713,14 @@ export const useLogsData = ({
           expandDataLocal.push({
             key: t('流错误详情'),
             value: (
-              <div style={{ maxWidth: 600, whiteSpace: 'pre-line', wordBreak: 'break-word', lineHeight: 1.6 }}>
+              <div
+                style={{
+                  maxWidth: 600,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.6,
+                }}
+              >
                 {ss.errors.join('\n')}
               </div>
             ),
@@ -877,10 +916,10 @@ export const useLogsData = ({
       enforcedLogType !== null
         ? enforcedLogType
         : customLogType !== null
-        ? customLogType
-        : formLogType !== undefined
-          ? formLogType
-          : logType;
+          ? customLogType
+          : formLogType !== undefined
+            ? formLogType
+            : logType;
 
     let localStartTimestamp = Date.parse(start_timestamp) / 1000;
     let localEndTimestamp = Date.parse(end_timestamp) / 1000;

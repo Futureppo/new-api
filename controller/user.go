@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -104,13 +105,7 @@ func normalizeDisableReason(reason string) string {
 }
 
 func userDisabledMessage(c *gin.Context, user *model.User) string {
-	reason := normalizeDisableReason(user.DisableReason)
-	if reason == "" {
-		return common.TranslateMessage(c, i18n.MsgUserDisabled)
-	}
-	return common.TranslateMessage(c, i18n.MsgUserDisabledWithReason, map[string]any{
-		"Reason": reason,
-	})
+	return service.UserDisabledMessage(c, user.ToBaseUser(), i18n.MsgUserDisabled)
 }
 
 func respondUserDisabled(c *gin.Context, user *model.User) {
@@ -1003,24 +998,27 @@ func CreateUser(c *gin.Context) {
 }
 
 type ManageRequest struct {
-	Id     int    `json:"id"`
-	Action string `json:"action"`
-	Value  int    `json:"value"`
-	Mode   string `json:"mode"`
-	Reason string `json:"reason,omitempty"`
+	DurationMinutes dto.UserDisableDurationMinutes `json:"duration_minutes,omitempty"`
+	Id              int                            `json:"id"`
+	Action          string                         `json:"action"`
+	Value           int                            `json:"value"`
+	Mode            string                         `json:"mode"`
+	Reason          string                         `json:"reason,omitempty"`
 }
 
 type BatchDisableRelatedUsersRequest struct {
-	Id               int    `json:"id"`
-	RelatedUserIds   []int  `json:"related_user_ids"`
-	Reason           string `json:"reason"`
-	Depth            *int   `json:"depth,omitempty"`
-	SelectAllRelated *bool  `json:"select_all_related,omitempty"`
+	DurationMinutes  dto.UserDisableDurationMinutes `json:"duration_minutes,omitempty"`
+	Id               int                            `json:"id"`
+	RelatedUserIds   []int                          `json:"related_user_ids"`
+	Reason           string                         `json:"reason"`
+	Depth            *int                           `json:"depth,omitempty"`
+	SelectAllRelated *bool                          `json:"select_all_related,omitempty"`
 }
 
 type BatchManageUsersRequest struct {
-	Action string `json:"action"`
-	Reason string `json:"reason,omitempty"`
+	DurationMinutes dto.UserDisableDurationMinutes `json:"duration_minutes,omitempty"`
+	Action          string                         `json:"action"`
+	Reason          string                         `json:"reason,omitempty"`
 }
 
 func BatchDisableRelatedUsers(c *gin.Context) {
@@ -1042,6 +1040,7 @@ func BatchDisableRelatedUsers(c *gin.Context) {
 		req.SelectAllRelated != nil && *req.SelectAllRelated,
 		c.GetInt("id"),
 		c.GetInt("role"),
+		int64(req.DurationMinutes),
 	)
 	if err != nil {
 		common.ApiError(c, err)
@@ -1056,7 +1055,7 @@ func BatchManageUsers(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	result, err := enhancement.BatchManageUsers(req.Action, req.Reason, c.GetInt("id"), c.GetInt("role"))
+	result, err := enhancement.BatchManageUsers(req.Action, req.Reason, c.GetInt("id"), c.GetInt("role"), int64(req.DurationMinutes))
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -1075,10 +1074,18 @@ func ManageUser(c *gin.Context) {
 		Id: req.Id,
 	}
 	// Fill attributes
-	model.DB.Unscoped().Where(&user).First(&user)
-	if user.Id == 0 {
-		common.ApiErrorI18n(c, i18n.MsgUserNotExists)
+	if err := model.DB.Unscoped().First(&user, "id = ?", req.Id).Error; err != nil {
+		common.ApiError(c, err)
 		return
+	}
+	var disablePeriod model.UserDisablePeriod
+	if req.Action == "disable" {
+		var err error
+		disablePeriod, err = model.NewUserDisablePeriod(int64(req.DurationMinutes), time.Now().Unix())
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	myRole := c.GetInt("role")
 	if myRole <= user.Role && myRole != common.RoleRootUser {
@@ -1182,20 +1189,32 @@ func ManageUser(c *gin.Context) {
 		return
 	}
 
-	if err := user.Update(false); err != nil {
-		common.ApiError(c, err)
-		return
-	}
 	if req.Action == "disable" || req.Action == "enable" {
-		if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("disable_reason", user.DisableReason).Error; err != nil {
+		updates := model.UserEnableUpdates()
+		if req.Action == "disable" {
+			updates = disablePeriod.Updates(user.DisableReason)
+		}
+		if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Updates(updates).Error; err != nil {
 			common.ApiError(c, err)
 			return
 		}
+		if req.Action == "disable" {
+			user.DisableDurationMinutes = disablePeriod.Minutes
+			user.DisableUntil = disablePeriod.Until
+		} else {
+			user.DisableDurationMinutes = 0
+			user.DisableUntil = 0
+		}
+	} else if err := user.Update(false); err != nil {
+		common.ApiError(c, err)
+		return
 	}
 	if req.Action == "disable" {
 		adminInfo := map[string]interface{}{
-			"admin_id":       c.GetInt("id"),
-			"admin_username": c.GetString("username"),
+			"disable_duration_minutes": user.DisableDurationMinutes,
+			"disable_until":            user.DisableUntil,
+			"admin_id":                 c.GetInt("id"),
+			"admin_username":           c.GetString("username"),
 		}
 		logReason := user.DisableReason
 		if logReason == "" {
@@ -1217,9 +1236,11 @@ func ManageUser(c *gin.Context) {
 		}
 	}
 	clearUser := model.User{
-		Role:          user.Role,
-		Status:        user.Status,
-		DisableReason: user.DisableReason,
+		Role:                   user.Role,
+		Status:                 user.Status,
+		DisableReason:          user.DisableReason,
+		DisableDurationMinutes: user.DisableDurationMinutes,
+		DisableUntil:           user.DisableUntil,
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

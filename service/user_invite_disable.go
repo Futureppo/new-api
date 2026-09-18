@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -33,17 +34,19 @@ const (
 )
 
 type InviteRelationUser struct {
-	Id                int    `json:"id"`
-	Username          string `json:"username"`
-	DisplayName       string `json:"display_name"`
-	Role              int    `json:"role"`
-	Status            int    `json:"status"`
-	Deleted           bool   `json:"deleted"`
-	DisableReason     string `json:"disable_reason,omitempty"`
-	Selectable        bool   `json:"selectable"`
-	UnavailableReason string `json:"unavailable_reason,omitempty"`
-	Depth             int    `json:"depth"`
-	RelationType      string `json:"relation_type"`
+	Id                     int    `json:"id"`
+	Username               string `json:"username"`
+	DisplayName            string `json:"display_name"`
+	Role                   int    `json:"role"`
+	Status                 int    `json:"status"`
+	Deleted                bool   `json:"deleted"`
+	DisableReason          string `json:"disable_reason,omitempty"`
+	DisableDurationMinutes int64  `json:"disable_duration_minutes"`
+	DisableUntil           int64  `json:"disable_until"`
+	Selectable             bool   `json:"selectable"`
+	UnavailableReason      string `json:"unavailable_reason,omitempty"`
+	Depth                  int    `json:"depth"`
+	RelationType           string `json:"relation_type"`
 }
 
 type UserInviteRelations struct {
@@ -79,6 +82,8 @@ func relationUserQuery(db *gorm.DB) *gorm.DB {
 		"role",
 		"status",
 		"disable_reason",
+		"disable_duration_minutes",
+		"disable_until",
 		"inviter_id",
 		"deleted_at",
 	)
@@ -267,21 +272,26 @@ func toInviteRelationUser(
 ) InviteRelationUser {
 	selectable, unavailableReason := userDisableEligibility(user, operatorId, operatorRole)
 	return InviteRelationUser{
-		Id:                user.Id,
-		Username:          user.Username,
-		DisplayName:       user.DisplayName,
-		Role:              user.Role,
-		Status:            user.Status,
-		Deleted:           user.DeletedAt.Valid,
-		DisableReason:     user.DisableReason,
-		Selectable:        selectable,
-		UnavailableReason: unavailableReason,
-		Depth:             depth,
-		RelationType:      relationType,
+		Id:                     user.Id,
+		Username:               user.Username,
+		DisplayName:            user.DisplayName,
+		Role:                   user.Role,
+		Status:                 user.Status,
+		Deleted:                user.DeletedAt.Valid,
+		DisableReason:          user.DisableReason,
+		DisableDurationMinutes: user.DisableDurationMinutes,
+		DisableUntil:           user.DisableUntil,
+		Selectable:             selectable,
+		UnavailableReason:      unavailableReason,
+		Depth:                  depth,
+		RelationType:           relationType,
 	}
 }
 
 func GetUserInviteRelations(userId int, depth int, operatorId int, operatorRole int) (UserInviteRelations, error) {
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
+		return UserInviteRelations{}, err
+	}
 	snapshot, err := loadUserInviteRelationSnapshot(model.DB, userId, depth)
 	if err != nil {
 		return UserInviteRelations{}, err
@@ -335,9 +345,22 @@ func BatchDisableRelatedUsers(
 	selectAllRelated bool,
 	operatorId int,
 	operatorRole int,
+	durationMinutes ...int64,
 ) (BatchDisableRelatedUsersResult, error) {
+	minutes := int64(0)
+	if len(durationMinutes) > 0 {
+		minutes = durationMinutes[0]
+	}
+	period, err := model.NewUserDisablePeriod(minutes, time.Now().Unix())
+	if err != nil {
+		return BatchDisableRelatedUsersResult{}, err
+	}
 	normalizedReason, err := normalizeBatchDisableReason(reason)
 	if err != nil {
+		return BatchDisableRelatedUsersResult{}, err
+	}
+
+	if err := model.ExpireDueUserDisables(time.Now().Unix()); err != nil {
 		return BatchDisableRelatedUsersResult{}, err
 	}
 
@@ -414,6 +437,11 @@ func BatchDisableRelatedUsers(
 			disabledUsers[userId] = user
 		}
 
+		// Start the countdown after relation discovery and selection validation.
+		period, err = model.NewUserDisablePeriod(minutes, time.Now().Unix())
+		if err != nil {
+			return err
+		}
 		for start := 0; start < len(result.DisabledIds); start += userDisableUpdateChunkSize {
 			end := start + userDisableUpdateChunkSize
 			if end > len(result.DisabledIds) {
@@ -422,10 +450,7 @@ func BatchDisableRelatedUsers(
 			chunk := result.DisabledIds[start:end]
 			updateResult := tx.Model(&model.User{}).
 				Where("id IN ?", chunk).
-				Updates(map[string]interface{}{
-					"status":         common.UserStatusDisabled,
-					"disable_reason": normalizedReason,
-				})
+				Updates(period.Updates(normalizedReason))
 			if updateResult.Error != nil {
 				return updateResult.Error
 			}
@@ -440,10 +465,12 @@ func BatchDisableRelatedUsers(
 	}
 
 	adminInfo := map[string]interface{}{
-		"admin_id":              operatorId,
-		"batch_target_user_id":  targetId,
-		"invite_relation_depth": depth,
-		"select_all_related":    selectAllRelated,
+		"admin_id":                 operatorId,
+		"batch_target_user_id":     targetId,
+		"disable_duration_minutes": period.Minutes,
+		"disable_until":            period.Until,
+		"invite_relation_depth":    depth,
+		"select_all_related":       selectAllRelated,
 	}
 	if adminUsername, err := model.GetUsernameById(operatorId, false); err == nil {
 		adminInfo["admin_username"] = adminUsername

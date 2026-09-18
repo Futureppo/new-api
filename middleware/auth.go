@@ -33,26 +33,8 @@ func validUserInfo(username string, role int) bool {
 	return true
 }
 
-func authUserBannedMessage(c *gin.Context, reason string) string {
-	reason = strings.TrimSpace(reason)
-	if reason == "" {
-		return common.TranslateMessage(c, i18n.MsgAuthUserBanned)
-	}
-	return common.TranslateMessage(c, i18n.MsgUserDisabledWithReason, map[string]any{
-		"Reason": reason,
-	})
-}
-
-func authUserDisableReason(userId int, reason string) string {
-	reason = strings.TrimSpace(reason)
-	if reason != "" || userId <= 0 {
-		return reason
-	}
-	user, err := model.GetUserById(userId, false)
-	if err != nil || user.Status != common.UserStatusDisabled {
-		return ""
-	}
-	return strings.TrimSpace(user.DisableReason)
+func authUserBannedMessage(c *gin.Context, user *model.UserBase) string {
+	return service.UserDisabledMessage(c, user, i18n.MsgAuthUserBanned)
 }
 
 func authHelper(c *gin.Context, minRole int) {
@@ -60,8 +42,7 @@ func authHelper(c *gin.Context, minRole int) {
 	username := session.Get("username")
 	role := session.Get("role")
 	id := session.Get("id")
-	status := session.Get("status")
-	disableReason := ""
+	var authUser *model.UserBase
 	useAccessToken := false
 	if username == nil {
 		// Check access token
@@ -104,8 +85,7 @@ func authHelper(c *gin.Context, minRole int) {
 			username = user.Username
 			role = user.Role
 			id = user.Id
-			status = user.Status
-			disableReason = user.DisableReason
+			authUser = user.ToBaseUser()
 			useAccessToken = true
 		} else {
 			c.JSON(http.StatusOK, gin.H{
@@ -144,50 +124,26 @@ func authHelper(c *gin.Context, minRole int) {
 		c.Abort()
 		return
 	}
-	if status.(int) == common.UserStatusDisabled {
-		if !useAccessToken {
-			if userId, ok := id.(int); ok {
-				if userCache, err := model.GetUserCache(userId); err == nil {
-					disableReason = userCache.DisableReason
-				}
-				disableReason = authUserDisableReason(userId, disableReason)
-			}
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": authUserBannedMessage(c, disableReason),
-		})
-		c.Abort()
-		return
-	}
 	if !useAccessToken {
 		userId, ok := id.(int)
 		if !ok {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid),
-			})
+			c.JSON(http.StatusOK, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgAuthUserInfoInvalid)})
 			c.Abort()
 			return
 		}
-		userCache, err := model.GetUserCache(userId)
+		var err error
+		authUser, err = model.GetUserCache(userId)
 		if err != nil {
 			common.SysLog(fmt.Sprintf("authHelper GetUserCache error for user %d: %v", userId, err))
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": common.TranslateMessage(c, i18n.MsgDatabaseError),
-			})
+			c.JSON(http.StatusInternalServerError, gin.H{"success": false, "message": common.TranslateMessage(c, i18n.MsgDatabaseError)})
 			c.Abort()
 			return
 		}
-		if userCache.Status == common.UserStatusDisabled {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": authUserBannedMessage(c, authUserDisableReason(userId, userCache.DisableReason)),
-			})
-			c.Abort()
-			return
-		}
+	}
+	if authUser.Status == common.UserStatusDisabled {
+		c.JSON(http.StatusOK, gin.H{"success": false, "message": authUserBannedMessage(c, authUser)})
+		c.Abort()
+		return
 	}
 	if role.(int) < minRole {
 		c.JSON(http.StatusOK, gin.H{
@@ -275,7 +231,7 @@ func TokenOrUserAuth() func(c *gin.Context) {
 				} else if userCache.Status == common.UserStatusDisabled {
 					c.JSON(http.StatusForbidden, gin.H{
 						"success": false,
-						"message": authUserBannedMessage(c, authUserDisableReason(userId, userCache.DisableReason)),
+						"message": authUserBannedMessage(c, userCache),
 					})
 					c.Abort()
 					return
@@ -345,7 +301,7 @@ func TokenAuthReadOnly() func(c *gin.Context) {
 		if userCache.Status != common.UserStatusEnabled {
 			c.JSON(http.StatusForbidden, gin.H{
 				"success": false,
-				"message": authUserBannedMessage(c, authUserDisableReason(token.UserId, userCache.DisableReason)),
+				"message": authUserBannedMessage(c, userCache),
 			})
 			c.Abort()
 			return
@@ -458,7 +414,7 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
-			abortWithOpenAiMessage(c, http.StatusForbidden, authUserBannedMessage(c, authUserDisableReason(token.UserId, userCache.DisableReason)))
+			abortWithOpenAiMessage(c, http.StatusForbidden, authUserBannedMessage(c, userCache))
 			return
 		}
 

@@ -131,6 +131,10 @@ func HandleOAuth(c *gin.Context) {
 	}
 
 	// 8. Check user status
+	if err := model.ResolveUserDisableExpiry(user, time.Now().Unix()); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	if user.Status != common.UserStatusEnabled {
 		respondUserDisabled(c, user)
 		return

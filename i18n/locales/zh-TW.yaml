@@ -294,3 +294,6 @@ custom_oauth.name_empty: "供應者名稱不能為空"
 custom_oauth.has_bindings: "無法刪除已有使用者綁定的供應者"
 custom_oauth.binding_not_found: "OAuth 綁定不存在"
 custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用者 ID"
+
+user.disable_permanent: "永久封禁"
+user.disable_period: "封禁 {{.Minutes}} 分鐘，解禁時間：{{.Until}}"

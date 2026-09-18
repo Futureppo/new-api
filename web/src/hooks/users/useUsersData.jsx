@@ -174,7 +174,13 @@ export const useUsersData = () => {
   };
 
   // Manage user operations (promote, demote, enable, disable, delete)
-  const manageUser = async (userId, action, record, reason) => {
+  const manageUser = async (
+    userId,
+    action,
+    record,
+    reason,
+    durationMinutes = 0,
+  ) => {
     // Trigger loading state to force table re-render
     setLoading(true);
 
@@ -184,6 +190,7 @@ export const useUsersData = () => {
     };
     if (action === 'disable') {
       payload.reason = reason || '';
+      payload.duration_minutes = durationMinutes;
     }
 
     const res = await API.post('/api/user/manage', payload);
@@ -201,6 +208,8 @@ export const useUsersData = () => {
           }
           return {
             ...u,
+            disable_duration_minutes: user.disable_duration_minutes ?? 0,
+            disable_until: user.disable_until ?? 0,
             status: user.status,
             role: user.role,
             disable_reason:
@@ -226,6 +235,7 @@ export const useUsersData = () => {
     reason,
     depth,
     selectAllRelated,
+    durationMinutes = 0,
   ) => {
     setLoading(true);
     try {
@@ -235,6 +245,7 @@ export const useUsersData = () => {
         reason,
         depth,
         select_all_related: selectAllRelated,
+        duration_minutes: durationMinutes,
       });
       const { success, message, data } = res.data;
       if (!success) {
@@ -368,14 +379,18 @@ export const useUsersData = () => {
     }
   };
 
-  const batchManageUsers = async (action, reason = '') => {
+  const batchManageUsers = async (action, reason = '', durationMinutes = 0) => {
     if (batchActionLoading) {
       return false;
     }
     setBatchActionLoading(action);
     setLoading(true);
     try {
-      const res = await API.post('/api/user/batch-manage', { action, reason });
+      const res = await API.post('/api/user/batch-manage', {
+        action,
+        reason,
+        duration_minutes: durationMinutes,
+      });
       const { success, message, data } = res.data;
       if (!success) {
         showError(message);
