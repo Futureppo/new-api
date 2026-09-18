@@ -170,6 +170,9 @@ func authHelper(c *gin.Context, minRole int) {
 	c.Set("user_group", session.Get("group"))
 	c.Set("use_access_token", useAccessToken)
 
+	if !requireUserPassword(c, apiUserId) {
+		return
+	}
 	c.Next()
 }
 
@@ -225,6 +228,9 @@ func TokenOrUserAuth() func(c *gin.Context) {
 					return
 				}
 				if userCache.Status == common.UserStatusEnabled {
+					if !requireUserPassword(c, userId) {
+						return
+					}
 					c.Set("id", id)
 					c.Next()
 					return
@@ -236,11 +242,6 @@ func TokenOrUserAuth() func(c *gin.Context) {
 					c.Abort()
 					return
 				}
-			}
-			if status, ok := session.Get("status").(int); ok && status == common.UserStatusEnabled {
-				c.Set("id", id)
-				c.Next()
-				return
 			}
 		}
 		// Fall back to token auth (API clients)

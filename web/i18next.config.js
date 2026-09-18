@@ -30,6 +30,7 @@ export default defineConfig({
       'accept',
       'align',
       'aria-hidden',
+      'aria-live',
       'aria-label',
       'autoComplete',
       'className',

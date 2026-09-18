@@ -114,13 +114,18 @@ func respondUserDisabled(c *gin.Context, user *model.User) {
 
 // setup session & cookies and then return user info
 func setupLogin(user *model.User, c *gin.Context) {
+	hasPassword, err := model.HasUserPassword(user.Id)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
 	session := sessions.Default(c)
 	session.Set("id", user.Id)
 	session.Set("username", user.Username)
 	session.Set("role", user.Role)
 	session.Set("status", user.Status)
 	session.Set("group", user.Group)
-	err := session.Save()
+	err = session.Save()
 	if err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserSessionSaveFailed)
 		return
@@ -130,6 +135,7 @@ func setupLogin(user *model.User, c *gin.Context) {
 		"success": true,
 		"data": map[string]any{
 			"id":           user.Id,
+			"has_password": hasPassword,
 			"username":     user.Username,
 			"display_name": user.DisplayName,
 			"role":         user.Role,
@@ -172,6 +178,10 @@ func Register(c *gin.Context) {
 		return
 	}
 	user.Email = strings.TrimSpace(user.Email)
+	if err := common.ValidateLoginPassword(user.Password); err != nil {
+		respondPasswordError(c, err)
+		return
+	}
 	if err := common.Validate.Struct(&user); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgUserInputInvalid, map[string]any{"Error": err.Error()})
 		return
@@ -449,6 +459,11 @@ func GetSelf(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	hasPassword, err := model.HasUserPassword(id)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgDatabaseError)
+		return
+	}
 	// Hide admin remarks: set to empty to trigger omitempty tag, ensuring the remark field is not included in JSON returned to regular users
 	user.Remark = ""
 
@@ -465,6 +480,7 @@ func GetSelf(c *gin.Context) {
 
 	// 构建响应数据，包含用户信息和权限
 	responseData := map[string]interface{}{
+		"has_password":      hasPassword,
 		"id":                user.Id,
 		"username":          user.Username,
 		"display_name":      user.DisplayName,
@@ -692,8 +708,11 @@ func UpdateUser(c *gin.Context) {
 		return
 	}
 	_, updateDisableReason := requestData["disable_reason"]
-	if updatedUser.Password == "" {
-		updatedUser.Password = "$I_LOVE_U" // make Validator happy :)
+	if updatedUser.Password != "" {
+		if err := common.ValidateLoginPassword(updatedUser.Password); err != nil {
+			respondPasswordError(c, err)
+			return
+		}
 	}
 	updatedUser.DisableReason = normalizeDisableReason(updatedUser.DisableReason)
 	if err := common.Validate.Struct(&updatedUser); err != nil {
@@ -713,9 +732,6 @@ func UpdateUser(c *gin.Context) {
 	if myRole <= updatedUser.Role && myRole != common.RoleRootUser {
 		common.ApiErrorI18n(c, i18n.MsgUserCannotCreateHigherLevel)
 		return
-	}
-	if updatedUser.Password == "$I_LOVE_U" {
-		updatedUser.Password = "" // rollback to what it should be
 	}
 	if originUser.Status != common.UserStatusDisabled {
 		updateDisableReason = false
@@ -847,30 +863,34 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	if user.Password == "" {
-		user.Password = "$I_LOVE_U" // make Validator happy :)
-	}
 	if err := common.Validate.Struct(&user); err != nil {
 		common.ApiErrorI18n(c, i18n.MsgInvalidInput)
 		return
 	}
 
+	if user.Password != "" {
+		if err := service.SetUserLoginPassword(c.GetInt("id"), user.OriginalPassword, user.Password); err != nil {
+			respondPasswordError(c, err)
+			return
+		}
+	} else {
+		// Preserve the existing original-password check for profile changes.
+		currentUser, err := model.GetUserById(c.GetInt("id"), true)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		if currentUser.Password != "" && !common.ValidatePasswordAndHash(user.OriginalPassword, currentUser.Password) {
+			respondPasswordError(c, service.ErrOriginalPassword)
+			return
+		}
+	}
 	cleanUser := model.User{
 		Id:          c.GetInt("id"),
 		Username:    user.Username,
-		Password:    user.Password,
 		DisplayName: user.DisplayName,
 	}
-	if user.Password == "$I_LOVE_U" {
-		user.Password = "" // rollback to what it should be
-		cleanUser.Password = ""
-	}
-	updatePassword, err := checkUpdatePassword(user.OriginalPassword, user.Password, cleanUser.Id)
-	if err != nil {
-		common.ApiError(c, err)
-		return
-	}
-	if err := cleanUser.Update(updatePassword); err != nil {
+	if err := cleanUser.Update(false); err != nil {
 		common.ApiError(c, err)
 		return
 	}
@@ -879,26 +899,6 @@ func UpdateSelf(c *gin.Context) {
 		"success": true,
 		"message": "",
 	})
-	return
-}
-
-func checkUpdatePassword(originalPassword string, newPassword string, userId int) (updatePassword bool, err error) {
-	var currentUser *model.User
-	currentUser, err = model.GetUserById(userId, true)
-	if err != nil {
-		return
-	}
-
-	// 密码不为空,需要验证原密码
-	// 支持第一次账号绑定时原密码为空的情况
-	if !common.ValidatePasswordAndHash(originalPassword, currentUser.Password) && currentUser.Password != "" {
-		err = fmt.Errorf("原密码错误")
-		return
-	}
-	if newPassword == "" {
-		return
-	}
-	updatePassword = true
 	return
 }
 
@@ -964,6 +964,10 @@ func CreateUser(c *gin.Context) {
 	user.Username = strings.TrimSpace(user.Username)
 	if err != nil || user.Username == "" || user.Password == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if err := common.ValidateLoginPassword(user.Password); err != nil {
+		respondPasswordError(c, err)
 		return
 	}
 	if err := common.Validate.Struct(&user); err != nil {

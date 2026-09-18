@@ -109,7 +109,10 @@ const PageLayout = () => {
     location.pathname !== '/console/playground';
 
   const isConsoleRoute = location.pathname.startsWith('/console');
-  const showSider = isConsoleRoute && (!isMobile || drawerOpen);
+  const showSider =
+    isConsoleRoute &&
+    userState.user?.has_password === true &&
+    (!isMobile || drawerOpen);
 
   useEffect(() => {
     if (isMobile && drawerOpen && collapsed) {

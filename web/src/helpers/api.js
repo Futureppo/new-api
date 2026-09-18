@@ -49,6 +49,22 @@ function redirectToOAuthUrl(url, options = {}) {
 }
 
 function patchAPIInstance(instance) {
+  instance.interceptors.response.use(
+    (response) => response,
+    (error) => {
+      if (error.response?.data?.code === 'PASSWORD_SETUP_REQUIRED') {
+        window.dispatchEvent(new Event('password-setup-required'));
+        return Promise.reject(error);
+      }
+      // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
+      if (error.config && error.config.skipErrorHandler) {
+        return Promise.reject(error);
+      }
+      showError(error);
+      return Promise.reject(error);
+    },
+  );
+
   const originalGet = instance.get.bind(instance);
   const inFlightGetRequests = new Map();
 
@@ -91,18 +107,6 @@ export function updateAPI() {
 
   patchAPIInstance(API);
 }
-
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    // 如果请求配置中显式要求跳过全局错误处理，则不弹出默认错误提示
-    if (error.config && error.config.skipErrorHandler) {
-      return Promise.reject(error);
-    }
-    showError(error);
-    return Promise.reject(error);
-  },
-);
 
 // playground
 

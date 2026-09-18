@@ -70,7 +70,7 @@ func TestDeleteChannelByNameAdminAuth(t *testing.T) {
 			token := ""
 			if role != 0 {
 				token = "channel-name-test-access-token"
-				require.NoError(t, db.Create(&model.User{Id: 1, Username: "name-admin", Role: role, Status: common.UserStatusEnabled, AccessToken: &token}).Error)
+				require.NoError(t, db.Create(&model.User{Id: 1, Username: "name-admin", Password: "existing-password-hash", Role: role, Status: common.UserStatusEnabled, AccessToken: &token}).Error)
 			}
 			require.NoError(t, db.Create(&model.Channel{Id: 1, Name: "delete", Key: "test"}).Error)
 			router := gin.New()

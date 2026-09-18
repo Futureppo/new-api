@@ -297,3 +297,10 @@ custom_oauth.provider_id_field_invalid: "無法從供應者響應中提取使用
 
 user.disable_permanent: "永久封禁"
 user.disable_period: "封禁 {{.Minutes}} 分鐘，解禁時間：{{.Until}}"
+
+# Login password requirements
+user.password_setup_required: "請先設定登入密碼後再繼續操作。"
+user.password_policy: "密碼至少 8 個字元，最多 72 個 UTF-8 位元組，且必須包含數字、大寫字母、小寫字母和英文標點符號。"
+user.original_password_incorrect: "原密碼錯誤。"
+user.password_unchanged: "新密碼不能與原密碼相同。"
+user.password_changed_retry: "密碼狀態已發生變化，請重新整理後重試。"

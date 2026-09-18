@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../../../helpers/password';
 import React from 'react';
 import { Banner, Form } from '@douyinfe/semi-ui';
 import { IconUser, IconLock } from '@douyinfe/semi-icons';
@@ -64,6 +68,7 @@ const AdminStep = ({
           />
           <Form.Input
             field='password'
+            extraText={t(PASSWORD_POLICY_MESSAGE)}
             label={t('密码')}
             placeholder={t('请输入管理员密码')}
             type='password'
@@ -74,7 +79,12 @@ const AdminStep = ({
             validateStatus='default'
             rules={[
               { required: true, message: t('请输入管理员密码') },
-              { min: 8, message: t('密码长度至少为8个字符') },
+              {
+                validator: (rule, value) =>
+                  isValidLoginPassword(value)
+                    ? Promise.resolve()
+                    : Promise.reject(t(PASSWORD_POLICY_MESSAGE)),
+              },
             ]}
             initValue={formData.password || ''}
             onChange={(value) => {

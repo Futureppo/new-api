@@ -190,7 +190,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	inviter := model.User{
 		Username:    "inviter",
-		Password:    "password123",
+		Password:    "Password123!",
 		DisplayName: "inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
@@ -200,7 +200,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	missingInvite := registerTestUser(t, gin.H{
 		"username": "missing-invite",
-		"password": "password123",
+		"password": "Password123!",
 	})
 	require.False(t, missingInvite.Success)
 	require.Contains(t, missingInvite.Message, "请输入邀请码")
@@ -208,7 +208,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	invalidInvite := registerTestUser(t, gin.H{
 		"username": "invalid-invite",
-		"password": "password123",
+		"password": "Password123!",
 		"aff_code": "ABCD",
 	})
 	require.False(t, invalidInvite.Success)
@@ -218,7 +218,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 	require.NoError(t, db.Model(&inviter).Update("status", common.UserStatusDisabled).Error)
 	disabledInviter := registerTestUser(t, gin.H{
 		"username": "disabled-inviter",
-		"password": "password123",
+		"password": "Password123!",
 		"aff_code": strings.ToLower(inviter.AffCode),
 	})
 	require.False(t, disabledInviter.Success)
@@ -228,7 +228,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	validInvite := registerTestUser(t, gin.H{
 		"username": "valid-invite",
-		"password": "password123",
+		"password": "Password123!",
 		"aff_code": inviter.AffCode,
 	})
 	require.True(t, validInvite.Success)
@@ -249,7 +249,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	missingRegistrationCode := registerTestUser(t, gin.H{
 		"username": "missing-reg-code",
-		"password": "password123",
+		"password": "Password123!",
 		"aff_code": inviter.AffCode,
 	})
 	require.False(t, missingRegistrationCode.Success)
@@ -258,7 +258,7 @@ func TestPasswordRegistrationRequiresValidInviteCodeAndRollsBack(t *testing.T) {
 
 	validCodes := registerTestUser(t, gin.H{
 		"username":          "valid-codes",
-		"password":          "password123",
+		"password":          "Password123!",
 		"aff_code":          inviter.AffCode,
 		"registration_code": registrationCode.Code,
 	})
@@ -274,7 +274,7 @@ func TestGetAffCodeRepairsLegacyCodeAndKeepsV2Code(t *testing.T) {
 	db := setupInviteRegistrationControllerTestDB(t)
 	user := model.User{
 		Username:    "legacy-aff-code-user",
-		Password:    "password123",
+		Password:    "Password123!",
 		DisplayName: "legacy-aff-code-user",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
@@ -334,7 +334,7 @@ func TestDomainEmailRegistrationExemptionsAreIndependent(t *testing.T) {
 			common.EmailDomainInviteCodeExemptionList = tt.inviteList
 			common.EmailDomainRegistrationCodeExemptionList = tt.registrationList
 			inviter := model.User{
-				Username: "inviter", Password: "password123", DisplayName: "inviter",
+				Username: "inviter", Password: "Password123!", DisplayName: "inviter",
 				Role: common.RoleCommonUser, Status: common.UserStatusEnabled,
 				AffCode: inviteRegistrationTestCode(t),
 			}
@@ -353,7 +353,7 @@ func TestDomainEmailRegistrationExemptionsAreIndependent(t *testing.T) {
 				common.DeleteKey(common.NormalizeEmailIdentity(email), common.EmailVerificationPurpose)
 			})
 			payload := gin.H{
-				"username": "domain-user", "password": "password123",
+				"username": "domain-user", "password": "Password123!",
 				"email": email, "verification_code": "123456",
 			}
 			if tt.provideInvite {
@@ -422,7 +422,7 @@ func TestDomainEmailRegistrationBypassesInviteAndRegistrationCodes(t *testing.T)
 
 	response := registerTestUser(t, gin.H{
 		"username":          "domain-user",
-		"password":          "password123",
+		"password":          "Password123!",
 		"email":             domainEmail,
 		"verification_code": verificationCode,
 	})
@@ -461,7 +461,7 @@ func TestDomainEmailRegistrationRejectsBlacklistedDomain(t *testing.T) {
 
 	response := registerTestUser(t, gin.H{
 		"username":          "blocked-user",
-		"password":          "password123",
+		"password":          "Password123!",
 		"email":             blacklistedEmail,
 		"verification_code": verificationCode,
 	})
@@ -492,7 +492,7 @@ func TestUnconfiguredDomainEmailStillRequiresInviteCode(t *testing.T) {
 
 	response := registerTestUser(t, gin.H{
 		"username":          "unconfigured-user",
-		"password":          "password123",
+		"password":          "Password123!",
 		"email":             unconfiguredEmail,
 		"verification_code": verificationCode,
 	})
@@ -512,7 +512,7 @@ func TestUnverifiedDomainEmailCannotBypassRegistrationCodes(t *testing.T) {
 
 	response := registerTestUser(t, gin.H{
 		"username": "unverified-user",
-		"password": "password123",
+		"password": "Password123!",
 		"email":    "user@mail.trusted.test",
 	})
 	require.False(t, response.Success)
@@ -541,7 +541,7 @@ func TestPasswordRegistrationTreatsEmailCaseVariantsAsOneIdentity(t *testing.T) 
 
 	firstResponse := registerTestUser(t, gin.H{
 		"username":          "email-case-first",
-		"password":          "password123",
+		"password":          "Password123!",
 		"email":             firstEmail,
 		"verification_code": verificationCode,
 	})
@@ -559,7 +559,7 @@ func TestPasswordRegistrationTreatsEmailCaseVariantsAsOneIdentity(t *testing.T) 
 	)
 	secondResponse := registerTestUser(t, gin.H{
 		"username":          "email-case-second",
-		"password":          "password123",
+		"password":          "Password123!",
 		"email":             caseVariant,
 		"verification_code": verificationCode,
 	})
@@ -575,7 +575,7 @@ func TestOAuthRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.T
 
 	inviter := model.User{
 		Username:    "oauth-inviter",
-		Password:    "password123",
+		Password:    "Password123!",
 		DisplayName: "oauth-inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,
@@ -616,7 +616,7 @@ func TestOAuthRegistrationRejectsEmailAlreadyUsedByCaseVariant(t *testing.T) {
 
 	existing := model.User{
 		Username:    "oauth-email-owner",
-		Password:    "password123",
+		Password:    "Password123!",
 		DisplayName: "OAuth Email Owner",
 		Email:       "Owner@Example.com",
 		Role:        common.RoleCommonUser,
@@ -651,7 +651,7 @@ func TestPasswordResetRejectsAmbiguousEmailIdentity(t *testing.T) {
 	for index, email := range []string{"duplicate@example.com", "Duplicate@example.com"} {
 		user := model.User{
 			Username:    fmt.Sprintf("reset-duplicate-%d", index),
-			Password:    "password123",
+			Password:    "Password123!",
 			DisplayName: fmt.Sprintf("Reset Duplicate %d", index),
 			Email:       email,
 			Role:        common.RoleCommonUser,
@@ -702,7 +702,7 @@ func TestWeChatRegistrationRequiresInviteCodeButExistingLoginDoesNot(t *testing.
 
 	inviter := model.User{
 		Username:    "wechat-inviter",
-		Password:    "password123",
+		Password:    "Password123!",
 		DisplayName: "wechat-inviter",
 		Role:        common.RoleCommonUser,
 		Status:      common.UserStatusEnabled,

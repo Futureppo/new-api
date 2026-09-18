@@ -91,7 +91,7 @@ func TestEmailIdentityAmbiguityBlocksEmailLoginAndPasswordReset(t *testing.T) {
 	require.NoError(t, usernameLogin.ValidateAndFill())
 	require.Equal(t, first.Id, usernameLogin.Id)
 
-	err = ResetUserPasswordByEmail("likwei@EXAMPLE.com", "new-password123")
+	err = ResetUserPasswordByEmail("likwei@EXAMPLE.com", "New-password123")
 	require.ErrorIs(t, err, ErrEmailIdentityAmbiguous)
 
 	var reloaded []User
@@ -99,7 +99,7 @@ func TestEmailIdentityAmbiguityBlocksEmailLoginAndPasswordReset(t *testing.T) {
 	require.Len(t, reloaded, 2)
 	for _, user := range reloaded {
 		require.True(t, common.ValidatePasswordAndHash("password123", user.Password))
-		require.False(t, common.ValidatePasswordAndHash("new-password123", user.Password))
+		require.False(t, common.ValidatePasswordAndHash("New-password123", user.Password))
 	}
 }
 
@@ -110,9 +110,9 @@ func TestResetUserPasswordByEmailTargetsUniqueCaseInsensitiveMatch(t *testing.T)
 	t.Cleanup(func() { common.EmailCaseInsensitiveEnabled = originalSetting })
 
 	user := createEmailIdentityTestUser(t, "reset-user", "Reset.Me@Example.com", "password123")
-	require.NoError(t, ResetUserPasswordByEmail("reset.me@example.COM", "new-password123"))
+	require.NoError(t, ResetUserPasswordByEmail("reset.me@example.COM", "New-password123"))
 
 	var reloaded User
 	require.NoError(t, DB.First(&reloaded, user.Id).Error)
-	require.True(t, common.ValidatePasswordAndHash("new-password123", reloaded.Password))
+	require.True(t, common.ValidatePasswordAndHash("New-password123", reloaded.Password))
 }

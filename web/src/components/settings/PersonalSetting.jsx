@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   API,
@@ -46,12 +46,22 @@ import WeChatBindModal from './personal/modals/WeChatBindModal';
 import AccountDeleteModal from './personal/modals/AccountDeleteModal';
 import ChangePasswordModal from './personal/modals/ChangePasswordModal';
 import SecureVerificationModal from '../common/modals/SecureVerificationModal';
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../helpers/password';
 import { useSecureVerification } from '../../hooks/common/useSecureVerification';
 
 const PersonalSetting = () => {
   const [userState, userDispatch] = useContext(UserContext);
   let navigate = useNavigate();
   const { t } = useTranslation();
+
+  const passwordRequired = userState.user?.has_password === false;
+  const passwordSubmitting = useRef(false);
+  const userDataRequest = useRef(0);
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
 
   const [inputs, setInputs] = useState({
     wechat_verification_code: '',
@@ -108,6 +118,7 @@ const PersonalSetting = () => {
     switchVerificationMethod: switchPasskeyVerificationMethod,
     checkVerificationMethods: checkPasskeyVerificationMethods,
   } = useSecureVerification({
+    enabled: !passwordRequired,
     onSuccess: () => {
       setPasskeyRequiredVerificationMethod(null);
     },
@@ -360,12 +371,14 @@ const PersonalSetting = () => {
   };
 
   const getUserData = async () => {
-    let res = await API.get(`/api/user/self`);
+    const request = ++userDataRequest.current;
+    let res = await API.get(`/api/user/self`, { disableDuplicate: true });
+    if (request !== userDataRequest.current) return;
     const { success, message, data } = res.data;
     if (success) {
       userDispatch({ type: 'login', payload: data });
       setUserData(data);
-      await loadPasskeyStatus();
+      if (data.has_password) await loadPasskeyStatus();
     } else {
       showError(message);
     }
@@ -411,35 +424,68 @@ const PersonalSetting = () => {
     }
   };
 
+  const logout = async () => {
+    await API.get('/api/user/logout');
+    localStorage.removeItem('user');
+    userDispatch({ type: 'logout' });
+    navigate('/login');
+  };
+
   const changePassword = async () => {
-    // if (inputs.original_password === '') {
-    //   showError(t('请输入原密码！'));
-    //   return;
-    // }
-    if (inputs.set_new_password === '') {
-      showError(t('请输入新密码！'));
-      return;
-    }
-    if (inputs.original_password === inputs.set_new_password) {
-      showError(t('新密码需要和原密码不一致！'));
+    if (passwordSubmitting.current) return;
+    setPasswordError('');
+    if (!isValidLoginPassword(inputs.set_new_password)) {
+      setPasswordError(t(PASSWORD_POLICY_MESSAGE));
       return;
     }
     if (inputs.set_new_password !== inputs.set_new_password_confirmation) {
-      showError(t('两次输入的密码不一致！'));
+      setPasswordError(t('两次输入的密码不一致！'));
       return;
     }
-    const res = await API.put(`/api/user/self`, {
-      original_password: inputs.original_password,
-      password: inputs.set_new_password,
-    });
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('密码修改成功！'));
-      setShowWeChatBindModal(false);
-    } else {
-      showError(message);
+    if (!passwordRequired && !inputs.original_password) {
+      setPasswordError(t('请输入原密码！'));
+      return;
     }
-    setShowChangePasswordModal(false);
+    passwordSubmitting.current = true;
+    setPasswordLoading(true);
+    try {
+      const res = await API.put(
+        '/api/user/self/password',
+        {
+          original_password: inputs.original_password,
+          password: inputs.set_new_password,
+        },
+        { skipErrorHandler: true },
+      );
+      if (!res.data.success) {
+        setPasswordError(res.data.message);
+        return;
+      }
+      // Update immediately after a confirmed write; a failed refresh must not
+      // leave the user trapped in an obsolete first-time setup dialog.
+      userDataRequest.current += 1;
+      const data = { ...userState.user, has_password: true };
+      setUserData(data);
+      userDispatch({ type: 'login', payload: data });
+      setInputs((previous) => ({
+        ...previous,
+        original_password: '',
+        set_new_password: '',
+        set_new_password_confirmation: '',
+      }));
+      setShowChangePasswordModal(false);
+      showSuccess(t('登录密码设置成功'));
+      // A refresh failure does not turn a successful password write into a
+      // failed submit or ask the user to repeat the first-time setup.
+      getUserData().catch(() => {});
+    } catch (error) {
+      setPasswordError(
+        error.response?.data?.message || error.message || t('操作失败，请重试'),
+      );
+    } finally {
+      passwordSubmitting.current = false;
+      setPasswordLoading(false);
+    }
   };
 
   const sendVerificationCode = async () => {
@@ -553,7 +599,7 @@ const PersonalSetting = () => {
           <UserInfoHeader t={t} userState={userState} />
 
           {/* 签到日历 - 仅在启用时显示 */}
-          {status?.checkin_enabled && (
+          {!passwordRequired && status?.checkin_enabled && (
             <div className='mt-4 md:mt-6'>
               <CheckinCalendar
                 t={t}
@@ -588,16 +634,20 @@ const PersonalSetting = () => {
               />
 
               {/* 偏好设置（语言等） */}
-              <PreferencesSettings t={t} />
+              {!passwordRequired && <PreferencesSettings t={t} />}
             </div>
 
             {/* 右侧：其他设置 */}
-            <NotificationSettings
-              t={t}
-              notificationSettings={notificationSettings}
-              handleNotificationSettingChange={handleNotificationSettingChange}
-              saveNotificationSettings={saveNotificationSettings}
-            />
+            {!passwordRequired && (
+              <NotificationSettings
+                t={t}
+                notificationSettings={notificationSettings}
+                handleNotificationSettingChange={
+                  handleNotificationSettingChange
+                }
+                saveNotificationSettings={saveNotificationSettings}
+              />
+            )}
           </div>
         </div>
       </div>
@@ -649,6 +699,10 @@ const PersonalSetting = () => {
         inputs={inputs}
         handleInputChange={handleInputChange}
         changePassword={changePassword}
+        hasPassword={!passwordRequired}
+        loading={passwordLoading}
+        error={passwordError}
+        onLogout={logout}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
         setTurnstileToken={setTurnstileToken}

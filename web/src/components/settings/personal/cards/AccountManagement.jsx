@@ -112,7 +112,9 @@ const AccountManagement = ({
         showError(res.data.message || t('获取绑定信息失败'));
       }
     } catch (error) {
-      showError(error.response?.data?.message || error.message || t('获取绑定信息失败'));
+      showError(
+        error.response?.data?.message || error.message || t('获取绑定信息失败'),
+      );
     }
   };
 
@@ -126,7 +128,9 @@ const AccountManagement = ({
       onOk: async () => {
         setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: true }));
         try {
-          const res = await API.delete(`/api/user/oauth/bindings/${providerId}`);
+          const res = await API.delete(
+            `/api/user/oauth/bindings/${providerId}`,
+          );
           if (res.data.success) {
             showSuccess(t('解绑成功'));
             await loadCustomOAuthBindings();
@@ -134,7 +138,9 @@ const AccountManagement = ({
             showError(res.data.message);
           }
         } catch (error) {
-          showError(error.response?.data?.message || error.message || t('操作失败'));
+          showError(
+            error.response?.data?.message || error.message || t('操作失败'),
+          );
         } finally {
           setCustomOAuthLoading((prev) => ({ ...prev, [providerId]: false }));
         }
@@ -150,41 +156,83 @@ const AccountManagement = ({
   // Check if custom OAuth provider is bound
   const isCustomOAuthBound = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.some((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.some(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   // Get binding info for a provider
   const getCustomOAuthBinding = (providerId) => {
     const normalizedId = Number(providerId);
-    return customOAuthBindings.find((b) => Number(b.provider_id) === normalizedId);
+    return customOAuthBindings.find(
+      (b) => Number(b.provider_id) === normalizedId,
+    );
   };
 
   React.useEffect(() => {
-    loadCustomOAuthBindings();
-  }, []);
+    if (userState.user?.has_password === true) loadCustomOAuthBindings();
+  }, [userState.user?.has_password]);
 
   const passkeyEnabled = passkeyStatus?.enabled;
   const lastUsedLabel = passkeyStatus?.last_used_at
     ? new Date(passkeyStatus.last_used_at).toLocaleString()
     : t('尚未使用');
 
-  return (
-    <Card className='!rounded-2xl'>
-      {/* 卡片头部 */}
-      <div className='flex items-center mb-4'>
-        <Avatar size='small' color='teal' className='mr-3 shadow-md'>
-          <UserPlus size={16} />
-        </Avatar>
-        <div>
-          <Typography.Text className='text-lg font-medium'>
-            {t('账户管理')}
-          </Typography.Text>
-          <div className='text-xs text-gray-600'>
-            {t('账户绑定、安全设置和身份验证')}
-          </div>
+  const accountHeader = (
+    <div className='flex items-center mb-4'>
+      <Avatar size='small' color='teal' className='mr-3 shadow-md'>
+        <UserPlus size={16} />
+      </Avatar>
+      <div>
+        <Typography.Text className='text-lg font-medium'>
+          {t('账户管理')}
+        </Typography.Text>
+        <div className='text-xs text-gray-600'>
+          {t('账户绑定、安全设置和身份验证')}
         </div>
       </div>
-
+    </div>
+  );
+  const passwordCard = (
+    <Card className='!rounded-xl w-full mb-4'>
+      <div className='flex flex-col sm:flex-row items-start sm:justify-between gap-4'>
+        <div className='flex items-start w-full sm:w-auto'>
+          <div className='w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mr-4 flex-shrink-0'>
+            <IconLock size='large' className='text-slate-600' />
+          </div>
+          <div>
+            <Typography.Title heading={6} className='mb-1'>
+              {t('登录密码')}
+            </Typography.Title>
+            <Typography.Text type='tertiary' className='text-sm'>
+              {userState.user?.has_password ? t('已设置') : t('未设置')}
+            </Typography.Text>
+          </div>
+        </div>
+        <Button
+          type='primary'
+          theme='solid'
+          onClick={() => setShowChangePasswordModal(true)}
+          className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
+          icon={<IconLock />}
+        >
+          {userState.user?.has_password ? t('修改密码') : t('设置登录密码')}
+        </Button>
+      </div>
+    </Card>
+  );
+  if (userState.user?.has_password !== true) {
+    return (
+      <Card className='!rounded-2xl'>
+        {accountHeader}
+        {passwordCard}
+      </Card>
+    );
+  }
+  return (
+    <Card className='!rounded-2xl'>
+      {accountHeader}
+      {passwordCard}
       <Tabs type='card' defaultActiveKey='binding'>
         {/* 账户绑定 Tab */}
         <TabPane
@@ -554,7 +602,10 @@ const AccountManagement = ({
                               size='small'
                               loading={customOAuthLoading[provider.id]}
                               onClick={() =>
-                                handleUnbindCustomOAuth(provider.id, provider.name)
+                                handleUnbindCustomOAuth(
+                                  provider.id,
+                                  provider.name,
+                                )
                               }
                             >
                               {t('解绑')}
@@ -626,34 +677,6 @@ const AccountManagement = ({
                       icon={<IconKey />}
                     >
                       {systemToken ? t('重新生成') : t('生成令牌')}
-                    </Button>
-                  </div>
-                </Card>
-
-                {/* 密码管理 */}
-                <Card className='!rounded-xl w-full'>
-                  <div className='flex flex-col sm:flex-row items-start sm:justify-between gap-4'>
-                    <div className='flex items-start w-full sm:w-auto'>
-                      <div className='w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mr-4 flex-shrink-0'>
-                        <IconLock size='large' className='text-slate-600' />
-                      </div>
-                      <div>
-                        <Typography.Title heading={6} className='mb-1'>
-                          {t('密码管理')}
-                        </Typography.Title>
-                        <Typography.Text type='tertiary' className='text-sm'>
-                          {t('定期更改密码可以提高账户安全性')}
-                        </Typography.Text>
-                      </div>
-                    </div>
-                    <Button
-                      type='primary'
-                      theme='solid'
-                      onClick={() => setShowChangePasswordModal(true)}
-                      className='!bg-slate-600 hover:!bg-slate-700 w-full sm:w-auto'
-                      icon={<IconLock />}
-                    >
-                      {t('修改密码')}
                     </Button>
                   </div>
                 </Card>

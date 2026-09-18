@@ -24,7 +24,7 @@ const UserNameMaxLength = 20
 type User struct {
 	Id                     int            `json:"id"`
 	Username               string         `json:"username" gorm:"unique;index" validate:"max=20"`
-	Password               string         `json:"password" gorm:"not null;" validate:"min=8,max=20"`
+	Password               string         `json:"password" gorm:"not null;"`
 	OriginalPassword       string         `json:"original_password" gorm:"-:all"` // this field is only for Password change verification, don't save it to database!
 	DisplayName            string         `json:"display_name" gorm:"index" validate:"max=20"`
 	Role                   int            `json:"role" gorm:"type:int;default:1"`   // admin, common
@@ -922,6 +922,9 @@ func IsTelegramIdAlreadyTaken(telegramId string) bool {
 }
 
 func ResetUserPasswordByEmail(email string, password string) error {
+	if err := common.ValidateLoginPassword(password); err != nil {
+		return err
+	}
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}

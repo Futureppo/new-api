@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../../../helpers/password';
 import React, { useState, useRef } from 'react';
 import { API, showError, showSuccess } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
@@ -52,6 +56,10 @@ const AddUserModal = (props) => {
   });
 
   const submit = async (values) => {
+    if (!isValidLoginPassword(values.password)) {
+      showError(t(PASSWORD_POLICY_MESSAGE));
+      return;
+    }
     setLoading(true);
     const res = await API.post(`/api/user/`, values);
     const { success, message } = res.data;
@@ -158,6 +166,7 @@ const AddUserModal = (props) => {
                   <Col span={24}>
                     <Form.Input
                       field='password'
+                      extraText={t(PASSWORD_POLICY_MESSAGE)}
                       label={t('密码')}
                       type='password'
                       placeholder={t('请输入密码')}

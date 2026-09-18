@@ -374,7 +374,11 @@ func ResetPassword(c *gin.Context) {
 		})
 		return
 	}
-	password := common.GenerateVerificationCode(12)
+	password, err := common.GenerateLoginPassword()
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	err = model.ResetUserPasswordByEmail(req.Email, password)
 	if err != nil {
 		if errors.Is(err, model.ErrEmailIdentityAmbiguous) {

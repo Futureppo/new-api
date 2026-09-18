@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../../../helpers/password';
 import { UserDisableInfo } from '../../../common/UserDisableInfo';
 import React, { useEffect, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -152,6 +156,10 @@ const EditUserModal = (props) => {
 
   /* ----------------------- submit ----------------------- */
   const submit = async (values) => {
+    if (values.password && !isValidLoginPassword(values.password)) {
+      showError(t(PASSWORD_POLICY_MESSAGE));
+      return;
+    }
     setLoading(true);
     let payload = { ...values };
     delete payload.quota;
@@ -322,8 +330,9 @@ const EditUserModal = (props) => {
                     <Col span={24}>
                       <Form.Input
                         field='password'
+                        extraText={t(PASSWORD_POLICY_MESSAGE)}
                         label={t('密码')}
-                        placeholder={t('请输入新的密码，最短 8 位')}
+                        placeholder={t('请输入新密码')}
                         mode='password'
                         showClear
                       />

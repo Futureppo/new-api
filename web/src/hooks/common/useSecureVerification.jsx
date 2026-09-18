@@ -36,6 +36,7 @@ export const useSecureVerification = ({
   onError,
   successMessage,
   autoReset = true,
+  enabled = true,
 } = {}) => {
   const { t } = useTranslation();
 
@@ -67,8 +68,8 @@ export const useSecureVerification = ({
 
   // 初始化时检查验证方式
   useEffect(() => {
-    checkVerificationMethods();
-  }, [checkVerificationMethods]);
+    if (enabled) checkVerificationMethods();
+  }, [checkVerificationMethods, enabled]);
 
   // 重置状态
   const resetState = useCallback(() => {

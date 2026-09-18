@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../helpers/password';
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
@@ -283,8 +287,8 @@ const RegisterForm = () => {
   }
 
   async function handleSubmit(e) {
-    if (password.length < 8) {
-      showInfo('密码长度不得小于 8 位！');
+    if (!isValidLoginPassword(password)) {
+      showInfo(t(PASSWORD_POLICY_MESSAGE));
       return;
     }
     if (password !== password2) {
@@ -694,7 +698,8 @@ const RegisterForm = () => {
                 <Form.Input
                   field='password'
                   label={t('密码')}
-                  placeholder={t('输入密码，最短 8 位，最长 20 位')}
+                  placeholder={t('请输入密码')}
+                  extraText={t(PASSWORD_POLICY_MESSAGE)}
                   name='password'
                   mode='password'
                   onChange={(value) => handleChange('password', value)}

@@ -17,6 +17,10 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
+import {
+  isValidLoginPassword,
+  PASSWORD_POLICY_MESSAGE,
+} from '../../helpers/password';
 import React, { useEffect, useState, useRef } from 'react';
 import { Card, Divider, Steps, Form } from '@douyinfe/semi-ui';
 import { API, showError, showNotice } from '../../helpers';
@@ -142,8 +146,8 @@ const SetupWizard = () => {
           showError(t('两次输入的密码不一致'));
           return false;
         }
-        if (formData.password.length < 8) {
-          showError(t('密码长度至少为8个字符'));
+        if (!isValidLoginPassword(formData.password)) {
+          showError(t(PASSWORD_POLICY_MESSAGE));
           return false;
         }
         return true;
@@ -179,8 +183,8 @@ const SetupWizard = () => {
         return;
       }
 
-      if (!values.password || values.password.length < 8) {
-        showError(t('密码长度至少为8个字符'));
+      if (!isValidLoginPassword(values.password)) {
+        showError(t(PASSWORD_POLICY_MESSAGE));
         return;
       }
 
