@@ -171,6 +171,9 @@ const EditUserModal = (props) => {
     }
     if (userId) {
       payload.id = parseInt(userId);
+    } else {
+      // Self-service password changes use the dedicated personal settings dialog.
+      delete payload.password;
     }
     const url = userId ? `/api/user/` : `/api/user/self`;
     const res = await API.put(url, payload);
@@ -327,16 +330,18 @@ const EditUserModal = (props) => {
                       />
                     </Col>
 
-                    <Col span={24}>
-                      <Form.Input
-                        field='password'
-                        extraText={t(PASSWORD_POLICY_MESSAGE)}
-                        label={t('密码')}
-                        placeholder={t('请输入新密码')}
-                        mode='password'
-                        showClear
-                      />
-                    </Col>
+                    {userId && (
+                      <Col span={24}>
+                        <Form.Input
+                          field='password'
+                          extraText={t(PASSWORD_POLICY_MESSAGE)}
+                          label={t('密码')}
+                          placeholder={t('请输入新密码')}
+                          mode='password'
+                          showClear
+                        />
+                      </Col>
+                    )}
 
                     <Col span={24}>
                       <Form.Input

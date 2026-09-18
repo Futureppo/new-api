@@ -74,13 +74,50 @@ func TestLoginPasswordSetupFlow(t *testing.T) {
 	require.Equal(t, true, result["data"].(map[string]any)["has_password"])
 	_, result = request("PUT", "/api/user/self/password", gin.H{"password": "Another123!"}, true)
 	require.Equal(t, false, result["success"])
-	_, result = request("PUT", "/api/user/self", gin.H{"password": "weak", "original_password": "Password123!"}, true)
+	_, result = request("PUT", "/api/user/self/password", gin.H{"password": "Another123!", "original_password": "wrong"}, true)
 	require.Equal(t, false, result["success"])
-	_, result = request("PUT", "/api/user/self", gin.H{"password": "Another123!", "original_password": "Password123!"}, true)
+	w, _ = request("PUT", "/api/user/self/password", gin.H{"password": "Another123!", "original_password": "Password123!"}, false)
+	require.Equal(t, http.StatusForbidden, w.Code)
+
+	before, err := model.GetUserById(user.Id, true)
+	require.NoError(t, err)
+	for _, session := range []bool{true, false} {
+		for _, payload := range []gin.H{
+			{"password": "Another123!", "original_password": "Password123!"},
+			{"password": "weak", "original_password": "Password123!"},
+			{"password": ""},
+			{"password": nil},
+			{"password": 123},
+			{"Password": "Another123!", "original_password": "Password123!"},
+			{"PASSWORD": "Another123!", "language": "en"},
+			{"password": "Another123!", "sidebar_modules": "{}"},
+		} {
+			_, result = request("PUT", "/api/user/self", payload, session)
+			require.Equal(t, false, result["success"], "legacy password fields must be rejected")
+			stored, err := model.GetUserById(user.Id, true)
+			require.NoError(t, err)
+			require.Equal(t, before.Password, stored.Password)
+			require.Equal(t, before.Setting, stored.Setting, "mixed legacy requests must not update preferences")
+		}
+	}
+
+	_, result = request("PUT", "/api/user/self/password", gin.H{"password": "Another123!", "original_password": "Password123!"}, true)
 	require.Equal(t, true, result["success"])
 	stored, err := model.GetUserById(user.Id, true)
 	require.NoError(t, err)
 	require.True(t, common.ValidatePasswordAndHash("Another123!", stored.Password))
 	_, result = request("PUT", "/api/user/self", gin.H{"display_name": "changed"}, true)
 	require.Equal(t, false, result["success"], "profile changes retain their existing password verification")
+	_, result = request("PUT", "/api/user/self", gin.H{"display_name": "changed", "original_password": "Another123!"}, true)
+	require.Equal(t, true, result["success"])
+	_, result = request("PUT", "/api/user/self", gin.H{"language": "en"}, true)
+	require.Equal(t, true, result["success"])
+	_, result = request("PUT", "/api/user/self", gin.H{"sidebar_modules": "{}"}, true)
+	require.Equal(t, true, result["success"])
+	stored, err = model.GetUserById(user.Id, true)
+	require.NoError(t, err)
+	require.Equal(t, "changed", stored.DisplayName)
+	require.Equal(t, "en", stored.GetSetting().Language)
+	require.Equal(t, "{}", stored.GetSetting().SidebarModules)
+	require.True(t, common.ValidatePasswordAndHash("Another123!", stored.Password))
 }

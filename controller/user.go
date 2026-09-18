@@ -794,6 +794,16 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
+	// Login passwords can only be changed through UpdateSelfPassword. Reject
+	// the field before handling preferences, including JSON's case-insensitive
+	// field aliases, so a legacy request cannot report a successful change.
+	for field := range requestData {
+		if strings.EqualFold(field, "password") {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+	}
+
 	// 检查是否是用户设置更新请求 (sidebar_modules 或 language)
 	if sidebarModules, sidebarExists := requestData["sidebar_modules"]; sidebarExists {
 		userId := c.GetInt("id")
@@ -868,22 +878,15 @@ func UpdateSelf(c *gin.Context) {
 		return
 	}
 
-	if user.Password != "" {
-		if err := service.SetUserLoginPassword(c.GetInt("id"), user.OriginalPassword, user.Password); err != nil {
-			respondPasswordError(c, err)
-			return
-		}
-	} else {
-		// Preserve the existing original-password check for profile changes.
-		currentUser, err := model.GetUserById(c.GetInt("id"), true)
-		if err != nil {
-			common.ApiError(c, err)
-			return
-		}
-		if currentUser.Password != "" && !common.ValidatePasswordAndHash(user.OriginalPassword, currentUser.Password) {
-			respondPasswordError(c, service.ErrOriginalPassword)
-			return
-		}
+	// Preserve the existing original-password check for profile changes.
+	currentUser, err := model.GetUserById(c.GetInt("id"), true)
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	if currentUser.Password != "" && !common.ValidatePasswordAndHash(user.OriginalPassword, currentUser.Password) {
+		respondPasswordError(c, service.ErrOriginalPassword)
+		return
 	}
 	cleanUser := model.User{
 		Id:          c.GetInt("id"),
