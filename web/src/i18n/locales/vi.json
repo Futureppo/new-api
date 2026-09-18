@@ -1,5 +1,7 @@
 {
   "translation": {
+    "上游模型：{{model}}": "Mô hình thượng nguồn: {{model}}",
+    "上游未返回": "Thượng nguồn không trả về",
     "渠道名称": "Tên kênh",
     "渠道名称不能为空": "Tên kênh không được để trống",
     "按名称删除渠道": "Xóa kênh theo tên",

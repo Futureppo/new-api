@@ -1,5 +1,7 @@
 {
   "translation": {
+    "上游模型：{{model}}": "Upstream model: {{model}}",
+    "上游未返回": "Not returned by upstream",
     "渠道名称": "Channel name",
     "渠道名称不能为空": "Channel name cannot be empty",
     "按名称删除渠道": "Delete channels by name",

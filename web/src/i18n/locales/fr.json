@@ -1,5 +1,7 @@
 {
   "translation": {
+    "上游模型：{{model}}": "Modèle en amont : {{model}}",
+    "上游未返回": "Non fourni par le fournisseur",
     "渠道名称": "Nom du canal",
     "渠道名称不能为空": "Le nom du canal ne peut pas être vide",
     "按名称删除渠道": "Supprimer des canaux par nom",

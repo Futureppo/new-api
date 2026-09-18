@@ -238,6 +238,18 @@ const ModelTestModal = ({
                 </Typography.Text>
               )}
             </div>
+            {testResult.success && (
+              <Typography.Text
+                type='tertiary'
+                size='small'
+                className='break-all'
+                style={{ maxWidth: '400px' }}
+              >
+                {t('上游模型：{{model}}', {
+                  model: testResult.upstreamModel || t('上游未返回'),
+                })}
+              </Typography.Text>
+            )}
             {testResult.success && rateLimitTier && (
               <Typography.Text type='tertiary' size='small'>
                 {t('付费层级: ${tier}').replace('${tier}', rateLimitTier)}

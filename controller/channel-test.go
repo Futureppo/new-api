@@ -40,10 +40,11 @@ import (
 )
 
 type testResult struct {
-	context     *gin.Context
-	localErr    error
-	newAPIError *types.NewAPIError
-	rateLimit   *channelRateLimitInfo
+	context       *gin.Context
+	localErr      error
+	newAPIError   *types.NewAPIError
+	rateLimit     *channelRateLimitInfo
+	upstreamModel string
 }
 
 type channelRateLimitInfo struct {
@@ -788,6 +789,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if httpResp != nil {
 		rateLimit = extractChannelRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
 	}
+	responseCapture := captureTestUpstreamResponse(info, httpResp)
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
 	if respErr != nil {
 		return testResult{
@@ -843,10 +845,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
 	testSucceeded = true
 	return testResult{
-		context:     c,
-		localErr:    nil,
-		newAPIError: nil,
-		rateLimit:   rateLimit,
+		context:       c,
+		localErr:      nil,
+		newAPIError:   nil,
+		rateLimit:     rateLimit,
+		upstreamModel: extractTestUpstreamModel(responseCapture.Snapshot().UpstreamResponseBody),
 	}
 }
 
@@ -1076,6 +1079,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 	}
 
 	rateLimit := extractChannelRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
+	responseCapture := captureTestUpstreamResponse(info, resp)
 	taskID, _, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return taskErrorToTestResult(c, taskErr)
@@ -1103,10 +1107,11 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 	common.SysLog(fmt.Sprintf("testing channel #%d, task id: %s", channel.Id, taskID))
 	testSucceeded = true
 	return testResult{
-		context:     c,
-		localErr:    nil,
-		newAPIError: nil,
-		rateLimit:   rateLimit,
+		context:       c,
+		localErr:      nil,
+		newAPIError:   nil,
+		rateLimit:     rateLimit,
+		upstreamModel: extractTestUpstreamModel(responseCapture.Snapshot().UpstreamResponseBody),
 	}
 }
 
@@ -1514,9 +1519,10 @@ func TestChannel(c *gin.Context) {
 		return
 	}
 	resp := gin.H{
-		"success": true,
-		"message": "",
-		"time":    consumedTime,
+		"success":        true,
+		"message":        "",
+		"time":           consumedTime,
+		"upstream_model": result.upstreamModel,
 	}
 	if result.rateLimit != nil {
 		resp["rate_limit"] = result.rateLimit
