@@ -45,11 +45,9 @@ import {
   Activity,
   AlertTriangle,
   Ban,
-  Bot,
   CheckCircle2,
   Copy as CopyIcon,
   CreditCard,
-  Database,
   Eye,
   ExternalLink,
   Gift,
@@ -97,8 +95,6 @@ const SECTIONS = [
   { id: 'risk', label: '风控中心', icon: ShieldCheck },
   { id: 'model-status', label: '模型状态', icon: LineChart },
   { id: 'auto-group', label: '自动分组', icon: UserCog },
-  { id: 'ai-ban', label: 'AI 封禁', icon: Bot },
-  { id: 'system', label: '系统工具', icon: Database },
 ];
 
 const ENHANCEMENTS_BASE_PATH = '/console/enhancements';
@@ -402,11 +398,6 @@ function formatFieldLabel(key, t) {
 function formatNumber(value) {
   if (typeof value !== 'number') return value;
   return new Intl.NumberFormat().format(value);
-}
-
-function formatPercent(value) {
-  const number = Number(value || 0);
-  return `${(number * 100).toFixed(1)}%`;
 }
 
 function formatStatusPercent(value) {
@@ -3373,7 +3364,6 @@ function RiskIPSelectionBanConfirmContent({
 function RiskPanel({ data }) {
   const { t } = useTranslation();
   const currency = getCurrencyConfig();
-  const [coverage, setCoverage] = useState(data?.coverage || {});
   const [sharedIPs, setSharedIPs] = useState(data?.sharedIPs || EMPTY_PAGE);
   const [tokenMultiIPs, setTokenMultiIPs] = useState(
     data?.tokenMultiIPs || EMPTY_PAGE,
@@ -3391,17 +3381,14 @@ function RiskPanel({ data }) {
   const [tokenPageSize, setTokenPageSize] = useState(
     data?.tokenMultiIPs?.page_size || 20,
   );
-  const [coverageLoading, setCoverageLoading] = useState(false);
   const [sharedLoading, setSharedLoading] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
   const [selectedSharedIP, setSelectedSharedIP] = useState(null);
   const [banLoadingIP, setBanLoadingIP] = useState('');
   const [ipBanLoadingKey, setIPBanLoadingKey] = useState('');
   const [tokenActionLoading, setTokenActionLoading] = useState('');
 
   useEffect(() => {
-    setCoverage(data?.coverage || {});
     setSharedIPs(data?.sharedIPs || EMPTY_PAGE);
     setTokenMultiIPs(data?.tokenMultiIPs || EMPTY_PAGE);
     setSharedPageSize(data?.sharedIPs?.page_size || 20);
@@ -3423,20 +3410,6 @@ function RiskPanel({ data }) {
     }
     appendObjectTableQueryParams(params, nextSort);
     return params;
-  };
-
-  const loadCoverage = async () => {
-    setCoverageLoading(true);
-    try {
-      const nextCoverage = await API.get(
-        '/api/enhancements/risk/ip-log-coverage',
-      ).then(unwrap);
-      setCoverage(nextCoverage || {});
-    } catch (error) {
-      showError(error.message || error);
-    } finally {
-      setCoverageLoading(false);
-    }
   };
 
   const loadSharedIPs = async (
@@ -3480,35 +3453,9 @@ function RiskPanel({ data }) {
 
   const refreshRiskDetails = async (nextFilters = filters) => {
     await Promise.all([
-      loadCoverage(),
       loadSharedIPs(1, sharedPageSize, nextFilters),
       loadTokenMultiIPs(1, tokenPageSize, nextFilters),
     ]);
-  };
-
-  const enableAll = () => {
-    Modal.confirm({
-      title: t('一键开启 IP 日志记录'),
-      content: t('确认将所有未开启“记录请求与错误日志IP”的用户改为开启？'),
-      okText: t('开启'),
-      cancelText: t('取消'),
-      onOk: async () => {
-        setApplying(true);
-        try {
-          const res = await API.post(
-            '/api/enhancements/risk/ip-log/enable-all',
-          );
-          const result = unwrap(res);
-          setCoverage(result?.coverage || {});
-          showSuccess(t('操作成功'));
-          await loadCoverage();
-        } catch (error) {
-          showError(error.message || error);
-        } finally {
-          setApplying(false);
-        }
-      },
-    });
   };
 
   const copyRiskItems = async (items, renderLabel) => {
@@ -3731,10 +3678,6 @@ function RiskPanel({ data }) {
       },
     });
   };
-
-  const totalUsers = coverage?.total_users || 0;
-  const enabledUsers = coverage?.enabled_users || 0;
-  const disabledUsers = coverage?.disabled_users || 0;
 
   const sharedColumns = [
     {
@@ -3974,53 +3917,6 @@ function RiskPanel({ data }) {
 
   return (
     <div className='space-y-4'>
-      <Card title={t('IP 日志记录覆盖率')} className='!rounded-lg'>
-        <Spin spinning={coverageLoading}>
-          <div className='flex flex-col md:flex-row md:items-end md:justify-between gap-4'>
-            <div>
-              <Text type='secondary'>
-                {t('已开启记录请求与错误日志IP的用户占比')}
-              </Text>
-              <div className='text-4xl font-semibold mt-2 text-semi-color-text-0'>
-                {formatPercent(coverage?.enabled_ratio)}
-              </div>
-              <div className='mt-2 text-semi-color-text-1'>
-                {formatNumber(enabledUsers)} / {formatNumber(totalUsers)}
-              </div>
-            </div>
-            <div className='grid grid-cols-2 gap-3 min-w-64'>
-              <div className='rounded-lg border border-semi-color-border p-3'>
-                <Text type='secondary' size='small'>
-                  {t('已开启用户')}
-                </Text>
-                <div className='text-xl font-semibold mt-1'>
-                  {formatNumber(enabledUsers)}
-                </div>
-              </div>
-              <div className='rounded-lg border border-semi-color-border p-3'>
-                <Text type='secondary' size='small'>
-                  {t('未开启用户')}
-                </Text>
-                <div className='text-xl font-semibold mt-1'>
-                  {formatNumber(disabledUsers)}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className='mt-4'>
-            <Button
-              size='small'
-              type='primary'
-              loading={applying}
-              disabled={disabledUsers === 0}
-              onClick={enableAll}
-            >
-              {t('一键开启未开启用户')}
-            </Button>
-          </div>
-        </Spin>
-      </Card>
-
       <Card className='!rounded-lg'>
         <div className='flex flex-col xl:flex-row gap-3 xl:items-end'>
           <label className='space-y-1'>
@@ -4086,7 +3982,7 @@ function RiskPanel({ data }) {
           <Button
             type='primary'
             icon={<RefreshCw size={16} />}
-            loading={coverageLoading || sharedLoading || tokenLoading}
+            loading={sharedLoading || tokenLoading}
             onClick={() => refreshRiskDetails(filters)}
           >
             {t('刷新')}
@@ -5151,8 +5047,7 @@ async function fetchSection(section) {
         start: range.start,
         end: range.end,
       };
-      const [coverage, sharedIPs, tokenMultiIPs] = await Promise.all([
-        API.get('/api/enhancements/risk/ip-log-coverage').then(unwrap),
+      const [sharedIPs, tokenMultiIPs] = await Promise.all([
         API.get('/api/enhancements/risk/shared-token-ips', {
           params: riskParams,
         }).then(unwrap),
@@ -5160,7 +5055,7 @@ async function fetchSection(section) {
           params: riskParams,
         }).then(unwrap),
       ]);
-      return { coverage, sharedIPs, tokenMultiIPs };
+      return { sharedIPs, tokenMultiIPs };
     }
     case 'model-status': {
       const config = await API.get(
@@ -5174,19 +5069,6 @@ async function fetchSection(section) {
         API.get('/api/enhancements/auto-group/preview').then(unwrap),
       ]);
       return { config, preview };
-    }
-    case 'ai-ban': {
-      const [config, ranking] = await Promise.all([
-        API.get('/api/enhancements/ai-ban/config').then(unwrap),
-        API.get('/api/enhancements/ai-ban/suspicious').then(unwrap),
-      ]);
-      return { config, ranking };
-    }
-    case 'system': {
-      const summary = await API.get('/api/enhancements/system/info').then(
-        unwrap,
-      );
-      return { summary };
     }
     default:
       return {};
@@ -5288,7 +5170,6 @@ export default function Enhancements() {
           </div>
         </div>
         <Space>
-          {activeSection === 'ai-ban' && <Tag color='blue'>{t('试运行')}</Tag>}
           <Button
             icon={<RefreshCw size={16} />}
             onClick={loadData}

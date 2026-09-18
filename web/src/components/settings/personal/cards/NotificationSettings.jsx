@@ -74,7 +74,6 @@ const NotificationSettings = ({
       detail: true,
       token: true,
       log: true,
-      email_log: true,
       midjourney: true,
       task: true,
     },
@@ -164,7 +163,6 @@ const NotificationSettings = ({
         detail: true,
         token: true,
         log: true,
-        email_log: true,
         midjourney: true,
         task: true,
       },
@@ -270,11 +268,6 @@ const NotificationSettings = ({
         { key: 'token', title: t('令牌管理'), description: t('API令牌管理') },
         { key: 'log', title: t('使用日志'), description: t('API使用记录') },
         {
-          key: 'email_log',
-          title: t('邮件日志'),
-          description: t('邮件发送记录'),
-        },
-        {
           key: 'midjourney',
           title: t('绘图日志'),
           description: t('绘图任务记录'),
@@ -327,7 +320,7 @@ const NotificationSettings = ({
         {
           key: 'enhancements',
           title: t('增强管理'),
-          description: t('增强统计、审计、风控与系统工具'),
+          description: t('增强统计、审计与风控'),
         },
         {
           key: 'setting',
