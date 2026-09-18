@@ -893,6 +893,7 @@ export const getLogsColumns = ({
       render: (text, record, index) => {
         const showIp =
           (record.type === 2 ||
+            record.type === 4 ||
             record.type === 5 ||
             record.type === 7 ||
             (isAdminUser && record.type === 1)) &&
