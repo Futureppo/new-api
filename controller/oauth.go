@@ -75,14 +75,7 @@ func HandleOAuth(c *gin.Context) {
 		return
 	}
 
-	// 2. Check if user is already logged in (bind flow)
-	username := session.Get("username")
-	if username != nil {
-		handleOAuthBind(c, provider)
-		return
-	}
-
-	// 3. Check if provider is enabled
+	// Check availability and authorization errors before either login or binding.
 	if !provider.IsEnabled() {
 		common.ApiErrorI18n(c, i18n.MsgOAuthNotEnabled, providerParams(provider.GetName()))
 		return
@@ -92,10 +85,20 @@ func HandleOAuth(c *gin.Context) {
 	errorCode := c.Query("error")
 	if errorCode != "" {
 		errorDescription := c.Query("error_description")
+		if errorCode == "access_denied" {
+			errorDescription = i18n.T(c, i18n.MsgOAuthAccessDenied)
+		} else if errorDescription == "" {
+			errorDescription = i18n.T(c, i18n.MsgOAuthAuthorizationFailed)
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": errorDescription,
 		})
+		return
+	}
+
+	if session.Get("username") != nil {
+		handleOAuthBind(c, provider)
 		return
 	}
 
@@ -355,11 +358,16 @@ func findOrCreateOAuthUser(c *gin.Context, provider oauth.Provider, oauthUser *o
 
 			// Set the provider user ID on the user model and update
 			provider.SetProviderUserID(user, oauthUser.ProviderUserID)
+			var nodeLocID any
+			if user.NodeLocId != "" {
+				nodeLocID = user.NodeLocId
+			}
 			if err := tx.Model(user).Updates(map[string]interface{}{
 				"github_id":   user.GitHubId,
 				"discord_id":  user.DiscordId,
 				"oidc_id":     user.OidcId,
 				"linux_do_id": user.LinuxDOId,
+				"nodeloc_id":  nodeLocID,
 				"wechat_id":   user.WeChatId,
 				"telegram_id": user.TelegramId,
 			}).Error; err != nil {

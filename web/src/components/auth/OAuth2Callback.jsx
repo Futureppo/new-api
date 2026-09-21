@@ -29,23 +29,27 @@ import {
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import Loading from '../common/ui/Loading';
+import { getOAuthCallbackParams } from '../../helpers/oauthCallback';
 
 const OAuth2Callback = (props) => {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
-  const [, userDispatch] = useContext(UserContext);
+  const [userState, userDispatch] = useContext(UserContext);
   const navigate = useNavigate();
-  
+
   // 防止 React 18 Strict Mode 下重复执行
   const hasExecuted = useRef(false);
 
   // 最大重试次数
   const MAX_RETRIES = 3;
 
-  const sendCode = async (code, state, retry = 0) => {
+  const failurePath = userState.user ? '/console/personal' : '/login';
+
+  const sendCode = async (params, retry = 0) => {
     try {
       const { data: resData } = await API.get(
-        `/api/oauth/${props.type}?code=${code}&state=${state}`,
+        `/api/oauth/${encodeURIComponent(props.type)}?${params.toString()}`,
+        { skipErrorHandler: true },
       );
 
       const { success, message, data } = resData;
@@ -53,6 +57,7 @@ const OAuth2Callback = (props) => {
       if (!success) {
         // 业务错误不重试，直接显示错误
         showError(message || t('授权失败'));
+        navigate(failurePath, { replace: true });
         return;
       }
 
@@ -69,15 +74,17 @@ const OAuth2Callback = (props) => {
       }
     } catch (error) {
       // 网络错误等可重试
-      if (retry < MAX_RETRIES) {
+      if (!error.response && retry < MAX_RETRIES && !params.has('error')) {
         // 递增的退避等待
         await new Promise((resolve) => setTimeout(resolve, (retry + 1) * 2000));
-        return sendCode(code, state, retry + 1);
+        return sendCode(params, retry + 1);
       }
 
       // 重试次数耗尽，提示错误并返回设置页面
-      showError(error.message || t('授权失败'));
-      navigate('/console/personal');
+      showError(
+        error.response?.data?.message || error.message || t('授权失败'),
+      );
+      navigate(failurePath, { replace: true });
     }
   };
 
@@ -88,17 +95,16 @@ const OAuth2Callback = (props) => {
     }
     hasExecuted.current = true;
 
-    const code = searchParams.get('code');
-    const state = searchParams.get('state');
+    const params = getOAuthCallbackParams(searchParams);
 
     // 参数缺失直接返回
-    if (!code) {
+    if (!params.get('code') && !params.get('error')) {
       showError(t('未获取到授权码'));
-      navigate('/console/personal');
+      navigate(failurePath, { replace: true });
       return;
     }
 
-    sendCode(code, state);
+    sendCode(params);
   }, []);
 
   return <Loading />;

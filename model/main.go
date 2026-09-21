@@ -254,6 +254,9 @@ func InitLogDB() (err error) {
 }
 
 func migrateDB() error {
+	if err := migrateNodeLocUserID(DB); err != nil {
+		return err
+	}
 	// Migrate price_amount column from float/double to decimal for existing tables
 	migrateSubscriptionPlanPriceAmount()
 	// Migrate model_limits column from varchar to text for existing tables
@@ -318,6 +321,9 @@ func migrateDB() error {
 }
 
 func migrateDBFast() error {
+	if err := migrateNodeLocUserID(DB); err != nil {
+		return err
+	}
 
 	var wg sync.WaitGroup
 

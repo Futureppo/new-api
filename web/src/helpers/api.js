@@ -24,6 +24,8 @@ import {
   isValidMessage,
 } from './utils';
 import axios from 'axios';
+import i18n from '../i18n/i18n';
+import { buildNodeLocAuthorizationURL } from './nodeloc';
 import { MESSAGE_ROLES } from '../constants/playground.constants';
 
 export let API = axios.create({
@@ -314,6 +316,23 @@ export async function onGitHubOAuthClicked(github_client_id, options = {}) {
   redirectToOAuthUrl(
     `https://github.com/login/oauth/authorize?client_id=${github_client_id}&state=${state}&scope=user:email`,
   );
+}
+
+export async function onNodeLocOAuthClicked(status, options = {}) {
+  try {
+    // Validate the canonical origin before logout or creating a session state.
+    const url = buildNodeLocAuthorizationURL(
+      status,
+      window.location.origin,
+      '',
+    );
+    const state = await prepareOAuthState(options);
+    if (!state) return;
+    url.searchParams.set('state', state);
+    redirectToOAuthUrl(url);
+  } catch (error) {
+    showError(i18n.t(error.message || '授权失败', { origin: error.origin }));
+  }
 }
 
 export async function onLinuxDOOAuthClicked(

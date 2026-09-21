@@ -32,6 +32,7 @@ import {
   Radio,
   Select,
   Input,
+  Space,
 } from '@douyinfe/semi-ui';
 const { Text } = Typography;
 import {
@@ -119,6 +120,9 @@ const SystemSetting = () => {
     TelegramBotToken: '',
     TelegramBotName: '',
     LinuxDOOAuthEnabled: '',
+    'nodeloc.enabled': false,
+    'nodeloc.client_id': '',
+    'nodeloc.client_secret': '',
     LinuxDOClientId: '',
     LinuxDOClientSecret: '',
     LinuxDOMinimumTrustLevel: '',
@@ -227,6 +231,7 @@ const SystemSetting = () => {
           case 'SMTPSSLEnabled':
           case 'SMTPForceAuthLogin':
           case 'LinuxDOOAuthEnabled':
+          case 'nodeloc.enabled':
           case 'discord.enabled':
           case 'oidc.enabled':
           case 'passkey.enabled':
@@ -301,7 +306,7 @@ const SystemSetting = () => {
         });
         if (!res.data.success) {
           showError(res.data.message);
-          return;
+          return false;
         }
       }
 
@@ -322,6 +327,7 @@ const SystemSetting = () => {
         errorResults.forEach((res) => {
           showError(res.data.message);
         });
+        if (errorResults.length > 0) return false;
       }
 
       showSuccess(t('更新成功'));
@@ -331,10 +337,13 @@ const SystemSetting = () => {
         newInputs[opt.key] = opt.value;
       });
       setInputs(newInputs);
+      return true;
     } catch (error) {
       showError(t('更新失败'));
+      return false;
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const handleFormChange = (values) => {
@@ -743,6 +752,28 @@ const SystemSetting = () => {
     }
   };
 
+  const submitNodeLocOAuth = async () => {
+    const options = [];
+    if (originInputs['nodeloc.client_id'] !== inputs['nodeloc.client_id']) {
+      options.push({
+        key: 'nodeloc.client_id',
+        value: inputs['nodeloc.client_id'],
+      });
+    }
+    if (inputs['nodeloc.client_secret']?.trim()) {
+      options.push({
+        key: 'nodeloc.client_secret',
+        value: inputs['nodeloc.client_secret'],
+      });
+    }
+    if (options.length > 0) {
+      if (await updateOptions(options)) {
+        formApiRef.current?.setValue('nodeloc.client_secret', '');
+        setInputs((previous) => ({ ...previous, 'nodeloc.client_secret': '' }));
+      }
+    }
+  };
+
   const submitPasskeySettings = async () => {
     // 使用formApi直接获取当前表单值
     const formValues = formApiRef.current?.getValues() || {};
@@ -788,7 +819,10 @@ const SystemSetting = () => {
     if (optionKey === 'PasswordLoginEnabled' && !value) {
       setShowPasswordLoginConfirmModal(true);
     } else {
-      await updateOptions([{ key: optionKey, value }]);
+      const saved = await updateOptions([{ key: optionKey, value }]);
+      if (!saved && optionKey === 'nodeloc.enabled') {
+        formApiRef.current?.setValue(optionKey, !value);
+      }
     }
     if (optionKey === 'LinuxDOOAuthEnabled') {
       setLinuxDOOAuthEnabled(value);
@@ -1158,6 +1192,15 @@ const SystemSetting = () => {
                         }
                       >
                         {t('允许通过 Discord 账户登录 & 注册')}
+                      </Form.Checkbox>
+                      <Form.Checkbox
+                        field='nodeloc.enabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('nodeloc.enabled', e)
+                        }
+                      >
+                        {t('允许通过 NodeLoc 账户登录 & 注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
                         field='LinuxDOOAuthEnabled'
@@ -1815,6 +1858,57 @@ const SystemSetting = () => {
                   </Row>
                   <Button onClick={submitLinuxDOOAuth}>
                     {t('保存 Linux DO OAuth 设置')}
+                  </Button>
+                </Form.Section>
+              </Card>
+
+              <Card>
+                <Form.Section text={t('配置 NodeLoc OAuth')}>
+                  <Text>
+                    {t(
+                      'NodeLoc 仅请求 openid profile，用户等级准入在 NodeLoc 应用侧设置。',
+                    )}
+                  </Text>
+                  <Space className='ml-2'>
+                    <a
+                      href='https://www.nodeloc.com/oauth-provider/applications'
+                      target='_blank'
+                      rel='noreferrer'
+                    >
+                      {t('管理 NodeLoc OAuth 应用')}
+                    </a>
+                    <a
+                      href='https://docs.nodeloc.com/api-reference/introduction'
+                      target='_blank'
+                      rel='noreferrer'
+                    >
+                      {t('接入文档')}
+                    </a>
+                  </Space>
+                  <Banner
+                    type='info'
+                    style={{ marginBottom: 20, marginTop: 16 }}
+                    description={`${t('回调 URL 填')} ${inputs.ServerAddress ? inputs.ServerAddress.trim().replace(/\/+$/, '') : t('网站地址')}/oauth/nodeloc`}
+                  />
+                  <Row gutter={24}>
+                    <Col xs={24} md={12}>
+                      <Form.Input
+                        field='nodeloc.client_id'
+                        label={t('NodeLoc Client ID')}
+                      />
+                    </Col>
+                    <Col xs={24} md={12}>
+                      <Form.Input
+                        field='nodeloc.client_secret'
+                        label={t('NodeLoc Client Secret')}
+                        type='password'
+                        autoComplete='new-password'
+                        placeholder={t('敏感信息不会发送到前端显示')}
+                      />
+                    </Col>
+                  </Row>
+                  <Button onClick={submitNodeLocOAuth}>
+                    {t('保存 NodeLoc OAuth 设置')}
                   </Button>
                 </Form.Section>
               </Card>

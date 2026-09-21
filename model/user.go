@@ -52,6 +52,7 @@ type User struct {
 	InviterId              int            `json:"inviter_id" gorm:"type:int;column:inviter_id;index"`
 	DeletedAt              gorm.DeletedAt `gorm:"index"`
 	LinuxDOId              string         `json:"linux_do_id" gorm:"column:linux_do_id;index"`
+	NodeLocId              string         `json:"nodeloc_id" gorm:"column:nodeloc_id;type:varchar(64);uniqueIndex;default:null"`
 	Setting                string         `json:"setting" gorm:"type:text;column:setting"`
 	Remark                 string         `json:"remark,omitempty" gorm:"type:varchar(255)" validate:"max=255"`
 	StripeCustomer         string         `json:"stripe_customer" gorm:"type:varchar(64);column:stripe_customer;index"`
@@ -656,6 +657,7 @@ func (user *User) ClearBinding(bindingType string) error {
 		"wechat":   "wechat_id",
 		"telegram": "telegram_id",
 		"linuxdo":  "linux_do_id",
+		"nodeloc":  "nodeloc_id",
 	}
 
 	column, ok := bindingColumnMap[bindingType]
@@ -663,8 +665,16 @@ func (user *User) ClearBinding(bindingType string) error {
 		return errors.New("invalid binding type")
 	}
 
-	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update(column, "").Error; err != nil {
+	var emptyBinding any = ""
+	if bindingType == "nodeloc" {
+		// NULL allows multiple unbound users while the unique index protects bindings.
+		emptyBinding = nil
+	}
+	if err := DB.Model(&User{}).Where("id = ?", user.Id).Update(column, emptyBinding).Error; err != nil {
 		return err
+	}
+	if bindingType == "nodeloc" {
+		user.NodeLocId = ""
 	}
 
 	if err := DB.Where("id = ?", user.Id).First(user).Error; err != nil {
@@ -1275,6 +1285,19 @@ func (user *User) FillUserByLinuxDOId() error {
 		return err
 	}
 	return ResolveUserDisableExpiry(user, time.Now().Unix())
+}
+
+func IsNodeLocIdAlreadyTaken(id string) bool {
+	var user User
+	err := DB.Unscoped().Where("nodeloc_id = ?", id).First(&user).Error
+	return !errors.Is(err, gorm.ErrRecordNotFound)
+}
+
+func (user *User) FillUserByNodeLocId() error {
+	if user.NodeLocId == "" {
+		return errors.New("nodeloc id is empty")
+	}
+	return DB.Where("nodeloc_id = ?", user.NodeLocId).First(user).Error
 }
 
 func RootUserExists() bool {

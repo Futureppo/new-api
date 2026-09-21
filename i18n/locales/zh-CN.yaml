@@ -304,3 +304,7 @@ user.password_policy: "密码至少 8 个字符，最多 72 个 UTF-8 字节，�
 user.original_password_incorrect: "原密码错误。"
 user.password_unchanged: "新密码不能与原密码相同。"
 user.password_changed_retry: "密码状态已发生变化，请刷新后重试。"
+
+oauth.access_denied: "授权被拒绝，可重新发起登录。"
+oauth.authorization_failed: "授权失败，请重试。"
+oauth.nodeloc_config_invalid: "启用 NodeLoc 前，请填写 Client ID、Client Secret 和有效的服务器地址（http:// 或 https://，不包含路径）。"

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting"
 	"github.com/QuantumNous/new-api/setting/console_setting"
@@ -134,6 +135,33 @@ func UpdateOption(c *gin.Context) {
 		option.Value = fmt.Sprintf("%v", option.Value)
 	}
 	switch option.Key {
+	case "nodeloc.enabled":
+		if option.Value != "true" && option.Value != "false" {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		if option.Value == "true" && !system_setting.GetNodeLocSettings().IsConfigured() {
+			common.ApiErrorI18n(c, i18n.MsgNodeLocConfigInvalid)
+			return
+		}
+	case "nodeloc.client_secret":
+		if strings.TrimSpace(option.Value.(string)) == "" {
+			c.JSON(http.StatusOK, gin.H{"success": true, "message": ""})
+			return
+		}
+	case "nodeloc.client_id":
+		option.Value = strings.TrimSpace(option.Value.(string))
+		if option.Value == "" && system_setting.GetNodeLocSettings().Enabled {
+			common.ApiErrorI18n(c, i18n.MsgNodeLocConfigInvalid)
+			return
+		}
+	case "ServerAddress":
+		if system_setting.GetNodeLocSettings().Enabled {
+			if _, err := system_setting.NodeLocRedirectURI(option.Value.(string)); err != nil {
+				common.ApiErrorI18n(c, i18n.MsgNodeLocConfigInvalid)
+				return
+			}
+		}
 	case "GitHubOAuthEnabled":
 		if option.Value == "true" && common.GitHubClientId == "" {
 			c.JSON(http.StatusOK, gin.H{

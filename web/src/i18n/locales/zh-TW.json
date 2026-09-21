@@ -1,5 +1,18 @@
 {
   "translation": {
+    "NodeLoc Client ID": "NodeLoc Client ID",
+    "NodeLoc Client Secret": "NodeLoc Client Secret",
+    "使用 NodeLoc 继续": "使用 NodeLoc 繼續",
+    "允许通过 NodeLoc 账户登录 & 注册": "允許透過 NodeLoc 帳戶登入與註冊",
+    "配置 NodeLoc OAuth": "設定 NodeLoc OAuth",
+    "NodeLoc 仅请求 openid profile，用户等级准入在 NodeLoc 应用侧设置。": "NodeLoc 僅請求 openid profile，使用者等級准入在 NodeLoc 應用側設定。",
+    "管理 NodeLoc OAuth 应用": "管理 NodeLoc OAuth 應用",
+    "接入文档": "串接文件",
+    "保存 NodeLoc OAuth 设置": "儲存 NodeLoc OAuth 設定",
+    "NodeLoc 登录配置不完整，请联系管理员": "NodeLoc 登入設定不完整，請聯絡管理員",
+    "请在配置的正式站点使用 NodeLoc 登录：{{origin}}": "請在設定的正式站點使用 NodeLoc 登入：{{origin}}",
+    "NodeLoc": "NodeLoc",
+    "NodeLoc ID": "NodeLoc ID",
     "TypeSafe 默认地址为 https://api.typesafe.ai，支持 /v1/systemone 原生评估和模型列表获取，不支持聊天或流式请求。": "TypeSafe 預設位址為 https://api.typesafe.ai，支援 /v1/systemone 原生評估和模型清單取得，不支援聊天或串流請求。",
     "上游模型：{{model}}": "上游模型：{{model}}",
     "上游未返回": "上游未回傳",

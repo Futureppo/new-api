@@ -303,3 +303,7 @@ user.password_policy: "Password must contain at least 8 characters, at most 72 U
 user.original_password_incorrect: "The original password is incorrect."
 user.password_unchanged: "The new password must differ from the original password."
 user.password_changed_retry: "Your password changed during this request. Please refresh and try again."
+
+oauth.access_denied: "Authorization was denied. You can try signing in again."
+oauth.authorization_failed: "Authorization failed. Please try again."
+oauth.nodeloc_config_invalid: "To enable NodeLoc, configure the Client ID, Client Secret and a valid server address (http:// or https://, without a path)."
