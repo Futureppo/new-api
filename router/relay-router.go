@@ -89,6 +89,9 @@ func SetRelayRouter(router *gin.Engine) {
 		//http router
 		httpRouter := relayV1Router.Group("")
 		httpRouter.Use(middleware.Distribute())
+		httpRouter.POST("/systemone", func(c *gin.Context) {
+			controller.Relay(c, types.RelayFormatTypeSafe)
+		})
 		for _, path := range []string{"/ocr", "/fim/completions", "/agents/completions"} {
 			httpRouter.POST(path, func(c *gin.Context) { controller.Relay(c, types.RelayFormatMistralNative) })
 		}

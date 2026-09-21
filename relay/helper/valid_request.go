@@ -23,6 +23,13 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
 
 	switch format {
+	case types.RelayFormatTypeSafe:
+		r := &dto.TypeSafeRequest{}
+		err = common.UnmarshalBodyReusable(c, r)
+		if err != nil && !common.IsRequestBodyTooLargeError(err) {
+			err = types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		request = r
 	case types.RelayFormatMistralNative, types.RelayFormatMistralRealtime:
 		request, err = dto.ParseMistralNativeRequest(c)
 		if err != nil && !common.IsRequestBodyTooLargeError(err) {

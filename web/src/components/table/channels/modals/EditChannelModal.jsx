@@ -132,6 +132,7 @@ const MISTRAL_CONSOLE_CHANNEL_TYPE = 65;
 const MODAL_CHANNEL_TYPE = 69;
 
 const KILO_CHANNEL_TYPE = 70;
+const TYPESAFE_CHANNEL_TYPE = 71;
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -634,7 +635,11 @@ const EditChannelModal = (props) => {
       value = Array.from(new Set(value.map((m) => (m || '').trim())));
     }
 
-    if (name === 'base_url' && value.endsWith('/v1')) {
+    if (
+      name === 'base_url' &&
+      value.endsWith('/v1') &&
+      inputs.type !== TYPESAFE_CHANNEL_TYPE
+    ) {
       Modal.confirm({
         title: '警告',
         content:
@@ -3998,6 +4003,16 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === TYPESAFE_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={t(
+                            'TypeSafe 默认地址为 https://api.typesafe.ai，支持 /v1/systemone 原生评估和模型列表获取，不支持聊天或流式请求。',
+                          )}
+                          className='!rounded-lg'
+                        />
+                      )}
+
                       {inputs.type === KILO_CHANNEL_TYPE && (
                         <Banner
                           type='info'
@@ -4061,7 +4076,9 @@ const EditChannelModal = (props) => {
                                   : t('API地址')
                               }
                               placeholder={
-                                inputs.type === KILO_CHANNEL_TYPE
+                                inputs.type === TYPESAFE_CHANNEL_TYPE
+                                  ? 'https://api.typesafe.ai'
+                                  : inputs.type === KILO_CHANNEL_TYPE
                                   ? 'https://api.kilo.ai/api/gateway'
                                   : inputs.type === MODAL_CHANNEL_TYPE
                                   ? 'https://your-workspace--your-app.modal.direct'

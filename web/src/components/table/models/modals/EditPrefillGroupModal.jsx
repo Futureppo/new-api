@@ -41,6 +41,7 @@ const { Text, Title } = Typography;
 
 // Example endpoint template for quick fill
 const ENDPOINT_TEMPLATE = {
+  'typesafe-systemone': { path: '/v1/systemone', method: 'POST' },
   openai: { path: '/v1/chat/completions', method: 'POST' },
   'openai-response': { path: '/v1/responses', method: 'POST' },
   'openai-response-compact': { path: '/v1/responses/compact', method: 'POST' },

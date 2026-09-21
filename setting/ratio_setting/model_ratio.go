@@ -24,6 +24,10 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
+	// https://docs.typesafe.ai/models: $0.042 / 1M input tokens.
+	"jev-latest":  0.021,
+	"jev-preview": 0.021,
+	"jev-1.13.0":  0.021,
 	//"midjourney":                50,
 	"gpt-4-gizmo-*":  15,
 	"gpt-4o-gizmo-*": 2.5,
@@ -373,6 +377,9 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
+	"jev-latest":         0,
+	"jev-preview":        0,
+	"jev-1.13.0":         0,
 	"gpt-4-gizmo-*":      2,
 	"gpt-4o-gizmo-*":     3,
 	"gpt-4-all":          2,

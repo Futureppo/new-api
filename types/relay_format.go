@@ -3,6 +3,7 @@ package types
 type RelayFormat string
 
 const (
+	RelayFormatTypeSafe                  RelayFormat = "typesafe"
 	RelayFormatOpenAI                    RelayFormat = "openai"
 	RelayFormatClaude                                = "claude"
 	RelayFormatGemini                                = "gemini"

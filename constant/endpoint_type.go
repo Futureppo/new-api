@@ -3,6 +3,7 @@ package constant
 type EndpointType string
 
 const (
+	EndpointTypeTypeSafeSystemOne     EndpointType = "typesafe-systemone"
 	EndpointTypeOpenAI                EndpointType = "openai"
 	EndpointTypeOpenAIResponse        EndpointType = "openai-response"
 	EndpointTypeOpenAIResponseCompact EndpointType = "openai-response-compact"

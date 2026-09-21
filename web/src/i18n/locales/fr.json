@@ -1,5 +1,6 @@
 {
   "translation": {
+    "TypeSafe 默认地址为 https://api.typesafe.ai，支持 /v1/systemone 原生评估和模型列表获取，不支持聊天或流式请求。": "TypeSafe utilise https://api.typesafe.ai par défaut et prend en charge les évaluations natives /v1/systemone et la récupération des modèles. Le chat et le streaming ne sont pas pris en charge.",
     "上游模型：{{model}}": "Modèle en amont : {{model}}",
     "上游未返回": "Non fourni par le fournisseur",
     "渠道名称": "Nom du canal",

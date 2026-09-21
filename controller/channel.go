@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
+	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
 
@@ -220,6 +221,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeTypeSafe:
+		return typesafe.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeKilo:
 		return baseURL + "/models"
 	case constant.ChannelTypeAli:

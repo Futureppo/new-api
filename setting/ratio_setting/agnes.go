@@ -7,7 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/types"
 )
 
-// Saved option maps replace the in-memory defaults. Fill only absent Agnes
+// Saved option maps replace the in-memory defaults. Fill only absent Agnes/TypeSafe
 // entries, including when an older installation reloads its saved options.
 // An explicitly configured zero is a price and must never be overwritten.
 func loadWithAgnesDefaults(target *types.RWMap[string, float64], jsonStr string, defaults map[string]float64) error {
@@ -19,7 +19,7 @@ func loadWithAgnesDefaults(target *types.RWMap[string, float64], jsonStr string,
 		values = make(map[string]float64)
 	}
 	for name, value := range defaults {
-		if strings.HasPrefix(name, "agnes-") {
+		if strings.HasPrefix(name, "agnes-") || name == "jev-latest" || name == "jev-preview" || name == "jev-1.13.0" {
 			if _, exists := values[name]; !exists {
 				values[name] = value
 			}

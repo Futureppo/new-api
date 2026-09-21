@@ -260,6 +260,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
+		return string(constant.EndpointTypeTypeSafeSystemOne)
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeMistral {
 		if mistral.IsTranscriptionModel(modelName) {
 			return string(constant.EndpointTypeAudioTranscription)
@@ -368,11 +371,23 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 			if testModel == "" {
 				testModel = "gpt-4o-mini"
+				if channel.Type == constant.ChannelTypeTypeSafe {
+					testModel = "jev-latest"
+				}
 			}
 		}
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	if channel.Type == constant.ChannelTypeTypeSafe {
+		if endpointType != string(constant.EndpointTypeTypeSafeSystemOne) {
+			return testResult{localErr: errors.New("TypeSafe only supports /v1/systemone")}
+		}
+		isStream = false
+	}
+	if endpointType == string(constant.EndpointTypeTypeSafeSystemOne) && channel.Type != constant.ChannelTypeTypeSafe {
+		return testResult{localErr: errors.New("/v1/systemone requires a TypeSafe channel")}
+	}
 
 	requestPath := "/v1/chat/completions"
 
@@ -459,6 +474,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	// 根据指定的端点类型设置 relayFormat
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeTypeSafeSystemOne:
+			relayFormat = types.RelayFormatTypeSafe
 		case constant.EndpointTypeOpenAI, constant.EndpointTypeCohereChat:
 			relayFormat = types.RelayFormatOpenAI
 		case constant.EndpointTypeOpenAIResponse:
@@ -592,6 +609,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	var convertedAudioReader io.Reader
 	// 根据 RelayMode 选择正确的转换函数
 	switch info.RelayMode {
+	case relayconstant.RelayModeTypeSafeSystemOne:
+		convertedRequest = request
 	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
 		if audioReq, ok := request.(*dto.AudioRequest); ok {
 			if channel.Type == constant.ChannelTypeMistral && info.RelayMode == relayconstant.RelayModeAudioTranscription {
@@ -735,6 +754,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				localErr:    err,
 				newAPIError: types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid),
 			}
+		}
+	}
+	if info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne {
+		var effective dto.TypeSafeRequest
+		if err := common.Unmarshal(jsonData, &effective); err != nil {
+			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeInvalidRequest)}
 		}
 	}
 
@@ -1290,6 +1315,13 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if constant.EndpointType(endpointType) == constant.EndpointTypeTypeSafeSystemOne ||
+		(endpointType == "" && channel != nil && channel.Type == constant.ChannelTypeTypeSafe) {
+		return &dto.TypeSafeRequest{Model: model, Fields: map[string]json.RawMessage{
+			"state":     json.RawMessage(`"Please help urgently."`),
+			"questions": json.RawMessage(`{"urgent":{"type":"noul","instructions":"Does this message express urgency?"}}`),
+		}}
+	}
 	testResponsesInput := json.RawMessage(`[{"role":"user","content":"hi"}]`)
 
 	// 根据端点类型构建不同的测试请求

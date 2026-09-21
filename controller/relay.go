@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
+	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -33,6 +34,9 @@ import (
 )
 
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if info.RelayFormat == types.RelayFormatTypeSafe {
+		return relay.TypeSafeHelper(c, info)
+	}
 	if info.RelayFormat == types.RelayFormatMistralNative || info.RelayFormat == types.RelayFormatMistralRealtime {
 		return relay.MistralNativeHelper(c, info)
 	}
@@ -71,6 +75,14 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	// Reject unsupported protocols before any WebSocket upgrade or pre-charge.
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeTypeSafe && relayFormat != types.RelayFormatTypeSafe {
+		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
+			Message: "TypeSafe only supports POST /v1/systemone",
+			Type:    "invalid_request_error", Code: types.ErrorCodeInvalidRequest,
+		}})
+		return
+	}
 	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeMistral && mistral.UsesNativeProtocol(c) {
 		relayFormat = types.RelayFormatMistralNative
 		if c.Request.URL.Path == mistral.RealtimePath {
@@ -104,6 +116,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
+				return
+			}
 			if (relayFormat == types.RelayFormatMistralNative || relayFormat == types.RelayFormatMistralRealtime) && c.Writer.Written() {
 				return // Native HTTP/SSE/WS errors have already been relayed verbatim.
 			}

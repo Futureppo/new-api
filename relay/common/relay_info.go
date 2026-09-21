@@ -558,6 +558,10 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 	var info *RelayInfo
 	var err error
 	switch relayFormat {
+	case types.RelayFormatTypeSafe:
+		info = genBaseRelayInfo(c, request)
+		info.RelayFormat = relayFormat
+		info.DisablePing = true
 	case types.RelayFormatMistralNative, types.RelayFormatMistralRealtime:
 		info = genBaseRelayInfo(c, request)
 		info.RelayFormat = relayFormat

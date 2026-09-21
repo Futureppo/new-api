@@ -9,6 +9,7 @@ type EndpointInfo struct {
 }
 
 var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
+	constant.EndpointTypeTypeSafeSystemOne:     {Path: "/v1/systemone", Method: "POST"},
 	constant.EndpointTypeOpenAI:                {Path: "/v1/chat/completions", Method: "POST"},
 	constant.EndpointTypeOpenAIResponse:        {Path: "/v1/responses", Method: "POST"},
 	constant.EndpointTypeOpenAIResponseCompact: {Path: "/v1/responses/compact", Method: "POST"},
