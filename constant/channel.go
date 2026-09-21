@@ -69,7 +69,8 @@ const (
 	ChannelTypeModal          = 69
 	ChannelTypeKilo           = 70
 	ChannelTypeTypeSafe       = 71
-	ChannelTypeDummy          = ChannelTypeTypeSafe + 1 // this one is only for count, do not add any channel after this
+	ChannelTypeMiMo           = 72
+	ChannelTypeDummy          = ChannelTypeMiMo + 1 // this one is only for count, do not add any channel after this
 
 )
 
@@ -146,6 +147,7 @@ var ChannelBaseURLs = []string{
 	"",                                          //69, Modal deployments use per-app base URLs
 	"https://api.kilo.ai/api/gateway",           //70
 	"https://api.typesafe.ai",                   //71
+	"https://api.xiaomimimo.com",                //72
 }
 
 var ChannelTypeNames = map[int]string{
@@ -217,6 +219,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeModal:          "Modal",
 	ChannelTypeKilo:           "Kilo",
 	ChannelTypeTypeSafe:       "TypeSafe",
+	ChannelTypeMiMo:           "MiMo",
 }
 
 func GetChannelTypeName(channelType int) string {

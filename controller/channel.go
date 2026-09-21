@@ -21,6 +21,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
+	"github.com/QuantumNous/new-api/relay/channel/mimo"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
@@ -187,6 +188,9 @@ func GetAllChannels(c *gin.Context) {
 func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
 	var headers http.Header
 	switch channel.Type {
+	case constant.ChannelTypeMiMo:
+		headers = make(http.Header)
+		headers.Set("api-key", key)
 	case constant.ChannelTypeAnthropic:
 		headers = GetClaudeAuthHeader(key)
 	default:
@@ -221,6 +225,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeMiMo:
+		return mimo.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeTypeSafe:
 		return typesafe.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeKilo:
@@ -463,6 +469,13 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	}
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
+	if channel.Type == constant.ChannelTypeMiMo && customModelListURL == "" {
+		models, err := fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
+		if err != nil {
+			return nil, err
+		}
+		return mimo.SupplementModels(models), nil
+	}
 	if channel.Type == constant.ChannelTypeKilo {
 		return fetchKiloModelIDs(channel, fetchURL, key, channel.GetOtherSettings().KiloFreeModelSyncEnabled)
 	}
@@ -723,6 +736,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
+	}
+	if isAdd && channel.Type == constant.ChannelTypeMiMo && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
+		channel.TestModel = common.GetPointer(mimo.DefaultTestModel)
 	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {

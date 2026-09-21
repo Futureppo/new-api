@@ -1,5 +1,6 @@
 {
   "translation": {
+    "MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。": "MiMo поддерживает API чата OpenAI и Anthropic. В список добавлен mimo-v2.6-pro-ultraspeed, временно тарифицируемый по цене v2.5-pro на сайте. Цену можно изменить в настройках моделей.",
     "NodeLoc Client ID": "NodeLoc Client ID",
     "NodeLoc Client Secret": "NodeLoc Client Secret",
     "使用 NodeLoc 继续": "Продолжить с NodeLoc",

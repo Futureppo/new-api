@@ -133,6 +133,8 @@ const MODAL_CHANNEL_TYPE = 69;
 
 const KILO_CHANNEL_TYPE = 70;
 const TYPESAFE_CHANNEL_TYPE = 71;
+const MIMO_CHANNEL_TYPE = 72;
+const MIMO_TEST_MODEL = 'mimo-v2.6-pro-ultraspeed';
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -638,7 +640,8 @@ const EditChannelModal = (props) => {
     if (
       name === 'base_url' &&
       value.endsWith('/v1') &&
-      inputs.type !== TYPESAFE_CHANNEL_TYPE
+      inputs.type !== TYPESAFE_CHANNEL_TYPE &&
+      inputs.type !== MIMO_CHANNEL_TYPE
     ) {
       Modal.confirm({
         title: '警告',
@@ -654,6 +657,21 @@ const EditChannelModal = (props) => {
     if (name === 'type') {
       let localModels = [];
       switch (value) {
+        case MIMO_CHANNEL_TYPE:
+          localModels = getChannelModels(value);
+          if (!isEdit) {
+            const testModel = inputs.test_model || MIMO_TEST_MODEL;
+            setInputs((prev) => ({
+              ...prev,
+              base_url: 'https://api.xiaomimimo.com',
+              models: localModels,
+              test_model: testModel,
+            }));
+            formApiRef.current?.setValue('base_url', 'https://api.xiaomimimo.com');
+            formApiRef.current?.setValue('models', localModels);
+            formApiRef.current?.setValue('test_model', testModel);
+          }
+          break;
         case 2:
           localModels = [
             'mj_imagine',
@@ -4013,6 +4031,16 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === MIMO_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={t(
+                            'MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。',
+                          )}
+                          className='!rounded-lg'
+                        />
+                      )}
+
                       {inputs.type === KILO_CHANNEL_TYPE && (
                         <Banner
                           type='info'
@@ -4078,6 +4106,8 @@ const EditChannelModal = (props) => {
                               placeholder={
                                 inputs.type === TYPESAFE_CHANNEL_TYPE
                                   ? 'https://api.typesafe.ai'
+                                  : inputs.type === MIMO_CHANNEL_TYPE
+                                  ? 'https://api.xiaomimimo.com'
                                   : inputs.type === KILO_CHANNEL_TYPE
                                   ? 'https://api.kilo.ai/api/gateway'
                                   : inputs.type === MODAL_CHANNEL_TYPE

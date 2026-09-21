@@ -370,6 +370,7 @@ export function getChannelIcon(channelType) {
     case 66: // Vercel AI Gateway
       return <Vercel size={iconSize} />;
     case 67: // GMI Cloud
+    case 72: // Xiaomi MiMo
     case 68: // VyceAI
     case 69: // Modal
     case 70: // Kilo

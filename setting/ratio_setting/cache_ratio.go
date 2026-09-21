@@ -5,6 +5,9 @@ import (
 )
 
 var defaultCacheRatio = map[string]float64{
+	"mimo-v2.5":                           0.02,
+	"mimo-v2.5-pro":                       0.025 / 3,
+	"mimo-v2.6-pro-ultraspeed":            0.025 / 3,
 	"agnes-2.5-flash":                     0.1,
 	"agnes-2.5-pro-beta":                  0.1,
 	"agnes-2.5-pro":                       0.1,
@@ -78,6 +81,9 @@ var defaultCacheRatio = map[string]float64{
 }
 
 var defaultCreateCacheRatio = map[string]float64{
+	"mimo-v2.5":                           0,
+	"mimo-v2.5-pro":                       0,
+	"mimo-v2.6-pro-ultraspeed":            0,
 	"claude-3-sonnet-20240229":            1.25,
 	"claude-3-opus-20240229":              1.25,
 	"claude-3-haiku-20240307":             1.25,
@@ -139,7 +145,7 @@ func UpdateCacheRatioByJSONString(jsonStr string) error {
 
 // UpdateCreateCacheRatioByJSONString updates the create cache ratio map from a JSON string
 func UpdateCreateCacheRatioByJSONString(jsonStr string) error {
-	return types.LoadFromJsonStringWithCallback(createCacheRatioMap, jsonStr, InvalidateExposedDataCache)
+	return loadWithAgnesDefaults(createCacheRatioMap, jsonStr, defaultCreateCacheRatio)
 }
 
 // GetCacheRatio returns the cache ratio for a model

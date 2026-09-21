@@ -22,6 +22,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/jimeng"
 	"github.com/QuantumNous/new-api/relay/channel/jina"
+	"github.com/QuantumNous/new-api/relay/channel/mimo"
 	"github.com/QuantumNous/new-api/relay/channel/minimax"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	mistralconsole "github.com/QuantumNous/new-api/relay/channel/mistral_console"
@@ -63,6 +64,8 @@ import (
 
 func GetAdaptor(apiType int) channel.Adaptor {
 	switch apiType {
+	case constant.APITypeMiMo:
+		return &mimo.Adaptor{}
 	case constant.APITypeTypeSafe:
 		return &typesafe.Adaptor{}
 	case constant.APITypeAli:

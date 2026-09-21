@@ -10,6 +10,8 @@ import (
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
 	var endpointTypes []constant.EndpointType
 	switch channelType {
+	case constant.ChannelTypeMiMo:
+		return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic}
 	case constant.ChannelTypeTypeSafe:
 		return []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne}
 	case constant.ChannelTypeJina:

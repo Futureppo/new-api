@@ -60,6 +60,8 @@ const ModelTestModal = ({
   const hasChannel = Boolean(currentTestChannel);
   const isTypeSafeChannel =
     Number(currentTestChannel?.type ?? currentTestChannel?.channel_type) === 71;
+  const isMiMoChannel =
+    Number(currentTestChannel?.type ?? currentTestChannel?.channel_type) === 72;
   const isCohereChannel =
     currentTestChannel?.type === 34 || currentTestChannel?.channel_type === 34;
   const streamToggleDisabled =
@@ -130,7 +132,19 @@ const ModelTestModal = ({
         },
         { value: 'openai-video', label: 'OpenAI Video (/v1/videos)' },
         { value: 'embeddings', label: 'Embeddings (/v1/embeddings)' },
-      ];
+      ].filter(
+        (option) =>
+          !isMiMoChannel || ['', 'openai', 'anthropic'].includes(option.value),
+      );
+
+  React.useEffect(() => {
+    if (
+      isMiMoChannel &&
+      !['', 'openai', 'anthropic'].includes(selectedEndpointType)
+    ) {
+      setSelectedEndpointType('');
+    }
+  }, [isMiMoChannel, selectedEndpointType, setSelectedEndpointType]);
 
   React.useEffect(() => {
     if (
