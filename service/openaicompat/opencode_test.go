@@ -10,6 +10,8 @@ import (
 func TestOpenCodeResponsesModelsAlwaysUseResponses(t *testing.T) {
 	require.True(t, ShouldChatCompletionsUseResponsesGlobal(0, constant.ChannelTypeOpenCode, "gpt-5.6-sol"))
 	require.True(t, ShouldChatCompletionsUseResponsesGlobal(0, constant.ChannelTypeOpenCode, "grok-4.5"))
+	require.True(t, ShouldChatCompletionsUseResponsesGlobal(0, constant.ChannelTypeOpenCode, "muse-spark-1.2-contributor-free"))
+	require.True(t, ShouldChatCompletionsUseResponsesGlobal(0, constant.ChannelTypeOpenCode, "muse-spark-1.3-contributor-free"))
 	require.False(t, ShouldChatCompletionsUseResponsesGlobal(0, constant.ChannelTypeOpenCode, "big-pickle"))
 }
 

@@ -40,6 +40,8 @@ func TestGetRequestURLRoutesModelsToRequiredEndpoints(t *testing.T) {
 	}{
 		{name: "gpt responses", model: "gpt-5.6-sol", want: "https://opencode.ai/zen/v1/responses"},
 		{name: "grok responses", model: "grok-4.5", want: "https://opencode.ai/zen/v1/responses"},
+		{name: "muse 1.2 responses", model: "muse-spark-1.2-contributor-free", want: "https://opencode.ai/zen/v1/responses"},
+		{name: "muse 1.3 responses", model: "muse-spark-1.3-contributor-free", want: "https://opencode.ai/zen/v1/responses"},
 		{name: "claude messages", model: "claude-sonnet-5", want: "https://opencode.ai/zen/v1/messages"},
 		{name: "qwen messages", model: "qwen3.6-plus", want: "https://opencode.ai/zen/v1/messages"},
 		{name: "gemini", model: "gemini-3-flash", want: "https://opencode.ai/zen/v1/models/gemini-3-flash:generateContent"},

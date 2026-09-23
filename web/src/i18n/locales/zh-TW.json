@@ -1,7 +1,7 @@
 {
   "translation": {
     "补齐 OpenCode 客户端标识": "補齊 OpenCode 用戶端識別資訊",
-    "默认开启，仅补齐缺失的客户端标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "預設開啟，僅補齊缺失的用戶端識別資訊。已有識別資訊始終透傳，關閉後不補齊；自訂請求標頭優先。",
+    "默认开启，补齐缺失的 User-Agent、客户端、会话、请求和项目标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "預設開啟，補齊缺失的 User-Agent、用戶端、工作階段、請求和專案識別資訊。已有識別資訊始終透傳，關閉後不補齊；自訂請求標頭優先。",
     "MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。": "MiMo 支援 OpenAI 和 Anthropic 對話介面。模型清單會補充 mimo-v2.6-pro-ultraspeed；該模型暫按 v2.5-pro 的站內價格計費，可在模型定價中調整。",
     "NodeLoc Client ID": "NodeLoc Client ID",
     "NodeLoc Client Secret": "NodeLoc Client Secret",

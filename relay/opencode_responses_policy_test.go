@@ -19,6 +19,9 @@ func TestShouldChatCompletionsUseResponsesUsesOpenCodeUpstreamModel(t *testing.T
 	}
 	require.True(t, shouldChatCompletionsUseResponses(info))
 
+	info.UpstreamModelName = "muse-spark-1.3-contributor-free"
+	require.True(t, shouldChatCompletionsUseResponses(info))
+
 	info.UpstreamModelName = "big-pickle"
 	require.False(t, shouldChatCompletionsUseResponses(info))
 

@@ -16,7 +16,7 @@ const (
 func GetOpenCodeEndpoint(model string) OpenCodeEndpoint {
 	model = strings.ToLower(strings.TrimSpace(model))
 	switch {
-	case strings.HasPrefix(model, "gpt-"), strings.HasPrefix(model, "grok-"):
+	case strings.HasPrefix(model, "gpt-"), strings.HasPrefix(model, "grok-"), strings.HasPrefix(model, "muse-spark-"):
 		return OpenCodeEndpointResponses
 	case strings.HasPrefix(model, "claude-"), strings.HasPrefix(model, "qwen"):
 		return OpenCodeEndpointMessages

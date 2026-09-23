@@ -93,18 +93,13 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 		return err
 	}
 	// Preserve client identifiers independently of whether missing values are filled.
-	for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+	for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-request", "x-opencode-project", "x-parent-session-id"} {
 		if value := c.GetHeader(name); value != "" {
 			header.Set(name, value)
 		}
 	}
 	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
-		if header.Get("User-Agent") == "" {
-			header.Set("User-Agent", defaultUserAgent)
-		}
-		if header.Get("x-opencode-client") == "" {
-			header.Set("x-opencode-client", defaultClient)
-		}
+		return fillClientHeaders(c, header)
 	}
 	return nil
 }

@@ -98,6 +98,7 @@ func TestGetEndpointTypesByChannelTypeOpenCode(t *testing.T) {
 	}{
 		{model: "gpt-5.6-sol", want: []constant.EndpointType{constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAI}},
 		{model: "grok-4.5", want: []constant.EndpointType{constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAI}},
+		{model: "muse-spark-1.3-contributor-free", want: []constant.EndpointType{constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAI}},
 		{model: "claude-sonnet-5", want: []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}},
 		{model: "qwen3.6-plus", want: []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI}},
 		{model: "gemini-3-flash", want: []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}},

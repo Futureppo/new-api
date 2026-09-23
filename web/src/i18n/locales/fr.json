@@ -1,7 +1,7 @@
 {
   "translation": {
     "补齐 OpenCode 客户端标识": "Compléter les identifiants manquants du client OpenCode",
-    "默认开启，仅补齐缺失的客户端标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "Activé par défaut. Complète uniquement les identifiants client manquants. Les identifiants existants sont toujours transmis ; la désactivation empêche l'ajout de valeurs par défaut. Les en-têtes personnalisés sont prioritaires.",
+    "默认开启，补齐缺失的 User-Agent、客户端、会话、请求和项目标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "Activé par défaut. Complète les en-têtes User-Agent et les identifiants de client, de session, de requête et de projet manquants. Les identifiants existants sont toujours transmis ; la désactivation empêche l'ajout de valeurs par défaut. Les en-têtes personnalisés sont prioritaires.",
     "MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。": "MiMo prend en charge les API de conversation OpenAI et Anthropic. La liste inclut mimo-v2.6-pro-ultraspeed, facturé provisoirement au tarif du site pour v2.5-pro, modifiable dans la tarification des modèles.",
     "NodeLoc Client ID": "NodeLoc Client ID",
     "NodeLoc Client Secret": "NodeLoc Client Secret",

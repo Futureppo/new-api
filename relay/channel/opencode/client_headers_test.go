@@ -36,15 +36,17 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 		{"go messages", func() *relaycommon.RelayInfo { return newGoRelayInfo("minimax-m3") }, &GoAdaptor{}, "/v1/messages", "x-api-key", "upstream-key"},
 	}
 	cases := []struct {
-		name       string
-		enabled    *bool
-		incomingUA string
-		client     string
-		override   bool
-		runtime    bool
-		status     int
+		name         string
+		enabled      *bool
+		incomingUA   string
+		client       string
+		omitMetadata bool
+		override     bool
+		runtime      bool
+		status       int
 	}{
 		{name: "default", status: http.StatusOK},
+		{name: "missing all identifiers", omitMetadata: true, status: http.StatusOK},
 		{name: "explicit enabled", enabled: common.GetPointer(true), status: http.StatusOK},
 		{name: "original client", incomingUA: "opencode/2.0.0 custom", client: "desktop", status: http.StatusOK},
 		{name: "other user agent", incomingUA: "curl/8.0.0", status: http.StatusOK},
@@ -104,10 +106,11 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						"x-opencode-session": "ses_original", "x-opencode-request": "msg_original", "x-opencode-project": "project-original",
 					}
 					// Background tests normally have no incoming client metadata.
-					if !channelTest {
+					if !channelTest && !tc.omitMetadata {
 						for name, value := range metadata {
 							c.Request.Header.Set(name, value)
 						}
+						c.Request.Header.Set("x-parent-session-id", "ses_parent")
 					}
 					protocol.adaptor.Init(info)
 					raw, err := protocol.adaptor.DoRequest(c, info, strings.NewReader(`{}`))
@@ -124,6 +127,11 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					require.Equal(t, "application/json", got.header.Get("Content-Type"))
 					require.Empty(t, got.header.Get("Cookie"))
 					require.Empty(t, got.header.Get("x-opencode-unlisted"))
+					if !channelTest && !tc.omitMetadata {
+						require.Equal(t, "ses_parent", got.header.Get("x-parent-session-id"))
+					} else {
+						require.Empty(t, got.header.Get("x-parent-session-id"))
+					}
 					if tc.override {
 						require.Equal(t, "custom-agent", got.header.Get("User-Agent"))
 						require.Equal(t, "custom-client", got.header.Get("x-opencode-client"))
@@ -152,8 +160,19 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						require.Equal(t, wantClient, got.header.Get("x-opencode-client"))
 					}
 					for name, value := range metadata {
-						if channelTest {
-							require.Empty(t, got.header.Get(name))
+						if channelTest || tc.omitMetadata {
+							if tc.enabled != nil && !*tc.enabled {
+								require.Empty(t, got.header.Get(name))
+							} else {
+								switch name {
+								case "x-opencode-session":
+									require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get(name))
+								case "x-opencode-request":
+									require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get(name))
+								case "x-opencode-project":
+									require.Equal(t, "global", got.header.Get(name))
+								}
+							}
 						} else {
 							require.Equal(t, value, got.header.Get(name))
 						}
@@ -161,5 +180,45 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestMissingClientIdentifiersRemainStableAcrossRetries(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	adaptor := &Adaptor{}
+	first := make(http.Header)
+	require.NoError(t, adaptor.SetupRequestHeader(c, &first, newRelayInfo("mimo-v2.5-free")))
+	retry := make(http.Header)
+	require.NoError(t, adaptor.SetupRequestHeader(c, &retry, newGoRelayInfo("kimi-k3")))
+	for _, name := range []string{"x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+		require.NotEmpty(t, first.Get(name))
+		require.Equal(t, first.Get(name), retry.Get(name))
+	}
+	otherContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+	otherContext.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	other := make(http.Header)
+	require.NoError(t, adaptor.SetupRequestHeader(otherContext, &other, newRelayInfo("mimo-v2.5-free")))
+	require.NotEqual(t, first.Get("x-opencode-session"), other.Get("x-opencode-session"))
+	require.NotEqual(t, first.Get("x-opencode-request"), other.Get("x-opencode-request"))
+}
+
+func TestPartiallyMissingClientIdentifiers(t *testing.T) {
+	for _, missing := range []string{"x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+		t.Run(missing, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			for _, name := range []string{"x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+				if name != missing {
+					c.Request.Header.Set(name, "original-"+name)
+				}
+			}
+			header := make(http.Header)
+			require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &header, newRelayInfo("mimo-v2.5-free")))
+			require.NotEmpty(t, header.Get(missing))
+			for name, values := range c.Request.Header {
+				require.Equal(t, values[0], header.Get(name))
+			}
+		})
 	}
 }

@@ -3,6 +3,7 @@ package opencode
 const (
 	defaultUserAgent = "opencode/1.18.32"
 	defaultClient    = "cli"
+	defaultProject   = "global"
 )
 
 var ModelList = []string{

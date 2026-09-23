@@ -108,6 +108,8 @@ func TestNormalizeChannelTestEndpointVolcEngineModels(t *testing.T) {
 func TestNormalizeChannelTestEndpointOpenCodeModels(t *testing.T) {
 	zen := &model.Channel{Type: constant.ChannelTypeOpenCode}
 	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), normalizeChannelTestEndpoint(zen, "grok-4.5", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), normalizeChannelTestEndpoint(zen, "muse-spark-1.2-contributor-free", ""))
+	require.Equal(t, string(constant.EndpointTypeOpenAIResponse), normalizeChannelTestEndpoint(zen, "muse-spark-1.3-contributor-free", ""))
 	require.Equal(t, string(constant.EndpointTypeAnthropic), normalizeChannelTestEndpoint(zen, "qwen3.6-plus", ""))
 	require.Equal(t, string(constant.EndpointTypeGemini), normalizeChannelTestEndpoint(zen, "gemini-3-flash", ""))
 
