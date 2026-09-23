@@ -22,9 +22,11 @@ import (
 )
 
 type Adaptor struct {
-	openAI openai.Adaptor
-	claude claude.Adaptor
-	gemini gemini.Adaptor
+	openAI             openai.Adaptor
+	claude             claude.Adaptor
+	gemini             gemini.Adaptor
+	freeRequestMode    constant.OpenCodeEndpoint
+	freeResponseStream *freeStream
 }
 
 type GoAdaptor struct {
@@ -42,6 +44,8 @@ func endpoint(info *relaycommon.RelayInfo) constant.OpenCodeEndpoint {
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
+	a.freeRequestMode = endpoint(info)
+	a.freeResponseStream = nil
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointMessages:
 		a.claude.Init(info)
@@ -117,6 +121,14 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	}
 }
 
+func (a *Adaptor) FilterHeaderPassthrough(headers map[string]string, info *relaycommon.RelayInfo) {
+	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
+		if value, ok := headers["user-agent"]; ok {
+			headers["user-agent"] = openCodeUserAgent(value)
+		}
+	}
+}
+
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointResponses:
@@ -175,10 +187,33 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if a.needsFreeCompatibility(info) {
+		return a.doFreeRequest(c, info, requestBody)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	return a.guardFreeResponse(c, func() (any, *types.NewAPIError) {
+		return a.doResponse(c, resp, info)
+	})
+}
+
+// The shared Chat/Messages-to-Responses path must use the same stream guard.
+func (a *Adaptor) DoResponsesToChatResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
+	usage, err := a.guardFreeResponse(c, func() (any, *types.NewAPIError) {
+		if info.IsStream {
+			return openai.OaiResponsesToChatStreamHandler(c, info, resp)
+		}
+		return openai.OaiResponsesToChatHandler(c, info, resp)
+	})
+	if usage == nil {
+		return nil, err
+	}
+	return usage.(*dto.Usage), err
+}
+
+func (a *Adaptor) doResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointMessages:
 		return a.claude.DoResponse(c, resp, info)

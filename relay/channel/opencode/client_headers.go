@@ -3,6 +3,7 @@ package opencode
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -34,8 +35,8 @@ func clientIdentifier(c *gin.Context, prefix string) (string, error) {
 }
 
 func fillClientHeaders(c *gin.Context, header *http.Header) error {
+	header.Set("User-Agent", openCodeUserAgent(header.Get("User-Agent")))
 	for _, item := range []struct{ name, value string }{
-		{"User-Agent", defaultUserAgent},
 		{"x-opencode-client", defaultClient},
 		{"x-opencode-project", defaultProject},
 	} {
@@ -57,4 +58,11 @@ func fillClientHeaders(c *gin.Context, header *http.Header) error {
 		header.Set(item.name, value)
 	}
 	return nil
+}
+
+func openCodeUserAgent(value string) string {
+	if strings.HasPrefix(value, "opencode/") {
+		return value
+	}
+	return defaultUserAgent
 }

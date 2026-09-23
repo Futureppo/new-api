@@ -176,6 +176,19 @@ func applyHeaderOverridePlaceholders(template string, c *gin.Context, apiKey str
 //
 // Passthrough rules are applied first, then normal overrides are applied, so explicit overrides win.
 func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]string, error) {
+	return processHeaderOverrideWithFilter(info, c, nil)
+}
+
+func processAdaptorHeaderOverride(a Adaptor, info *common.RelayInfo, c *gin.Context) (map[string]string, error) {
+	if filter, ok := a.(HeaderPassthroughFilter); ok {
+		return processHeaderOverrideWithFilter(info, c, func(headers map[string]string) {
+			filter.FilterHeaderPassthrough(headers, info)
+		})
+	}
+	return processHeaderOverride(info, c)
+}
+
+func processHeaderOverrideWithFilter(info *common.RelayInfo, c *gin.Context, filter func(map[string]string)) (map[string]string, error) {
 	headerOverride := make(map[string]string)
 	if info == nil {
 		return headerOverride, nil
@@ -245,6 +258,10 @@ func processHeaderOverride(info *common.RelayInfo, c *gin.Context) (map[string]s
 		}
 	}
 
+	if filter != nil {
+		filter(headerOverride)
+	}
+
 	for k, v := range headerOverrideSource {
 		if isHeaderPassthroughRuleKey(k) {
 			continue
@@ -311,7 +328,7 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	}
 	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
 	// 这样可以覆盖默认的 Authorization header 设置
-	headerOverride, err := processHeaderOverride(info, c)
+	headerOverride, err := processAdaptorHeaderOverride(a, info, c)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +365,7 @@ func DoFormRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBod
 	}
 	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
 	// 这样可以覆盖默认的 Authorization header 设置
-	headerOverride, err := processHeaderOverride(info, c)
+	headerOverride, err := processAdaptorHeaderOverride(a, info, c)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +427,7 @@ func DoWssRequestWithResponse(a Adaptor, c *gin.Context, info *common.RelayInfo)
 	}
 	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
 	// 这样可以覆盖默认的 Authorization header 设置
-	headerOverride, err := processHeaderOverride(info, c)
+	headerOverride, err := processAdaptorHeaderOverride(a, info, c)
 	if err != nil {
 		return nil, nil, err
 	}

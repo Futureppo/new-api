@@ -384,7 +384,8 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 					},
 				})
 				info.ClaudeConvertInfo.LastMessagesType = relaycommon.LastMessageTypeThinking
-			} else if content != "" {
+			}
+			if content != "" {
 				if info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeText {
 					stopOpenBlocksAndAdvance()
 				}
@@ -465,13 +466,6 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 		doneChunk := chosenChoice.FinishReason != nil && *chosenChoice.FinishReason != ""
 		if doneChunk {
 			info.FinishReason = *chosenChoice.FinishReason
-			oaiUsage := openAIResponse.Usage
-			if oaiUsage == nil {
-				oaiUsage = info.ClaudeConvertInfo.Usage
-				// Some upstreams emit finish_reason first, then send a final usage-only chunk.
-				// Defer closing until usage is available so the final message_delta carries it.
-				return claudeResponses
-			}
 		}
 
 		var claudeResponse dto.ClaudeResponse
@@ -549,7 +543,13 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 						Type:     "thinking_delta",
 						Thinking: &reasoning,
 					}
-				} else {
+					if textContent != "" {
+						thinkingResponse := claudeResponse
+						thinkingResponse.Index = common.GetPointer(info.ClaudeConvertInfo.Index)
+						claudeResponses = append(claudeResponses, &thinkingResponse)
+					}
+				}
+				if textContent != "" {
 					if info.ClaudeConvertInfo.LastMessagesType != relaycommon.LastMessageTypeText {
 						stopOpenBlocksAndAdvance()
 						idx := info.ClaudeConvertInfo.Index
@@ -578,6 +578,11 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			claudeResponses = append(claudeResponses, &claudeResponse)
 		}
 
+		// Emit any final text/tool delta before waiting for a usage-only chunk.
+		// Cached usage (e.g. Responses conversion) is sufficient to close now.
+		if doneChunk && openAIResponse.Usage == nil && info.ClaudeConvertInfo.Usage == nil {
+			return claudeResponses
+		}
 		if doneChunk || info.ClaudeConvertInfo.Done {
 			stopOpenBlocks()
 			oaiUsage := openAIResponse.Usage

@@ -1,7 +1,8 @@
 {
   "translation": {
     "补齐 OpenCode 客户端标识": "Bổ sung thông tin nhận dạng ứng dụng khách OpenCode còn thiếu",
-    "默认开启，补齐缺失的 User-Agent、客户端、会话、请求和项目标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "Bật theo mặc định. Bổ sung User-Agent và thông tin nhận dạng ứng dụng khách, phiên, yêu cầu và dự án còn thiếu. Thông tin hiện có luôn được chuyển tiếp; tắt tùy chọn sẽ ngừng bổ sung giá trị mặc định. Tiêu đề tùy chỉnh được ưu tiên.",
+    "默认开启，补齐缺失的客户端、会话、请求和项目标识，并将非 OpenCode 的 User-Agent 替换为 OpenCode 标识。关闭后仅透传已有值；自定义请求头优先。": "Bật theo mặc định. Bổ sung mã nhận dạng ứng dụng khách, phiên, yêu cầu và dự án còn thiếu, đồng thời thay User-Agent không thuộc OpenCode bằng mã nhận dạng OpenCode. Khi tắt, chỉ chuyển tiếp các giá trị hiện có. Header tùy chỉnh được ưu tiên.",
+    "Zen 免费对话模型默认使用上游流式请求并补充必要的工具声明，保留调用方原有工具；请求体透传开启时不补充。": "Các mô hình trò chuyện miễn phí Zen dùng yêu cầu truyền luồng tới nhà cung cấp và bổ sung khai báo công cụ cần thiết, đồng thời giữ nguyên công cụ của ứng dụng gọi. Chuyển tiếp nguyên trạng nội dung yêu cầu sẽ tắt các bổ sung này.",
     "MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。": "MiMo hỗ trợ API trò chuyện OpenAI và Anthropic. Danh sách bổ sung mimo-v2.6-pro-ultraspeed, tạm tính theo giá v2.5-pro trên trang. Có thể điều chỉnh trong phần giá mô hình.",
     "NodeLoc Client ID": "NodeLoc Client ID",
     "NodeLoc Client Secret": "NodeLoc Client Secret",

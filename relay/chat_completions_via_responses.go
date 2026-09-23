@@ -178,6 +178,14 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	}
 	relaycommon.WrapConversationUpstreamResponse(info, httpResp)
 
+	if handler, ok := adaptor.(channel.ResponsesToChatAdaptor); ok {
+		usage, newApiErr := handler.DoResponsesToChatResponse(c, httpResp, info)
+		if newApiErr != nil {
+			service.ResetStatusCode(newApiErr, statusCodeMappingStr)
+		}
+		return usage, newApiErr
+	}
+
 	if info.IsStream {
 		usage, newApiErr := openaichannel.OaiResponsesToChatStreamHandler(c, info, httpResp)
 		if newApiErr != nil {

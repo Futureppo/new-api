@@ -27,7 +27,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 		authHeader string
 		authValue  string
 	}{
-		{"zen chat", func() *relaycommon.RelayInfo { return newRelayInfo("big-pickle") }, &Adaptor{}, "/v1/chat/completions", "Authorization", "Bearer upstream-key"},
+		{"zen chat", func() *relaycommon.RelayInfo { return newRelayInfo("mimo-v2.5") }, &Adaptor{}, "/v1/chat/completions", "Authorization", "Bearer upstream-key"},
 		{"zen responses", func() *relaycommon.RelayInfo { return newRelayInfo("gpt-5.6-sol") }, &Adaptor{}, "/v1/responses", "Authorization", "Bearer upstream-key"},
 		{"zen messages", func() *relaycommon.RelayInfo { return newRelayInfo("claude-sonnet-5") }, &Adaptor{}, "/v1/messages", "x-api-key", "upstream-key"},
 		{"zen gemini", func() *relaycommon.RelayInfo { return newRelayInfo("gemini-3-flash") }, &Adaptor{}, "/v1/models/gemini-3-flash:generateContent", "x-goog-api-key", "upstream-key"},
@@ -43,6 +43,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 		omitMetadata bool
 		override     bool
 		runtime      bool
+		passthrough  string
 		status       int
 	}{
 		{name: "default", status: http.StatusOK},
@@ -50,6 +51,13 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 		{name: "explicit enabled", enabled: common.GetPointer(true), status: http.StatusOK},
 		{name: "original client", incomingUA: "opencode/2.0.0 custom", client: "desktop", status: http.StatusOK},
 		{name: "other user agent", incomingUA: "curl/8.0.0", status: http.StatusOK},
+		{name: "agent user agent", incomingUA: "claude-code/2.0", status: http.StatusOK},
+		{name: "wildcard passthrough", incomingUA: "openai-python/1.0", passthrough: "*", status: http.StatusOK},
+		{name: "regex passthrough", incomingUA: "codex/1.0", passthrough: "re:(?i)^user-agent$", status: http.StatusOK},
+		{name: "original user agent passthrough", incomingUA: "opencode/2.0.0 custom", passthrough: "*", status: http.StatusOK},
+		{name: "disabled passthrough", enabled: common.GetPointer(false), incomingUA: "curl/8.0.0", passthrough: "*", status: http.StatusOK},
+		{name: "explicit override after passthrough", incomingUA: "curl/8.0.0", passthrough: "*", override: true, status: http.StatusOK},
+		{name: "runtime passthrough", incomingUA: "curl/8.0.0", passthrough: "*", runtime: true, status: http.StatusOK},
 		{name: "client without user agent", client: "desktop", status: http.StatusOK},
 		{name: "disabled", enabled: common.GetPointer(false), incomingUA: "opencode/2.0.0", client: "desktop", status: http.StatusOK},
 		{name: "disabled without identifiers", enabled: common.GetPointer(false), status: http.StatusOK},
@@ -81,6 +89,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					info.ApiKey = "upstream-key"
 					info.IsChannelTest = channelTest
 					info.ChannelOtherSettings.OpenCodeClientHeadersEnabled = tc.enabled
+					info.HeadersOverride = make(map[string]any)
 					if tc.override {
 						overrides := map[string]any{
 							"user-agent": "custom-agent", "X-OpenCode-Client": "custom-client",
@@ -88,11 +97,14 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 							"x-opencode-project": "custom-project",
 						}
 						info.HeadersOverride = overrides
-						if tc.runtime {
-							info.HeadersOverride = map[string]any{"User-Agent": "stale-agent"}
-							info.UseRuntimeHeadersOverride = true
-							info.RuntimeHeadersOverride = overrides
-						}
+					}
+					if tc.passthrough != "" {
+						info.HeadersOverride[tc.passthrough] = ""
+					}
+					if tc.runtime {
+						info.UseRuntimeHeadersOverride = true
+						info.RuntimeHeadersOverride = info.HeadersOverride
+						info.HeadersOverride = map[string]any{"User-Agent": "stale-agent"}
 					}
 					c, _ := gin.CreateTestContext(httptest.NewRecorder())
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
@@ -126,7 +138,11 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					require.Equal(t, protocol.authValue, got.header.Get(protocol.authHeader))
 					require.Equal(t, "application/json", got.header.Get("Content-Type"))
 					require.Empty(t, got.header.Get("Cookie"))
-					require.Empty(t, got.header.Get("x-opencode-unlisted"))
+					if tc.passthrough == "*" && !channelTest {
+						require.Equal(t, "private-value", got.header.Get("x-opencode-unlisted"))
+					} else {
+						require.Empty(t, got.header.Get("x-opencode-unlisted"))
+					}
 					if !channelTest && !tc.omitMetadata {
 						require.Equal(t, "ses_parent", got.header.Get("x-parent-session-id"))
 					} else {
@@ -149,7 +165,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						require.Equal(t, tc.client, got.header.Get("x-opencode-client"))
 					} else {
 						wantUA := tc.incomingUA
-						if wantUA == "" {
+						if !strings.HasPrefix(wantUA, "opencode/") {
 							wantUA = "opencode/1.18.32"
 						}
 						wantClient := tc.client

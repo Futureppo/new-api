@@ -31,6 +31,18 @@ type Adaptor interface {
 	ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error)
 }
 
+// HeaderPassthroughFilter lets an adaptor normalize headers copied by wildcard
+// or regex rules. Explicit channel overrides are applied afterwards.
+type HeaderPassthroughFilter interface {
+	FilterHeaderPassthrough(headers map[string]string, info *relaycommon.RelayInfo)
+}
+
+// ResponsesToChatAdaptor preserves provider-specific response validation when
+// the relay converts a Responses upstream into Chat Completions or Messages.
+type ResponsesToChatAdaptor interface {
+	DoResponsesToChatResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError)
+}
+
 type TaskAdaptor interface {
 	Init(info *relaycommon.RelayInfo)
 
