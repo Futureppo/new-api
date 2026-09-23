@@ -80,14 +80,33 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {
+	var err error
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointMessages:
-		return a.claude.SetupRequestHeader(c, header, info)
+		err = a.claude.SetupRequestHeader(c, header, info)
 	case constant.OpenCodeEndpointGemini:
-		return a.gemini.SetupRequestHeader(c, header, info)
+		err = a.gemini.SetupRequestHeader(c, header, info)
 	default:
-		return a.openAI.SetupRequestHeader(c, header, info)
+		err = a.openAI.SetupRequestHeader(c, header, info)
 	}
+	if err != nil {
+		return err
+	}
+	// Preserve client identifiers independently of whether missing values are filled.
+	for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+		if value := c.GetHeader(name); value != "" {
+			header.Set(name, value)
+		}
+	}
+	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
+		if header.Get("User-Agent") == "" {
+			header.Set("User-Agent", defaultUserAgent)
+		}
+		if header.Get("x-opencode-client") == "" {
+			header.Set("x-opencode-client", defaultClient)
+		}
+	}
+	return nil
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {

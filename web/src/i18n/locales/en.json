@@ -1,5 +1,7 @@
 {
   "translation": {
+    "补齐 OpenCode 客户端标识": "Fill in missing OpenCode client identifiers",
+    "默认开启，仅补齐缺失的客户端标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。": "Enabled by default. Only fills in missing client identifiers. Existing identifiers are always forwarded; disabling stops filling in defaults. Custom headers take precedence.",
     "MiMo 支持 OpenAI 和 Anthropic 对话接口。模型列表会补充 mimo-v2.6-pro-ultraspeed；该模型暂按 v2.5-pro 的站内价格计费，可在模型定价中调整。": "MiMo supports OpenAI and Anthropic chat APIs. The model list includes mimo-v2.6-pro-ultraspeed, temporarily billed at the site price of v2.5-pro. You can change it in model pricing.",
     "NodeLoc Client ID": "NodeLoc Client ID",
     "NodeLoc Client Secret": "NodeLoc Client Secret",

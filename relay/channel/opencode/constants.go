@@ -1,5 +1,10 @@
 package opencode
 
+const (
+	defaultUserAgent = "opencode/1.18.32"
+	defaultClient    = "cli"
+)
+
 var ModelList = []string{
 	"claude-fable-5",
 	"claude-opus-5",

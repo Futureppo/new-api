@@ -233,6 +233,7 @@ const EditChannelModal = (props) => {
     mistral_console_code_interpreter_enabled: true,
     mistral_console_image_generation_enabled: true,
     mistral_console_web_search_enabled: true,
+    opencode_client_headers_enabled: true,
     conversation_log_enabled: false,
     allow_inference_geo: false,
     allow_speed: false,
@@ -1011,6 +1012,8 @@ const EditChannelModal = (props) => {
             parsedSettings.mistral_console_image_generation_enabled !== false;
           data.mistral_console_web_search_enabled =
             parsedSettings.mistral_console_web_search_enabled !== false;
+          data.opencode_client_headers_enabled =
+            parsedSettings.opencode_client_headers_enabled !== false;
           data.conversation_log_enabled =
             parsedSettings.conversation_log_enabled === true;
           data.allow_inference_geo =
@@ -1072,6 +1075,7 @@ const EditChannelModal = (props) => {
           data.mistral_console_code_interpreter_enabled = true;
           data.mistral_console_image_generation_enabled = true;
           data.mistral_console_web_search_enabled = true;
+          data.opencode_client_headers_enabled = true;
           data.conversation_log_enabled = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
@@ -1104,6 +1108,7 @@ const EditChannelModal = (props) => {
         data.mistral_console_code_interpreter_enabled = true;
         data.mistral_console_image_generation_enabled = true;
         data.mistral_console_web_search_enabled = true;
+        data.opencode_client_headers_enabled = true;
         data.conversation_log_enabled = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
@@ -2099,6 +2104,12 @@ const EditChannelModal = (props) => {
       delete settings.mistral_console_image_generation_enabled;
       delete settings.mistral_console_web_search_enabled;
     }
+    if ([63, 64].includes(localInputs.type)) {
+      settings.opencode_client_headers_enabled =
+        localInputs.opencode_client_headers_enabled !== false;
+    } else {
+      delete settings.opencode_client_headers_enabled;
+    }
     if (isRoot()) {
       settings.conversation_log_enabled =
         localInputs.conversation_log_enabled === true;
@@ -2158,6 +2169,7 @@ const EditChannelModal = (props) => {
     delete localInputs.mistral_console_code_interpreter_enabled;
     delete localInputs.mistral_console_image_generation_enabled;
     delete localInputs.mistral_console_web_search_enabled;
+    delete localInputs.opencode_client_headers_enabled;
     delete localInputs.conversation_log_enabled;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
@@ -3084,6 +3096,24 @@ const EditChannelModal = (props) => {
                       }
                       extraText={t(
                         'Gemini 不支持 image/gif 输入。开启后将在发送前移除 GIF；此设置优先于请求体透传。',
+                      )}
+                    />
+                  )}
+
+                  {[63, 64].includes(inputs.type) && (
+                    <Form.Switch
+                      field='opencode_client_headers_enabled'
+                      label={t('补齐 OpenCode 客户端标识')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'opencode_client_headers_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '默认开启，仅补齐缺失的客户端标识。已有标识始终透传，关闭后不补齐；自定义请求头优先。',
                       )}
                     />
                   )}
