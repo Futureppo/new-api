@@ -1,5 +1,8 @@
 {
   "translation": {
+    "自动更新 OpenCode 免费模型列表": "Tự động cập nhật danh sách mô hình OpenCode miễn phí",
+    "默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。": "Tắt theo mặc định. Định kỳ thêm và xóa mô hình trò chuyện OpenCode Zen miễn phí, giữ lại các mô hình khác và ánh xạ thủ công. Không tự thêm mô hình không dành cho trò chuyện như JEV. Thanh toán trên trang dùng mức giá hiện có.",
+    "OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用": "Đã bật đồng bộ mô hình OpenCode miễn phí; tạm tắt kiểm tra cập nhật tất cả mô hình",
     "补齐 OpenCode 客户端标识": "Bổ sung thông tin nhận dạng ứng dụng khách OpenCode còn thiếu",
     "默认开启，补齐缺失的客户端、会话、请求和项目标识，并将非 OpenCode 的 User-Agent 替换为 OpenCode 标识。关闭后仅透传已有值；自定义请求头优先。": "Bật theo mặc định. Bổ sung mã nhận dạng ứng dụng khách, phiên, yêu cầu và dự án còn thiếu, đồng thời thay User-Agent không thuộc OpenCode bằng mã nhận dạng OpenCode. Khi tắt, chỉ chuyển tiếp các giá trị hiện có. Header tùy chỉnh được ưu tiên.",
     "Zen 免费对话模型默认使用上游流式请求并补充必要的工具声明，保留调用方原有工具；请求体透传开启时不补充。": "Các mô hình trò chuyện miễn phí Zen dùng yêu cầu truyền luồng tới nhà cung cấp và bổ sung khai báo công cụ cần thiết, đồng thời giữ nguyên công cụ của ứng dụng gọi. Chuyển tiếp nguyên trạng nội dung yêu cầu sẽ tắt các bổ sung này.",

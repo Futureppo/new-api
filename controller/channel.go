@@ -479,6 +479,9 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	if channel.Type == constant.ChannelTypeKilo {
 		return fetchKiloModelIDs(channel, fetchURL, key, channel.GetOtherSettings().KiloFreeModelSyncEnabled)
 	}
+	if isOpenCodeManagedModelSyncEnabled(channel, channel.GetOtherSettings()) {
+		return fetchOpenCodeFreeModelIDs(channel, fetchURL, key)
+	}
 	return fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 }
 
@@ -510,6 +513,18 @@ func FetchUpstreamModels(c *gin.Context) {
 			settings.KiloFreeModelSyncEnabled = freeOnly
 		}
 		channel.SetOtherSettings(settings)
+	}
+	if channel.Type == constant.ChannelTypeOpenCode {
+		if value, exists := c.GetQuery("opencode_free_only"); exists {
+			freeOnly, parseErr := strconv.ParseBool(value)
+			if parseErr != nil {
+				common.ApiError(c, fmt.Errorf("invalid opencode_free_only"))
+				return
+			}
+			settings := channel.GetOtherSettings()
+			settings.OpenCodeFreeModelSyncEnabled = freeOnly
+			channel.SetOtherSettings(settings)
+		}
 	}
 	ids, err := fetchChannelUpstreamModelIDs(channel)
 	if err != nil {
@@ -1267,6 +1282,19 @@ func UpdateChannel(c *gin.Context) {
 		channel.SetOtherSettings(settings)
 	}
 	channel.DailySuccessCount = originChannel.DailySuccessCount
+	if channel.Type == constant.ChannelTypeOpenCode {
+		settings := channel.GetOtherSettings()
+		originSettings := originChannel.GetOtherSettings()
+		settings.UpstreamModelUpdateLastDetectedModels = originSettings.UpstreamModelUpdateLastDetectedModels
+		settings.UpstreamModelUpdateLastRemovedModels = originSettings.UpstreamModelUpdateLastRemovedModels
+		settings.UpstreamModelUpdateLastCheckTime = originSettings.UpstreamModelUpdateLastCheckTime
+		if channel.Type != originChannel.Type || settings.OpenCodeFreeModelSyncEnabled != originSettings.OpenCodeFreeModelSyncEnabled {
+			settings.UpstreamModelUpdateLastDetectedModels = nil
+			settings.UpstreamModelUpdateLastRemovedModels = nil
+			settings.UpstreamModelUpdateLastCheckTime = 0
+		}
+		channel.SetOtherSettings(settings)
+	}
 	channel.DailySuccessDate = originChannel.DailySuccessDate
 	if c.GetInt("role") < common.RoleRootUser {
 		otherSettings := channel.GetOtherSettings()
@@ -1394,6 +1422,7 @@ func UpdateChannel(c *gin.Context) {
 
 func FetchModels(c *gin.Context) {
 	var req struct {
+		OpenCodeFreeOnly   bool              `json:"opencode_free_only"`
 		KiloFreeOnly       bool              `json:"kilo_free_only"`
 		KiloAnonymous      *bool             `json:"kilo_anonymous_enabled"`
 		BaseURL            string            `json:"base_url"`
@@ -1443,11 +1472,12 @@ func FetchModels(c *gin.Context) {
 	}
 	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
 	channel.SetOtherSettings(dto.ChannelOtherSettings{
-		KiloFreeModelSyncEnabled: req.KiloFreeOnly,
-		KiloAnonymousEnabled:     kiloAnonymous,
-		VertexKeyType:            req.VertexKeyType,
-		AwsKeyType:               req.AwsKeyType,
-		CustomModelListURL:       req.CustomModelListURL,
+		OpenCodeFreeModelSyncEnabled: req.OpenCodeFreeOnly,
+		KiloFreeModelSyncEnabled:     req.KiloFreeOnly,
+		KiloAnonymousEnabled:         kiloAnonymous,
+		VertexKeyType:                req.VertexKeyType,
+		AwsKeyType:                   req.AwsKeyType,
+		CustomModelListURL:           req.CustomModelListURL,
 	})
 	if req.HeaderOverride != "" {
 		channel.HeaderOverride = common.GetPointer(req.HeaderOverride)

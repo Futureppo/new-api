@@ -1,5 +1,8 @@
 {
   "translation": {
+    "自动更新 OpenCode 免费模型列表": "Automatically update OpenCode free models",
+    "默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。": "Disabled by default. Periodically adds and removes OpenCode Zen free chat models, preserving other models and manual mappings. Non-chat models such as JEV are excluded. Site billing uses existing pricing.",
+    "OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用": "OpenCode free model sync is enabled; checks for all models are temporarily disabled",
     "补齐 OpenCode 客户端标识": "Fill in missing OpenCode client identifiers",
     "默认开启，补齐缺失的客户端、会话、请求和项目标识，并将非 OpenCode 的 User-Agent 替换为 OpenCode 标识。关闭后仅透传已有值；自定义请求头优先。": "Enabled by default. Fills missing client, session, request and project identifiers, and replaces non-OpenCode User-Agent values with an OpenCode identifier. When disabled, only existing values are forwarded. Custom headers take precedence.",
     "Zen 免费对话模型默认使用上游流式请求并补充必要的工具声明，保留调用方原有工具；请求体透传开启时不补充。": "Zen free chat models use upstream streaming and add required tool declarations while preserving the caller's tools. Request body passthrough disables these additions.",

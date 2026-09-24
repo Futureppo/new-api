@@ -1,5 +1,17 @@
 # OpenCode 渠道
 
+## 自动更新免费模型列表
+
+OpenCode Zen 的“上游模型管理”中提供“自动更新 OpenCode 免费模型列表”开关，默认关闭，保存于 `settings.opencode_auto_sync_free_models_enabled`。OpenCode Go 不提供此开关。
+
+开启并保存后，渠道参加现有后台巡检，默认每 30 分钟拉取一次模型目录（由 `CHANNEL_UPSTREAM_MODEL_UPDATE_TASK_INTERVAL_MINUTES` 配置）。也可手动检测更新。免费列表来自该渠道配置的地址、密钥、代理及自定义模型列表接口。
+
+- 自动加入新上线的免费对话模型，移除目录中已下线的免费对话模型；按 `-free` 后缀及 `big-pickle` 识别，排除 JEV／SystemOne 等不支持当前流式对话路径的模型。
+- 保留其他模型与手动映射，遵守“已忽略模型”的精确匹配及 `regex:` 规则。
+- 请求失败、返回空列表或没有符合条件的免费模型时保留当前列表，记录检测失败。
+- 免费同步优先于全部模型巡检，避免自动混入付费模型；关闭后停止免费列表自动维护，保留已加入的模型。
+- 新建、编辑页的“获取模型列表”跟随当前开关筛选，预览不会修改已保存的开关。模型列表及渠道可用能力一并更新，站内计费仍使用现有定价。
+
 ## 客户端标识
 
 OpenCode Zen 和 Go 共用“补齐 OpenCode 客户端标识”开关，保存在渠道 `settings.opencode_client_headers_enabled`。缺省或 `null` 默认开启，显式 `false` 关闭补齐，旧渠道无需迁移。

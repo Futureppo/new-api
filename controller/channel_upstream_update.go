@@ -118,6 +118,9 @@ func isOpenRouterManagedModelSyncEnabled(channel *model.Channel, settings dto.Ch
 }
 
 func isChannelUpstreamModelUpdateEnabled(channel *model.Channel, settings dto.ChannelOtherSettings) bool {
+	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
+		return true
+	}
 	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings) || isKiloManagedModelSyncEnabled(channel, settings)
 }
 
@@ -495,6 +498,9 @@ func collectPendingUpstreamModelChanges(channel *model.Channel, settings dto.Cha
 		settings.UpstreamModelUpdateIgnoredModels,
 		normalizeChannelModelMapping(channel),
 	)
+	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
+		pendingAddModels, pendingRemoveModels = filterOpenCodePendingModelChanges(channel, pendingAddModels, pendingRemoveModels)
+	}
 	return pendingAddModels, pendingRemoveModels, nil, nil
 }
 
@@ -628,6 +634,15 @@ func checkAndPersistChannelUpstreamModelUpdates(
 		settings.OpenRouterFreeModelPendingMappings = nil
 		settings.UpstreamModelUpdateLastDetectedModels = []string{}
 		settings.UpstreamModelUpdateLastRemovedModels = []string{}
+	} else if allowAutoApply && isOpenCodeManagedModelSyncEnabled(channel, *settings) {
+		originModels := normalizeModelNames(channel.GetModels())
+		nextModels := applySelectedModelChanges(originModels, pendingAddModels, pendingRemoveModels)
+		modelsChanged = !slices.Equal(originModels, nextModels)
+		channel.Models = strings.Join(nextModels, ",")
+		autoApplyResult.AddedModels = subtractModelNames(nextModels, originModels)
+		autoApplyResult.RemovedModels = subtractModelNames(originModels, nextModels)
+		settings.UpstreamModelUpdateLastDetectedModels = nil
+		settings.UpstreamModelUpdateLastRemovedModels = nil
 	} else if allowAutoApply && settings.UpstreamModelUpdateAutoSyncEnabled && len(pendingAddModels) > 0 {
 		originModels := normalizeModelNames(channel.GetModels())
 		mergedModels := mergeModelNames(originModels, pendingAddModels)
@@ -1053,6 +1068,9 @@ func applyChannelUpstreamModelUpdates(
 	}
 	pendingAddModels := normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
 	pendingRemoveModels := normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
+	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
+		pendingAddModels, pendingRemoveModels = filterOpenCodePendingModelChanges(channel, pendingAddModels, pendingRemoveModels)
+	}
 	isOpenRouterManagedSync := isOpenRouterManagedModelSyncEnabled(channel, settings)
 	currentManagedMappings := collectManagedOpenRouterFreeModelMappings(
 		normalizeChannelModelMapping(channel),
@@ -1133,6 +1151,9 @@ func applyChannelUpstreamModelUpdates(
 func collectPendingApplyUpstreamModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings) (pendingAddModels []string, pendingRemoveModels []string) {
 	pendingAddModels = normalizeModelNames(settings.UpstreamModelUpdateLastDetectedModels)
 	pendingRemoveModels = normalizeModelNames(settings.UpstreamModelUpdateLastRemovedModels)
+	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
+		return filterOpenCodePendingModelChanges(channel, pendingAddModels, pendingRemoveModels)
+	}
 	if isOpenRouterManagedModelSyncEnabled(channel, settings) {
 		currentManagedMappings := collectManagedOpenRouterFreeModelMappings(
 			normalizeChannelModelMapping(channel),

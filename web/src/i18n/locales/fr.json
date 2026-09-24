@@ -1,5 +1,8 @@
 {
   "translation": {
+    "自动更新 OpenCode 免费模型列表": "Mettre à jour automatiquement les modèles gratuits OpenCode",
+    "默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。": "Désactivé par défaut. Ajoute et supprime périodiquement les modèles de chat gratuits OpenCode Zen, en conservant les autres modèles et les correspondances manuelles. Les modèles hors chat comme JEV sont exclus. La tarification du site reste en vigueur.",
+    "OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用": "La synchronisation des modèles gratuits OpenCode est activée ; les contrôles de tous les modèles sont temporairement désactivés",
     "补齐 OpenCode 客户端标识": "Compléter les identifiants manquants du client OpenCode",
     "默认开启，补齐缺失的客户端、会话、请求和项目标识，并将非 OpenCode 的 User-Agent 替换为 OpenCode 标识。关闭后仅透传已有值；自定义请求头优先。": "Activé par défaut. Complète les identifiants manquants du client, de session, de requête et de projet, et remplace les User-Agent non OpenCode par un identifiant OpenCode. Si désactivé, seules les valeurs existantes sont transmises. Les en-têtes personnalisés sont prioritaires.",
     "Zen 免费对话模型默认使用上游流式请求并补充必要的工具声明，保留调用方原有工具；请求体透传开启时不补充。": "Les modèles de chat gratuits Zen utilisent le streaming en amont et ajoutent les déclarations d’outils requises tout en conservant les outils de l’appelant. La transmission directe du corps désactive ces ajouts.",

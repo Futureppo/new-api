@@ -30,8 +30,7 @@ func (a *Adaptor) needsFreeCompatibility(info *relaycommon.RelayInfo) bool {
 		return false
 	}
 	model := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(info.UpstreamModelName, "models/")))
-	return model == "big-pickle" || strings.HasSuffix(model, "-free") &&
-		!strings.HasPrefix(model, "jev-")
+	return constant.IsOpenCodeFreeChatModel(model)
 }
 
 // shapeFreeRequest preserves caller tools; compatibility-only tools are never executable downstream.

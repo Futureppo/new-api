@@ -4,6 +4,17 @@ import "strings"
 
 type OpenCodeEndpoint string
 
+// IsOpenCodeFreeChatModel identifies Zen free models supported by the relay.
+// SystemOne models require a separate, non-streaming native protocol.
+func IsOpenCodeFreeChatModel(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	if strings.HasPrefix(model, "jev-") || (model != "big-pickle" && !strings.HasSuffix(model, "-free")) {
+		return false
+	}
+	endpoint := GetOpenCodeEndpoint(model)
+	return endpoint == OpenCodeEndpointChat || endpoint == OpenCodeEndpointResponses
+}
+
 const (
 	OpenCodeEndpointChat      OpenCodeEndpoint = "chat_completions"
 	OpenCodeEndpointResponses OpenCodeEndpoint = "responses"

@@ -73,6 +73,7 @@ type ChannelOtherSettings struct {
 	MistralConsoleImageGenerationEnabled  *bool         `json:"mistral_console_image_generation_enabled,omitempty"`
 	MistralConsoleWebSearchEnabled        *bool         `json:"mistral_console_web_search_enabled,omitempty"`
 	OpenCodeClientHeadersEnabled          *bool         `json:"opencode_client_headers_enabled,omitempty"` // 未配置时默认补齐缺失的 OpenCode 客户端标识
+	OpenCodeFreeModelSyncEnabled          bool          `json:"opencode_auto_sync_free_models_enabled,omitempty"`
 	XAICodexCompatibilityEnabled          bool          `json:"xai_codex_compatibility_enabled,omitempty"`
 	ConversationLogEnabled                bool          `json:"conversation_log_enabled,omitempty"` // Root-only: capture full conversation payloads for distillation
 	AwsKeyType                            AwsKeyType    `json:"aws_key_type,omitempty"`

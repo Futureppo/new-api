@@ -46,6 +46,8 @@ export const parseUpstreamUpdateMeta = (settings, channelType) => {
 
   return {
     enabled:
+      (Number(channelType) === 63 &&
+        parsed.opencode_auto_sync_free_models_enabled === true) ||
       parsed.upstream_model_update_check_enabled === true ||
       (Number(channelType) === 20 &&
         parsed.openrouter_auto_sync_free_and_alpha_models_enabled === true),

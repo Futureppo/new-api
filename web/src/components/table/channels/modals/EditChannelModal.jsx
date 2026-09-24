@@ -234,6 +234,7 @@ const EditChannelModal = (props) => {
     mistral_console_image_generation_enabled: true,
     mistral_console_web_search_enabled: true,
     opencode_client_headers_enabled: true,
+    opencode_auto_sync_free_models_enabled: false,
     conversation_log_enabled: false,
     allow_inference_geo: false,
     allow_speed: false,
@@ -261,6 +262,7 @@ const EditChannelModal = (props) => {
   const isKiloAnonymous =
     inputs.type === KILO_CHANNEL_TYPE && inputs.kilo_anonymous_enabled;
   const isManagedFreeSync =
+    (inputs.type === 63 && inputs.opencode_auto_sync_free_models_enabled) ||
     (inputs.type === 20 &&
       inputs.openrouter_auto_sync_free_and_alpha_models_enabled) ||
     (inputs.type === KILO_CHANNEL_TYPE &&
@@ -1014,6 +1016,8 @@ const EditChannelModal = (props) => {
             parsedSettings.mistral_console_web_search_enabled !== false;
           data.opencode_client_headers_enabled =
             parsedSettings.opencode_client_headers_enabled !== false;
+          data.opencode_auto_sync_free_models_enabled =
+            parsedSettings.opencode_auto_sync_free_models_enabled === true;
           data.conversation_log_enabled =
             parsedSettings.conversation_log_enabled === true;
           data.allow_inference_geo =
@@ -1076,6 +1080,7 @@ const EditChannelModal = (props) => {
           data.mistral_console_image_generation_enabled = true;
           data.mistral_console_web_search_enabled = true;
           data.opencode_client_headers_enabled = true;
+          data.opencode_auto_sync_free_models_enabled = false;
           data.conversation_log_enabled = false;
           data.allow_inference_geo = false;
           data.allow_speed = false;
@@ -1109,6 +1114,7 @@ const EditChannelModal = (props) => {
         data.mistral_console_image_generation_enabled = true;
         data.mistral_console_web_search_enabled = true;
         data.opencode_client_headers_enabled = true;
+        data.opencode_auto_sync_free_models_enabled = false;
         data.conversation_log_enabled = false;
         data.allow_inference_geo = false;
         data.allow_speed = false;
@@ -1203,7 +1209,12 @@ const EditChannelModal = (props) => {
       try {
         const res = await API.get('/api/channel/fetch_models/' + channelId, {
           params:
-            inputs.type === KILO_CHANNEL_TYPE
+            inputs.type === 63
+              ? {
+                  opencode_free_only:
+                    !!inputs.opencode_auto_sync_free_models_enabled,
+                }
+              : inputs.type === KILO_CHANNEL_TYPE
               ? {
                   kilo_free_only: !!inputs.kilo_auto_sync_free_models_enabled,
                 }
@@ -1270,6 +1281,8 @@ const EditChannelModal = (props) => {
                 inputs.type === KILO_CHANNEL_TYPE &&
                 !!inputs.kilo_auto_sync_free_models_enabled,
               kilo_anonymous_enabled: isKiloAnonymous,
+              opencode_free_only:
+                inputs.type === 63 && !!inputs.opencode_auto_sync_free_models_enabled,
             },
             { skipErrorHandler: true },
           );
@@ -1996,6 +2009,12 @@ const EditChannelModal = (props) => {
     }
 
     // type === 20: 设置企业账户标识，无论是true还是false都要传到后端
+    if (localInputs.type === 63) {
+      settings.opencode_auto_sync_free_models_enabled =
+        localInputs.opencode_auto_sync_free_models_enabled === true;
+    } else {
+      delete settings.opencode_auto_sync_free_models_enabled;
+    }
     if (localInputs.type === KILO_CHANNEL_TYPE) {
       settings.kilo_anonymous_enabled = kiloAnonymous;
       settings.kilo_auto_sync_free_models_enabled =
@@ -2131,6 +2150,7 @@ const EditChannelModal = (props) => {
     if (
       !Array.isArray(settings.upstream_model_update_last_detected_models) ||
       (!settings.upstream_model_update_check_enabled &&
+        !settings.opencode_auto_sync_free_models_enabled &&
         !settings.openrouter_auto_sync_free_and_alpha_models_enabled &&
         !settings.kilo_auto_sync_free_models_enabled)
     ) {
@@ -2170,6 +2190,7 @@ const EditChannelModal = (props) => {
     delete localInputs.mistral_console_image_generation_enabled;
     delete localInputs.mistral_console_web_search_enabled;
     delete localInputs.opencode_client_headers_enabled;
+    delete localInputs.opencode_auto_sync_free_models_enabled;
     delete localInputs.conversation_log_enabled;
     delete localInputs.allow_inference_geo;
     delete localInputs.allow_speed;
@@ -2576,6 +2597,23 @@ const EditChannelModal = (props) => {
                   <Text className='text-sm font-medium text-gray-500 mb-3 block'>
                     {t('上游模型管理')}
                   </Text>
+                  {inputs.type === 63 && (
+                    <Form.Switch
+                      field='opencode_auto_sync_free_models_enabled'
+                      label={t('自动更新 OpenCode 免费模型列表')}
+                      checkedText={t('开')}
+                      uncheckedText={t('关')}
+                      onChange={(value) =>
+                        handleChannelOtherSettingsChange(
+                          'opencode_auto_sync_free_models_enabled',
+                          value,
+                        )
+                      }
+                      extraText={t(
+                        '默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。',
+                      )}
+                    />
+                  )}
 
                   {inputs.type === KILO_CHANNEL_TYPE && (
                     <>
@@ -2663,7 +2701,9 @@ const EditChannelModal = (props) => {
                     }
                     extraText={t(
                       isManagedFreeSync
-                        ? inputs.type === KILO_CHANNEL_TYPE
+                        ? inputs.type === 63
+                          ? 'OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用'
+                          : inputs.type === KILO_CHANNEL_TYPE
                           ? 'Kilo 免费模型同步已开启，全部模型巡检设置暂时停用'
                           : 'OpenRouter 免费及 Alpha 测试模型同步已开启，全部模型巡检设置暂时停用'
                         : '开启后由后端定时任务检测该渠道上游模型变化',
