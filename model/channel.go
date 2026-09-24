@@ -377,7 +377,10 @@ func BatchInsertChannels(channels []Channel) error {
 		}
 	}()
 
-	for _, chunk := range lo.Chunk(channels, 50) {
+	// Keep batches backed by the caller's slice so generated IDs and defaults
+	// are available to post-create work such as model synchronization.
+	for start := 0; start < len(channels); start += 50 {
+		chunk := channels[start:min(start+50, len(channels))]
 		if err := tx.Create(&chunk).Error; err != nil {
 			tx.Rollback()
 			return err

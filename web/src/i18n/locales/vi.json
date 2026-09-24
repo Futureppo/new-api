@@ -1,5 +1,10 @@
 {
   "translation": {
+    "自动更新 Cline 免费模型列表": "Tự động cập nhật danh sách mô hình miễn phí Cline",
+    "默认开启，自动增删 Cline 官方免费专区模型，保留其他手动模型和映射；站内计费使用现有定价。": "Bật theo mặc định. Tự động thêm và xóa mô hình trong danh mục miễn phí chính thức của Cline, giữ nguyên các mô hình và ánh xạ thủ công khác. Giá hiện tại của trang vẫn áp dụng.",
+    "Cline 免费模型同步已开启，全部模型巡检设置暂时停用": "Đồng bộ mô hình miễn phí Cline đang bật; cài đặt theo dõi toàn bộ danh mục tạm thời bị tắt",
+    "Cline 默认地址为 https://api.cline.bot/api，支持普通及流式对话；开启免费模型同步时仅获取官方免费专区模型。": "Cline mặc định dùng https://api.cline.bot/api, hỗ trợ trò chuyện thường và truyền luồng. Khi đồng bộ mô hình miễn phí, chỉ lấy danh mục miễn phí chính thức.",
+    "留空使用 Cline 官方免费目录；自定义接口须返回 free 数组，每项包含 id。": "Để trống để dùng danh mục miễn phí chính thức của Cline. API tùy chỉnh phải trả về mảng free với trường id trong mỗi phần tử.",
     "自动更新 OpenCode 免费模型列表": "Tự động cập nhật danh sách mô hình OpenCode miễn phí",
     "默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。": "Tắt theo mặc định. Định kỳ thêm và xóa mô hình trò chuyện OpenCode Zen miễn phí, giữ lại các mô hình khác và ánh xạ thủ công. Không tự thêm mô hình không dành cho trò chuyện như JEV. Thanh toán trên trang dùng mức giá hiện có.",
     "OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用": "Đã bật đồng bộ mô hình OpenCode miễn phí; tạm tắt kiểm tra cập nhật tất cả mô hình",

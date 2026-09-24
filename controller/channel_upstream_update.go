@@ -121,7 +121,7 @@ func isChannelUpstreamModelUpdateEnabled(channel *model.Channel, settings dto.Ch
 	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
 		return true
 	}
-	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings) || isKiloManagedModelSyncEnabled(channel, settings)
+	return settings.UpstreamModelUpdateCheckEnabled || isOpenRouterManagedModelSyncEnabled(channel, settings) || isKiloManagedModelSyncEnabled(channel, settings) || isClineManagedModelSyncEnabled(channel, settings)
 }
 
 func mergeModelNames(base []string, appended []string) []string {
@@ -584,6 +584,9 @@ func checkAndPersistChannelUpstreamModelUpdates(
 	force bool,
 	allowAutoApply bool,
 ) (modelsChanged bool, autoApplyResult channelUpstreamAutoApplyResult, err error) {
+	if isClineManagedModelSyncEnabled(channel, *settings) {
+		return checkAndPersistClineModelUpdates(channel, settings, force, allowAutoApply)
+	}
 	if isKiloManagedModelSyncEnabled(channel, *settings) {
 		return checkAndPersistKiloModelUpdates(channel, settings, force, allowAutoApply)
 	}
@@ -1063,6 +1066,9 @@ func applyChannelUpstreamModelUpdates(
 	err error,
 ) {
 	settings := channel.GetOtherSettings()
+	if isClineManagedModelSyncEnabled(channel, settings) {
+		return applyClineModelUpdates(channel, addModelsInput, ignoreModelsInput, removeModelsInput)
+	}
 	if isKiloManagedModelSyncEnabled(channel, settings) {
 		return applyKiloModelUpdates(channel, addModelsInput, ignoreModelsInput, removeModelsInput)
 	}

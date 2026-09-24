@@ -38,7 +38,7 @@ export const parseUpstreamUpdateMeta = (settings, channelType) => {
 
   if (!parsed || typeof parsed !== 'object') {
     return {
-      enabled: false,
+      enabled: Number(channelType) === 73,
       pendingAddModels: [],
       pendingRemoveModels: [],
     };
@@ -48,6 +48,8 @@ export const parseUpstreamUpdateMeta = (settings, channelType) => {
     enabled:
       (Number(channelType) === 63 &&
         parsed.opencode_auto_sync_free_models_enabled === true) ||
+      (Number(channelType) === 73 &&
+        parsed.cline_auto_sync_free_models_enabled !== false) ||
       parsed.upstream_model_update_check_enabled === true ||
       (Number(channelType) === 20 &&
         parsed.openrouter_auto_sync_free_and_alpha_models_enabled === true),

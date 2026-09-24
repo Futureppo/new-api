@@ -185,7 +185,7 @@ func OaiStreamHandlerWithDataTransformer(c *gin.Context, info *relaycommon.Relay
 
 			lastStreamData = data
 			streamItems = append(streamItems, data)
-			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo {
+			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline {
 				var envelope dto.SimpleResponse
 				if err := common.UnmarshalJsonStr(data, &envelope); err != nil {
 					upstreamStreamError = true
@@ -290,8 +290,8 @@ func OpenaiHandlerWithBodyTransformer(c *gin.Context, info *relaycommon.RelayInf
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || info.ChannelType == constant.ChannelTypeKilo) {
-		if info.ChannelType == constant.ChannelTypeKilo && resp.StatusCode == http.StatusOK {
+	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline) {
+		if (info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline) && resp.StatusCode == http.StatusOK {
 			return nil, types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		}
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)

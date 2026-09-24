@@ -374,6 +374,7 @@ export function getChannelIcon(channelType) {
     case 68: // VyceAI
     case 69: // Modal
     case 70: // Kilo
+    case 73: // Cline
       return <Cloud size={iconSize} />;
     case 63: // OpenCode Zen
     case 64: // OpenCode Go

@@ -98,6 +98,13 @@ type ChannelOtherSettings struct {
 	KiloFreeModelManagedModels             []string          `json:"kilo_free_model_managed_models,omitempty"`
 	KiloFreeModelGeneratedMappings         map[string]string `json:"kilo_free_model_generated_mappings,omitempty"`
 	KiloFreeModelPendingMappings           map[string]string `json:"kilo_free_model_pending_mappings,omitempty"`
+
+	ClineFreeModelSyncEnabled   *bool    `json:"cline_auto_sync_free_models_enabled,omitempty"`
+	ClineFreeModelManagedModels []string `json:"cline_free_model_managed_models,omitempty"`
+}
+
+func (s ChannelOtherSettings) ShouldSyncClineFreeModels() bool {
+	return s.ClineFreeModelSyncEnabled == nil || *s.ClineFreeModelSyncEnabled
 }
 
 func (s *ChannelOtherSettings) IsOpenRouterEnterprise() bool {

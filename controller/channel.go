@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	awsChannel "github.com/QuantumNous/new-api/relay/channel/aws"
+	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
@@ -225,6 +227,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeCline:
+		return cline.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeMiMo:
 		return mimo.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeTypeSafe:
@@ -469,6 +473,9 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	}
 
 	fetchURL := resolveFetchModelsURL(channel.Type, baseURL, customModelListURL)
+	if channel.Type == constant.ChannelTypeCline {
+		return fetchClineModelIDs(ctx, channel, baseURL, key, customModelListURL, channel.GetOtherSettings().ShouldSyncClineFreeModels())
+	}
 	if channel.Type == constant.ChannelTypeMiMo && customModelListURL == "" {
 		models, err := fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 		if err != nil {
@@ -502,6 +509,18 @@ func FetchUpstreamModels(c *gin.Context) {
 		return
 	}
 
+	if channel.Type == constant.ChannelTypeCline {
+		settings := channel.GetOtherSettings()
+		if value, exists := c.GetQuery("cline_free_only"); exists {
+			freeOnly, parseErr := strconv.ParseBool(value)
+			if parseErr != nil {
+				common.ApiError(c, fmt.Errorf("invalid cline_free_only"))
+				return
+			}
+			settings.ClineFreeModelSyncEnabled = &freeOnly
+		}
+		channel.SetOtherSettings(settings)
+	}
 	if channel.Type == constant.ChannelTypeKilo {
 		settings := channel.GetOtherSettings()
 		if value, exists := c.GetQuery("kilo_free_only"); exists {
@@ -752,6 +771,9 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
 	}
+	if channel.Type == constant.ChannelTypeCline && (isAdd || channel.BaseURL != nil) {
+		channel.BaseURL = common.GetPointer(cline.NormalizeBaseURL(channel.GetBaseURL()))
+	}
 	if isAdd && channel.Type == constant.ChannelTypeMiMo && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
 		channel.TestModel = common.GetPointer(mimo.DefaultTestModel)
 	}
@@ -913,6 +935,14 @@ func AddChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if ch := addChannelRequest.Channel; ch != nil && ch.Type == constant.ChannelTypeCline {
+		settings := ch.GetOtherSettings()
+		settings.ClineFreeModelManagedModels = nil
+		settings.UpstreamModelUpdateLastCheckTime = 0
+		settings.UpstreamModelUpdateLastDetectedModels = nil
+		settings.UpstreamModelUpdateLastRemovedModels = nil
+		ch.SetOtherSettings(settings)
+	}
 	if ch := addChannelRequest.Channel; ch != nil && ch.Type == constant.ChannelTypeKilo {
 		var authSettings struct {
 			Anonymous *bool `json:"kilo_anonymous_enabled"`
@@ -1025,6 +1055,11 @@ func AddChannel(c *gin.Context) {
 	if err != nil {
 		common.ApiError(c, err)
 		return
+	}
+	for i := range channels {
+		if channels[i].Type == constant.ChannelTypeCline {
+			syncClineModelsAfterSave(&channels[i])
+		}
 	}
 	service.ResetProxyClientCache()
 	c.JSON(http.StatusOK, gin.H{
@@ -1255,6 +1290,46 @@ func UpdateChannel(c *gin.Context) {
 
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
+	clineSyncNeeded := false
+	if channel.Type == constant.ChannelTypeCline {
+		// Partial API edits must preserve connection details and an explicitly
+		// disabled sync switch when their fields are omitted.
+		if _, provided := rawBody["settings"]; !provided {
+			channel.OtherSettings = originChannel.OtherSettings
+		}
+		if channel.BaseURL == nil {
+			channel.BaseURL = originChannel.BaseURL
+		}
+		if channel.Setting == nil {
+			channel.Setting = originChannel.Setting
+		}
+		if channel.HeaderOverride == nil {
+			channel.HeaderOverride = originChannel.HeaderOverride
+		}
+		if _, provided := rawBody["status"]; !provided {
+			channel.Status = originChannel.Status
+		}
+		settings := channel.GetOtherSettings()
+		originalSettings := originChannel.GetOtherSettings()
+		settings.ClineFreeModelManagedModels = originalSettings.ClineFreeModelManagedModels
+		settings.UpstreamModelUpdateLastDetectedModels = originalSettings.UpstreamModelUpdateLastDetectedModels
+		settings.UpstreamModelUpdateLastRemovedModels = originalSettings.UpstreamModelUpdateLastRemovedModels
+		settings.UpstreamModelUpdateLastCheckTime = originalSettings.UpstreamModelUpdateLastCheckTime
+		clineSyncNeeded = originChannel.Type != constant.ChannelTypeCline ||
+			!originalSettings.ShouldSyncClineFreeModels() ||
+			originChannel.Status != channel.Status ||
+			cline.NormalizeBaseURL(originChannel.GetBaseURL()) != channel.GetBaseURL() ||
+			(channel.Key != "" && channel.Key != originChannel.Key) ||
+			channel.GetSetting().Proxy != originChannel.GetSetting().Proxy ||
+			!reflect.DeepEqual(channel.HeaderOverride, originChannel.HeaderOverride) ||
+			settings.CustomModelListURL != originalSettings.CustomModelListURL
+		if clineSyncNeeded || settings.ShouldSyncClineFreeModels() != originalSettings.ShouldSyncClineFreeModels() {
+			settings.UpstreamModelUpdateLastCheckTime = 0
+			settings.UpstreamModelUpdateLastDetectedModels = nil
+			settings.UpstreamModelUpdateLastRemovedModels = nil
+		}
+		channel.SetOtherSettings(settings)
+	}
 	if channel.Type == constant.ChannelTypeKilo {
 		settings := channel.GetOtherSettings()
 		if settings.KiloAnonymousEnabled && originChannel.ChannelInfo.IsMultiKey {
@@ -1393,6 +1468,9 @@ func UpdateChannel(c *gin.Context) {
 		common.ApiError(c, err)
 		return
 	}
+	if clineSyncNeeded {
+		syncClineModelsAfterSave(&channel.Channel)
+	}
 	if retryTimesProvided {
 		if err := model.UpdateChannelRetryTimes(channel.Id, requestedRetryTimes); err != nil {
 			common.ApiError(c, err)
@@ -1423,6 +1501,7 @@ func UpdateChannel(c *gin.Context) {
 func FetchModels(c *gin.Context) {
 	var req struct {
 		OpenCodeFreeOnly   bool              `json:"opencode_free_only"`
+		ClineFreeOnly      *bool             `json:"cline_free_only"`
 		KiloFreeOnly       bool              `json:"kilo_free_only"`
 		KiloAnonymous      *bool             `json:"kilo_anonymous_enabled"`
 		BaseURL            string            `json:"base_url"`
@@ -1473,6 +1552,7 @@ func FetchModels(c *gin.Context) {
 	channel.SetSetting(dto.ChannelSettings{Proxy: strings.TrimSpace(req.Proxy)})
 	channel.SetOtherSettings(dto.ChannelOtherSettings{
 		OpenCodeFreeModelSyncEnabled: req.OpenCodeFreeOnly,
+		ClineFreeModelSyncEnabled:    req.ClineFreeOnly,
 		KiloFreeModelSyncEnabled:     req.KiloFreeOnly,
 		KiloAnonymousEnabled:         kiloAnonymous,
 		VertexKeyType:                req.VertexKeyType,
@@ -1615,10 +1695,15 @@ func CopyChannel(c *gin.Context) {
 	}
 
 	// insert
-	if err := model.BatchInsertChannels([]model.Channel{clone}); err != nil {
+	clones := []model.Channel{clone}
+	if err := model.BatchInsertChannels(clones); err != nil {
 		common.SysError("failed to clone channel: " + err.Error())
 		c.JSON(http.StatusOK, gin.H{"success": false, "message": "复制渠道失败，请稍后重试"})
 		return
+	}
+	clone = clones[0]
+	if clone.Type == constant.ChannelTypeCline {
+		syncClineModelsAfterSave(&clone)
 	}
 	model.InitChannelCache()
 	// success

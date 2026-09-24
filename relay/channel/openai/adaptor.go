@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
+	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
 	"github.com/QuantumNous/new-api/relay/channel/modal"
@@ -101,6 +102,12 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelType == constant.ChannelTypeCline {
+		if info.RelayMode != relayconstant.RelayModeChatCompletions {
+			return "", errors.New("Cline channel supports chat completions only")
+		}
+		return cline.NormalizeBaseURL(info.ChannelBaseUrl) + "/v1/chat/completions", nil
+	}
 	if info.ChannelType == constant.ChannelTypeKilo {
 		if info.RelayMode != relayconstant.RelayModeChatCompletions {
 			return "", errors.New("Kilo channel supports chat completions only")
@@ -289,7 +296,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	// model names may start with "o" (for example, "orcarouter/...") without
 	// being OpenAI o-series reasoning models, so preserve the request instead
 	// of applying OpenAI-specific model-name heuristics below.
-	if info.ChannelType == constant.ChannelTypeModal || info.ChannelType == constant.ChannelTypeKilo {
+	if info.ChannelType == constant.ChannelTypeModal || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline {
 		return request, nil
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
@@ -678,6 +685,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.ChannelType == constant.ChannelTypeCline && !info.IsStream {
+		return OpenaiHandlerWithBodyTransformer(c, info, resp, cline.UnwrapChatResponse)
+	}
 	switch info.RelayMode {
 	case relayconstant.RelayModeRealtime:
 		err, usage = OpenaiRealtimeHandler(c, info)
@@ -717,8 +727,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 
 func (a *Adaptor) GetModelList() []string {
 	switch a.ChannelType {
-	case constant.ChannelTypeKilo:
-		return []string{} // Kilo's model catalogue is fetched dynamically.
+	case constant.ChannelTypeKilo, constant.ChannelTypeCline:
+		return []string{} // These channel catalogues are fetched dynamically.
 	case constant.ChannelType360:
 		return ai360.ModelList
 	case constant.ChannelTypeLingYiWanWu:
@@ -746,6 +756,8 @@ func (a *Adaptor) GetModelList() []string {
 
 func (a *Adaptor) GetChannelName() string {
 	switch a.ChannelType {
+	case constant.ChannelTypeCline:
+		return "Cline"
 	case constant.ChannelTypeKilo:
 		return "Kilo"
 	case constant.ChannelType360:

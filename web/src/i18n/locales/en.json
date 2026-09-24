@@ -1,5 +1,10 @@
 {
   "translation": {
+    "自动更新 Cline 免费模型列表": "Automatically update Cline free models",
+    "默认开启，自动增删 Cline 官方免费专区模型，保留其他手动模型和映射；站内计费使用现有定价。": "Enabled by default. Adds and removes models from Cline's official free catalog while preserving other manual models and mappings. Existing site pricing still applies.",
+    "Cline 免费模型同步已开启，全部模型巡检设置暂时停用": "Cline free model sync is enabled; full catalog monitoring settings are temporarily disabled",
+    "Cline 默认地址为 https://api.cline.bot/api，支持普通及流式对话；开启免费模型同步时仅获取官方免费专区模型。": "Cline uses https://api.cline.bot/api by default and supports standard and streaming chat. Free model sync fetches only the official free catalog.",
+    "留空使用 Cline 官方免费目录；自定义接口须返回 free 数组，每项包含 id。": "Leave blank to use Cline's official free catalog. Custom endpoints must return a free array with an id in each entry.",
     "自动更新 OpenCode 免费模型列表": "Automatically update OpenCode free models",
     "默认关闭，开启后定时增删 OpenCode Zen 的免费对话模型，保留其他模型和手动映射；不自动加入 JEV 等非对话模型，站内计费使用现有定价。": "Disabled by default. Periodically adds and removes OpenCode Zen free chat models, preserving other models and manual mappings. Non-chat models such as JEV are excluded. Site billing uses existing pricing.",
     "OpenCode 免费模型同步已开启，全部模型巡检设置暂时停用": "OpenCode free model sync is enabled; checks for all models are temporarily disabled",

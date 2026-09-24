@@ -70,7 +70,8 @@ const (
 	ChannelTypeKilo           = 70
 	ChannelTypeTypeSafe       = 71
 	ChannelTypeMiMo           = 72
-	ChannelTypeDummy          = ChannelTypeMiMo + 1 // this one is only for count, do not add any channel after this
+	ChannelTypeCline          = 73
+	ChannelTypeDummy          = ChannelTypeCline + 1 // this one is only for count, do not add any channel after this
 
 )
 
@@ -148,6 +149,7 @@ var ChannelBaseURLs = []string{
 	"https://api.kilo.ai/api/gateway",           //70
 	"https://api.typesafe.ai",                   //71
 	"https://api.xiaomimimo.com",                //72
+	"https://api.cline.bot/api",                 //73
 }
 
 var ChannelTypeNames = map[int]string{
@@ -220,6 +222,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeKilo:           "Kilo",
 	ChannelTypeTypeSafe:       "TypeSafe",
 	ChannelTypeMiMo:           "MiMo",
+	ChannelTypeCline:          "Cline",
 }
 
 func GetChannelTypeName(channelType int) string {
