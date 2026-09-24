@@ -76,6 +76,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	passThrough := shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled)
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThrough &&
+		info.ChannelType != constant.ChannelTypeOpenAI &&
 		shouldChatCompletionsUseResponses(info) {
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
@@ -119,7 +120,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		}
 		relaycommon.AppendRequestConversionFromRequest(info, convertedRequest)
 
-		if info.ChannelSetting.SystemPrompt != "" {
+		if info.ChannelType == constant.ChannelTypeOpenAI {
+			applySystemPromptIfNeeded(c, info, request)
+		} else if info.ChannelSetting.SystemPrompt != "" {
 			// 如果有系统提示，则将其添加到请求中
 			request, ok := convertedRequest.(*dto.GeneralOpenAIRequest)
 			if ok {
@@ -177,6 +180,27 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 			if err != nil {
 				return newAPIErrorFromParamOverride(err)
+			}
+		}
+
+		if info.ChannelType == constant.ChannelTypeOpenAI && info.RelayMode == relayconstant.RelayModeChatCompletions {
+			var requiresResponses bool
+			jsonData, requiresResponses, err = normalizeOfficialChatRequest(info, jsonData)
+			if err != nil {
+				return invalidOpenAIModelRequest(err)
+			}
+			if requiresResponses || shouldChatCompletionsUseResponses(info) {
+				usage, apiErr := chatCompletionsViaResponsesBody(c, info, adaptor, jsonData)
+				if apiErr != nil {
+					return apiErr
+				}
+				if (usage.CompletionTokenDetails.AudioTokens > 0 || usage.PromptTokensDetails.AudioTokens > 0) &&
+					(ratio_setting.ContainsAudioRatio(info.OriginModelName) || ratio_setting.ContainsAudioCompletionRatio(info.OriginModelName)) {
+					service.PostAudioConsumeQuota(c, info, usage, "")
+				} else {
+					service.PostTextConsumeQuota(c, info, usage, nil)
+				}
+				return nil
 			}
 		}
 

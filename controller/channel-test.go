@@ -756,6 +756,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	}
+	if channel.Type == constant.ChannelTypeOpenAI {
+		jsonData, err = prepareOpenAIChannelTestRequest(info, jsonData)
+		if err != nil {
+			return testResult{context: c, localErr: err, newAPIError: types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())}
+		}
+	}
 	if info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne {
 		var effective dto.TypeSafeRequest
 		if err := common.Unmarshal(jsonData, &effective); err != nil {
@@ -1466,7 +1472,11 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		testRequest.StreamOptions = &dto.StreamOptions{IncludeUsage: common.GetPointer(true)}
 	}
 
-	if strings.HasPrefix(model, "o") {
+	channelType := constant.ChannelTypeOpenAI
+	if channel != nil {
+		channelType = channel.Type
+	}
+	if useOpenAICompletionTokens(model, channelType) {
 		testRequest.MaxCompletionTokens = lo.ToPtr(uint(16))
 	} else if strings.Contains(model, "thinking") {
 		if !strings.Contains(model, "claude") {

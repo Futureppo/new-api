@@ -1,15 +1,15 @@
 package common
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/pkg/openaimodel"
+)
 
 var (
 	// OpenAIResponseOnlyModels is a list of models that are only available for OpenAI responses.
-	OpenAIResponseOnlyModels = []string{
-		"o3-pro",
-		"o3-deep-research",
-		"o4-mini-deep-research",
-	}
-	ImageGenerationModels = []string{
+	OpenAIResponseOnlyModels = openaimodel.ResponseOnlyModels()
+	ImageGenerationModels    = []string{
 		"dall-e-3",
 		"dall-e-2",
 		"gpt-image-1",
@@ -37,12 +37,8 @@ var (
 )
 
 func IsOpenAIResponseOnlyModel(modelName string) bool {
-	for _, m := range OpenAIResponseOnlyModels {
-		if strings.Contains(modelName, m) {
-			return true
-		}
-	}
-	return false
+	_, _, capabilities, known := openaimodel.Resolve(modelName)
+	return known && capabilities.ResponsesOnly
 }
 
 func IsImageGenerationModel(modelName string) bool {

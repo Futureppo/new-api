@@ -17,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/openaimodel"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
 	"github.com/QuantumNous/new-api/relay/channel/cline"
@@ -376,35 +377,40 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		}
 
 	}
-	if strings.HasPrefix(info.UpstreamModelName, "o") || strings.HasPrefix(info.UpstreamModelName, "gpt-5") {
+	baseModel, effort, capabilities, known := openaimodel.Resolve(info.UpstreamModelName)
+	if known && (info.ChannelType == constant.ChannelTypeOpenAI || capabilities.LegacyO || capabilities.LegacyGPT5) {
+		if effort != "" {
+			request.ReasoningEffort = effort
+			info.UpstreamModelName = baseModel
+			request.Model = baseModel
+		}
+		info.ReasoningEffort = request.ReasoningEffort
+	}
+	// Official requests are normalized after parameter overrides. Applying
+	// sampling rules here would discard values before the effective effort/model
+	// is known. Other providers keep their existing, now exact-name behavior.
+	if info.ChannelType == constant.ChannelTypeOpenAI {
+		return request, nil
+	}
+	if known && (capabilities.LegacyO || capabilities.LegacyGPT5) {
 		if lo.FromPtrOr(request.MaxCompletionTokens, uint(0)) == 0 && lo.FromPtrOr(request.MaxTokens, uint(0)) != 0 {
 			request.MaxCompletionTokens = request.MaxTokens
 			request.MaxTokens = nil
 		}
 
-		if strings.HasPrefix(info.UpstreamModelName, "o") {
+		if capabilities.LegacyO {
 			request.Temperature = nil
 		}
 
 		// gpt-5系列模型适配 归零不再支持的参数
-		if strings.HasPrefix(info.UpstreamModelName, "gpt-5") {
+		if capabilities.LegacyGPT5 {
 			request.Temperature = nil
 			request.TopP = nil
 			request.LogProbs = nil
 		}
 
-		// 转换模型推理力度后缀
-		effort, originModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(info.UpstreamModelName)
-		if effort != "" {
-			request.ReasoningEffort = effort
-			info.UpstreamModelName = originModel
-			request.Model = originModel
-		}
-
-		info.ReasoningEffort = request.ReasoningEffort
-
 		// o系列模型developer适配（o1-mini除外）
-		if !strings.HasPrefix(info.UpstreamModelName, "o1-mini") && !strings.HasPrefix(info.UpstreamModelName, "o1-preview") {
+		if capabilities.DeveloperRole {
 			//修改第一个Message的内容，将system改为developer
 			if len(request.Messages) > 0 && request.Messages[0].Role == "system" {
 				request.Messages[0].Role = "developer"

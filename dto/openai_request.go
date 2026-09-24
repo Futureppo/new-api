@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/pkg/openaimodel"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
 
@@ -138,13 +139,7 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 		texts = append(texts, inputs...)
 	}
 
-	maxTokens := lo.FromPtrOr(r.MaxTokens, uint(0))
-	maxCompletionTokens := lo.FromPtrOr(r.MaxCompletionTokens, uint(0))
-	if maxCompletionTokens > maxTokens {
-		tokenCountMeta.MaxTokens = int(maxCompletionTokens)
-	} else {
-		tokenCountMeta.MaxTokens = int(maxTokens)
-	}
+	tokenCountMeta.MaxTokens = int(r.GetMaxTokens())
 
 	for _, message := range r.Messages {
 		tokenCountMeta.MessagesCount++
@@ -219,11 +214,7 @@ func (r *GeneralOpenAIRequest) ToMap() map[string]any {
 }
 
 func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
-	if strings.HasPrefix(r.Model, "o") {
-		if !strings.HasPrefix(r.Model, "o1-mini") && !strings.HasPrefix(r.Model, "o1-preview") {
-			return "developer"
-		}
-	} else if strings.HasPrefix(r.Model, "gpt-5") {
+	if _, _, capabilities, known := openaimodel.Resolve(r.Model); known && capabilities.DeveloperRole {
 		return "developer"
 	}
 	return "system"
@@ -272,9 +263,8 @@ func (s *StreamOptions) GetIncludeUsage() bool {
 }
 
 func (r *GeneralOpenAIRequest) GetMaxTokens() uint {
-	maxCompletionTokens := lo.FromPtrOr(r.MaxCompletionTokens, uint(0))
-	if maxCompletionTokens != 0 {
-		return maxCompletionTokens
+	if r.MaxCompletionTokens != nil {
+		return *r.MaxCompletionTokens
 	}
 	return lo.FromPtrOr(r.MaxTokens, uint(0))
 }

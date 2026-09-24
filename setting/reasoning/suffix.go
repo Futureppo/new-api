@@ -3,12 +3,13 @@ package reasoning
 import (
 	"strings"
 
+	"github.com/QuantumNous/new-api/pkg/openaimodel"
 	"github.com/samber/lo"
 )
 
 var EffortSuffixes = []string{"-max", "-xhigh", "-high", "-medium", "-low", "-minimal"}
 
-var OpenAIEffortSuffixes = []string{"-high", "-minimal", "-low", "-medium", "-none", "-xhigh"}
+var OpenAIEffortSuffixes = []string{"-high", "-minimal", "-low", "-medium", "-none", "-xhigh", "-max"}
 
 var DeepSeekV4EffortSuffixes = []string{"-none", "-max"}
 
@@ -28,7 +29,7 @@ func TrimEffortSuffixWithSuffixes(modelName string, suffixes []string) (string, 
 }
 
 func ParseOpenAIReasoningEffortFromModelSuffix(modelName string) (string, string) {
-	baseModel, effort, ok := TrimEffortSuffixWithSuffixes(modelName, OpenAIEffortSuffixes)
+	baseModel, effort, _, ok := openaimodel.Resolve(modelName)
 	if !ok {
 		return "", modelName
 	}

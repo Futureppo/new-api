@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/pkg/openaimodel"
 )
 
 // GetEndpointTypesByChannelType returns the preferred endpoint types for a channel/model pair.
@@ -89,7 +90,8 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeAudioSpeech, constant.EndpointTypeAudioTranscription}
 		}
 	default:
-		if IsOpenAIResponseOnlyModel(modelName) {
+		_, _, capabilities, known := openaimodel.Resolve(modelName)
+		if known && (capabilities.LegacyResponsesOnly || (channelType == constant.ChannelTypeOpenAI && capabilities.ResponsesOnly)) {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAIResponse}
 		} else {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}

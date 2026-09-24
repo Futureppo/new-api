@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/service/openaicompat"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -28,15 +29,22 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 	}
 
 	systemRole := request.GetSystemRoleName()
+	isSystemMessage := func(role string) bool {
+		return role == systemRole || (info.ChannelType == constant.ChannelTypeOpenAI && (role == "system" || role == "developer"))
+	}
 
 	containSystemPrompt := false
 	for _, message := range request.Messages {
-		if message.Role == systemRole {
+		if isSystemMessage(message.Role) {
 			containSystemPrompt = true
 			break
 		}
 	}
 	if !containSystemPrompt {
+		if info.ChannelType == constant.ChannelTypeOpenAI {
+			// The final overridden model determines whether this becomes developer.
+			systemRole = "system"
+		}
 		systemMessage := dto.Message{
 			Role:    systemRole,
 			Content: info.ChannelSetting.SystemPrompt,
@@ -51,7 +59,7 @@ func applySystemPromptIfNeeded(c *gin.Context, info *relaycommon.RelayInfo, requ
 
 	common.SetContextKey(c, constant.ContextKeySystemPromptOverride, true)
 	for i, message := range request.Messages {
-		if message.Role != systemRole {
+		if !isSystemMessage(message.Role) {
 			continue
 		}
 		if message.IsStringContent() {
@@ -75,7 +83,7 @@ func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
 		return false
 	}
 	model := info.OriginModelName
-	if info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo {
+	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo {
 		model = info.UpstreamModelName
 	}
 	return service.ShouldChatCompletionsUseResponsesGlobal(info.ChannelId, info.ChannelType, model)
@@ -114,11 +122,28 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		}
 	}
 
+	if info.ChannelType == constant.ChannelTypeOpenAI {
+		chatJSON, _, err = normalizeOfficialChatRequest(info, chatJSON)
+		if err != nil {
+			return nil, invalidOpenAIModelRequest(err)
+		}
+	}
+	return chatCompletionsViaResponsesBody(c, info, adaptor, chatJSON)
+}
+
+// chatCompletionsViaResponsesBody accepts a prepared Chat request. Parameter
+// overrides have already run and must not be applied again during conversion.
+func chatCompletionsViaResponsesBody(c *gin.Context, info *relaycommon.RelayInfo, adaptor channel.Adaptor, chatJSON []byte) (*dto.Usage, *types.NewAPIError) {
 	var overriddenChatReq dto.GeneralOpenAIRequest
 	if err := common.Unmarshal(chatJSON, &overriddenChatReq); err != nil {
 		return nil, types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
 	}
 
+	if info.ChannelType == constant.ChannelTypeOpenAI {
+		if err := openaicompat.ValidateChatRequestForResponses(&overriddenChatReq); err != nil {
+			return nil, invalidOpenAIModelRequest(err)
+		}
+	}
 	responsesReq, err := service.ChatCompletionsRequestToResponsesRequest(&overriddenChatReq)
 	if err != nil {
 		return nil, types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
@@ -150,6 +175,12 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 	jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+	}
+	if info.ChannelType == constant.ChannelTypeOpenAI {
+		jsonData, err = normalizeOfficialResponsesRequest(info, jsonData)
+		if err != nil {
+			return nil, invalidOpenAIModelRequest(err)
+		}
 	}
 	relaycommon.SetReasoningEffortFromRequest(info, jsonData)
 	relaycommon.SetConversationUpstreamRequest(info, jsonData)

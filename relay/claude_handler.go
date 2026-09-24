@@ -130,7 +130,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	passThrough := shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled)
-	if !passThrough &&
+	if !passThrough && info.ChannelType != constant.ChannelTypeOpenAI &&
 		shouldChatCompletionsUseResponses(info) {
 		openAIRequest, convErr := service.ClaudeToOpenAIRequest(*request, info)
 		if convErr != nil {
@@ -180,6 +180,21 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 			if err != nil {
 				return newAPIErrorFromParamOverride(err)
+			}
+		}
+		if info.ChannelType == constant.ChannelTypeOpenAI {
+			var requiresResponses bool
+			jsonData, requiresResponses, err = normalizeOfficialChatRequest(info, jsonData)
+			if err != nil {
+				return invalidOpenAIModelRequest(err)
+			}
+			if requiresResponses || shouldChatCompletionsUseResponses(info) {
+				usage, apiErr := chatCompletionsViaResponsesBody(c, info, adaptor, jsonData)
+				if apiErr != nil {
+					return apiErr
+				}
+				service.PostTextConsumeQuota(c, info, usage, nil)
+				return nil
 			}
 		}
 

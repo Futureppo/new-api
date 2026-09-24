@@ -117,6 +117,12 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		}
 
 		if info.ChannelType == appconstant.ChannelTypeOpenAI {
+			if info.RelayMode == relayconstant.RelayModeResponses {
+				jsonData, err = normalizeOfficialResponsesRequest(info, jsonData)
+				if err != nil {
+					return invalidOpenAIModelRequest(err)
+				}
+			}
 			var finalRequest struct {
 				Background *bool `json:"background"`
 			}
