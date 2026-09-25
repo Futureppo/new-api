@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel/cline"
+	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -84,16 +85,26 @@ func TestClineLiveChat(t *testing.T) {
 					}
 					a := &Adaptor{}
 					a.Init(info)
-					converted, err := a.ConvertOpenAIRequest(nil, info, request)
-					require.NoError(t, err)
-					body, err := common.Marshal(converted)
-					require.NoError(t, err)
 					w := httptest.NewRecorder()
 					c, _ := gin.CreateTestContext(w)
 					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
 					c.Request.Header.Set("Content-Type", "application/json")
 					c.Request.Header.Set("User-Agent", "OtherClient/1.0")
 					c.Request.Header.Set("X-CLIENT-TYPE", "other-client")
+					if _, alias, ok := strings.Cut(modelID, "/"); ok {
+						mapping, err := common.Marshal(map[string]string{alias: modelID})
+						require.NoError(t, err)
+						c.Set("model_mapping", string(mapping))
+						info.OriginModelName, info.ClientModelName = alias, alias
+						request.Model = alias
+						require.NoError(t, helper.ModelMappedHelper(c, info, request))
+						require.Equal(t, modelID, request.Model)
+						t.Logf("client model=%s upstream model=%s", alias, request.Model)
+					}
+					converted, err := a.ConvertOpenAIRequest(c, info, request)
+					require.NoError(t, err)
+					body, err := common.Marshal(converted)
+					require.NoError(t, err)
 					raw, err := a.DoRequest(c, info, bytes.NewReader(body))
 					require.NoError(t, err)
 					response := raw.(*http.Response)

@@ -941,6 +941,8 @@ func AddChannel(c *gin.Context) {
 	if ch := addChannelRequest.Channel; ch != nil && ch.Type == constant.ChannelTypeCline {
 		settings := ch.GetOtherSettings()
 		settings.ClineFreeModelManagedModels = nil
+		settings.ClineModelGeneratedMappings = nil
+		settings.ClineFreeModelPendingMappings = nil
 		settings.UpstreamModelUpdateLastCheckTime = 0
 		settings.UpstreamModelUpdateLastDetectedModels = nil
 		settings.UpstreamModelUpdateLastRemovedModels = nil
@@ -975,6 +977,12 @@ func AddChannel(c *gin.Context) {
 			"message": err.Error(),
 		})
 		return
+	}
+	if addChannelRequest.Channel.Type == constant.ChannelTypeCline {
+		if _, err := normalizeClineChannelModels(addChannelRequest.Channel); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	}
 	if c.GetInt("role") < common.RoleRootUser {
 		otherSettings := addChannelRequest.Channel.GetOtherSettings()
@@ -1294,6 +1302,9 @@ func UpdateChannel(c *gin.Context) {
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 	clineSyncNeeded := false
+	if _, provided := rawBody["type"]; !provided && originChannel.Type == constant.ChannelTypeCline {
+		channel.Type = originChannel.Type
+	}
 	if channel.Type == constant.ChannelTypeCline {
 		// Partial API edits must preserve connection details and an explicitly
 		// disabled sync switch when their fields are omitted.
@@ -1302,6 +1313,13 @@ func UpdateChannel(c *gin.Context) {
 		}
 		if channel.BaseURL == nil {
 			channel.BaseURL = originChannel.BaseURL
+		}
+		channel.BaseURL = common.GetPointer(cline.NormalizeBaseURL(channel.GetBaseURL()))
+		if _, provided := rawBody["models"]; !provided {
+			channel.Models = originChannel.Models
+		}
+		if _, provided := rawBody["model_mapping"]; !provided {
+			channel.ModelMapping = originChannel.ModelMapping
 		}
 		if channel.Setting == nil {
 			channel.Setting = originChannel.Setting
@@ -1315,6 +1333,8 @@ func UpdateChannel(c *gin.Context) {
 		settings := channel.GetOtherSettings()
 		originalSettings := originChannel.GetOtherSettings()
 		settings.ClineFreeModelManagedModels = originalSettings.ClineFreeModelManagedModels
+		settings.ClineModelGeneratedMappings = originalSettings.ClineModelGeneratedMappings
+		settings.ClineFreeModelPendingMappings = originalSettings.ClineFreeModelPendingMappings
 		settings.UpstreamModelUpdateLastDetectedModels = originalSettings.UpstreamModelUpdateLastDetectedModels
 		settings.UpstreamModelUpdateLastRemovedModels = originalSettings.UpstreamModelUpdateLastRemovedModels
 		settings.UpstreamModelUpdateLastCheckTime = originalSettings.UpstreamModelUpdateLastCheckTime
@@ -1327,11 +1347,18 @@ func UpdateChannel(c *gin.Context) {
 			!reflect.DeepEqual(channel.HeaderOverride, originChannel.HeaderOverride) ||
 			settings.CustomModelListURL != originalSettings.CustomModelListURL
 		if clineSyncNeeded || settings.ShouldSyncClineFreeModels() != originalSettings.ShouldSyncClineFreeModels() {
+			settings.ClineFreeModelPendingMappings = nil
 			settings.UpstreamModelUpdateLastCheckTime = 0
 			settings.UpstreamModelUpdateLastDetectedModels = nil
 			settings.UpstreamModelUpdateLastRemovedModels = nil
 		}
 		channel.SetOtherSettings(settings)
+		modelsChanged, err := normalizeClineChannelModels(&channel.Channel)
+		if err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		clineSyncNeeded = clineSyncNeeded || modelsChanged
 	}
 	if channel.Type == constant.ChannelTypeKilo {
 		settings := channel.GetOtherSettings()
@@ -1698,6 +1725,12 @@ func CopyChannel(c *gin.Context) {
 	}
 
 	// insert
+	if clone.Type == constant.ChannelTypeCline {
+		if _, err := normalizeClineChannelModels(&clone); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	clones := []model.Channel{clone}
 	if err := model.BatchInsertChannels(clones); err != nil {
 		common.SysError("failed to clone channel: " + err.Error())

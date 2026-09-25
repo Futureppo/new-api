@@ -90,25 +90,41 @@ func fetchClineModelIDs(ctx context.Context, channel *model.Channel, baseURL, ke
 	return normalizeModelNames(ids), nil
 }
 
-func buildClineManagedModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings, upstream []string) (add, remove, managed []string) {
+func buildClineManagedModelChanges(channel *model.Channel, settings dto.ChannelOtherSettings, upstream []string) (add, remove, managed []string, aliases map[string]string) {
 	current := channel.GetModels()
 	mappings := normalizeChannelModelMapping(channel)
+	owned := collectClineGeneratedMappings(channel, settings.ClineModelGeneratedMappings)
+	desired, aliases := planClineModelAliases(channel, upstream, settings.ClineModelGeneratedMappings, settings.UpstreamModelUpdateIgnoredModels)
 	managed = mergeModelNames(settings.ClineFreeModelManagedModels, intersectModelNames(current, upstream))
-	for _, id := range upstream {
-		if _, manual := mappings[id]; !manual && !slices.Contains(current, id) && !isIgnoredUpstreamModel(id, settings.UpstreamModelUpdateIgnoredModels) {
+	for alias := range settings.ClineModelGeneratedMappings {
+		if _, ok := owned[alias]; !ok {
+			managed = subtractModelNames(managed, []string{alias})
+		} else if slices.Contains(upstream, owned[alias]) {
+			managed = mergeModelNames(managed, []string{alias})
+		}
+	}
+	for _, id := range desired {
+		_, autoAlias := owned[id]
+		_, mapped := mappings[id]
+		needsMapping := aliases[id] != "" && mappings[id] != aliases[id]
+		if (!mapped || autoAlias) && (!slices.Contains(current, id) || needsMapping) &&
+			!isIgnoredUpstreamModel(id, settings.UpstreamModelUpdateIgnoredModels) &&
+			!isIgnoredUpstreamModel(clineModelAlias(id), settings.UpstreamModelUpdateIgnoredModels) &&
+			(aliases[id] == "" || !isIgnoredUpstreamModel(aliases[id], settings.UpstreamModelUpdateIgnoredModels)) {
 			add = append(add, id)
 		}
 	}
 	for _, id := range managed {
-		if _, manual := mappings[id]; manual {
+		_, autoAlias := owned[id]
+		if _, mapped := mappings[id]; mapped && !autoAlias {
 			managed = subtractModelNames(managed, []string{id})
 			continue
 		}
-		if slices.Contains(current, id) && !slices.Contains(upstream, id) {
+		if slices.Contains(current, id) && !slices.Contains(desired, id) {
 			remove = append(remove, id)
 		}
 	}
-	return normalizeModelNames(add), normalizeModelNames(remove), managed
+	return normalizeModelNames(add), normalizeModelNames(remove), managed, aliases
 }
 
 // Update model availability and its ownership together. Optimistic matching
@@ -130,6 +146,7 @@ func persistClineModelUpdates(original model.Channel, channel *model.Channel, se
 		updates := map[string]any{"settings": channel.OtherSettings}
 		if modelsChanged {
 			updates["models"] = channel.Models
+			updates["model_mapping"] = channel.ModelMapping
 		}
 		result := tx.Model(&model.Channel{}).Where(map[string]any{
 			"id": original.Id, "type": original.Type, "status": original.Status,
@@ -155,26 +172,60 @@ func persistClineModelUpdates(original model.Channel, channel *model.Channel, se
 	return err
 }
 
-func prepareClineModelUpdates(channel *model.Channel, settings *dto.ChannelOtherSettings, addInput, ignoreInput, removeInput []string) (added, removed, remaining, remainingRemove []string, changed bool) {
+func prepareClineModelUpdates(channel *model.Channel, settings *dto.ChannelOtherSettings, addInput, ignoreInput, removeInput []string) (added, removed, remaining, remainingRemove []string, changed bool, err error) {
 	add := intersectModelNames(addInput, settings.UpstreamModelUpdateLastDetectedModels)
 	ignored := intersectModelNames(ignoreInput, settings.UpstreamModelUpdateLastDetectedModels)
 	remove := intersectModelNames(removeInput, settings.UpstreamModelUpdateLastRemovedModels)
 	remove = subtractModelNames(intersectModelNames(remove, settings.ClineFreeModelManagedModels), add)
-	for source := range normalizeChannelModelMapping(channel) {
+	mapping := cloneModelMapping(normalizeChannelModelMapping(channel))
+	generated := collectClineGeneratedMappings(channel, settings.ClineModelGeneratedMappings)
+	for alias := range settings.ClineModelGeneratedMappings {
+		if _, owned := generated[alias]; !owned {
+			remove = subtractModelNames(remove, []string{alias})
+			settings.ClineFreeModelManagedModels = subtractModelNames(settings.ClineFreeModelManagedModels, []string{alias})
+		}
+	}
+	for alias := range settings.ClineFreeModelPendingMappings {
+		if _, owned := generated[alias]; !owned && slices.Contains(channel.GetModels(), alias) {
+			add = subtractModelNames(add, []string{alias})
+		}
+	}
+	for source := range mapping {
+		if _, owned := generated[source]; owned {
+			continue
+		}
 		add = subtractModelNames(add, []string{source})
 		remove = subtractModelNames(remove, []string{source})
 		settings.ClineFreeModelManagedModels = subtractModelNames(settings.ClineFreeModelManagedModels, []string{source})
 	}
 	original := normalizeModelNames(channel.GetModels())
 	next := applySelectedModelChanges(original, add, remove)
+	for _, name := range remove {
+		if _, owned := generated[name]; owned {
+			delete(mapping, name)
+			delete(generated, name)
+		}
+	}
+	for _, name := range add {
+		if target := settings.ClineFreeModelPendingMappings[name]; target != "" {
+			mapping[name] = target
+			generated[name] = target
+		}
+	}
+	mappingChanged, err := setChannelModelMapping(channel, mapping)
+	if err != nil {
+		return nil, nil, nil, nil, false, err
+	}
 	channel.Models = strings.Join(next, ",")
+	settings.ClineModelGeneratedMappings = filterModelMappingsBySources(generated, next)
 	settings.ClineFreeModelManagedModels = intersectModelNames(mergeModelNames(settings.ClineFreeModelManagedModels, add), next)
 	settings.UpstreamModelUpdateIgnoredModels = subtractModelNames(mergeModelNames(settings.UpstreamModelUpdateIgnoredModels, ignored), add)
 	remaining = subtractModelNames(settings.UpstreamModelUpdateLastDetectedModels, mergeModelNames(add, ignored))
 	remainingRemove = subtractModelNames(settings.UpstreamModelUpdateLastRemovedModels, remove)
 	settings.UpstreamModelUpdateLastDetectedModels = remaining
 	settings.UpstreamModelUpdateLastRemovedModels = remainingRemove
-	return subtractModelNames(next, original), subtractModelNames(original, next), remaining, remainingRemove, !slices.Equal(original, next)
+	settings.ClineFreeModelPendingMappings = filterModelMappingsBySources(settings.ClineFreeModelPendingMappings, remaining)
+	return subtractModelNames(next, original), subtractModelNames(original, next), remaining, remainingRemove, mappingChanged || !slices.Equal(original, next), nil
 }
 
 func checkAndPersistClineModelUpdates(channel *model.Channel, settings *dto.ChannelOtherSettings, force, allowAutoApply bool) (bool, channelUpstreamAutoApplyResult, error) {
@@ -188,12 +239,19 @@ func checkAndPersistClineModelUpdates(channel *model.Channel, settings *dto.Chan
 	changed := false
 	result := channelUpstreamAutoApplyResult{}
 	if fetchErr == nil {
-		add, remove, managed := buildClineManagedModelChanges(channel, *settings, upstream)
+		add, remove, managed, aliases := buildClineManagedModelChanges(channel, *settings, upstream)
 		settings.ClineFreeModelManagedModels = managed
+		settings.ClineFreeModelPendingMappings = filterModelMappingsBySources(aliases, add)
 		settings.UpstreamModelUpdateLastDetectedModels = add
 		settings.UpstreamModelUpdateLastRemovedModels = remove
 		if allowAutoApply {
-			result.AddedModels, result.RemovedModels, _, _, changed = prepareClineModelUpdates(channel, settings, add, nil, remove)
+			var err error
+			result.AddedModels, result.RemovedModels, _, _, changed, err = prepareClineModelUpdates(channel, settings, add, nil, remove)
+			if err != nil {
+				*channel = original
+				*settings = channel.GetOtherSettings()
+				return false, channelUpstreamAutoApplyResult{}, err
+			}
 		}
 	}
 	if err := persistClineModelUpdates(original, channel, *settings, changed); err != nil {
@@ -206,7 +264,11 @@ func checkAndPersistClineModelUpdates(channel *model.Channel, settings *dto.Chan
 func applyClineModelUpdates(channel *model.Channel, addInput, ignoreInput, removeInput []string) (added, removed, remaining, remainingRemove []string, changed bool, err error) {
 	original := *channel
 	settings := channel.GetOtherSettings()
-	added, removed, remaining, remainingRemove, changed = prepareClineModelUpdates(channel, &settings, addInput, ignoreInput, removeInput)
+	added, removed, remaining, remainingRemove, changed, err = prepareClineModelUpdates(channel, &settings, addInput, ignoreInput, removeInput)
+	if err != nil {
+		*channel = original
+		return nil, nil, nil, nil, false, err
+	}
 	settings.UpstreamModelUpdateLastCheckTime = common.GetTimestamp()
 	err = persistClineModelUpdates(original, channel, settings, changed)
 	if err != nil {

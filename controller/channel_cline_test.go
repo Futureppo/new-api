@@ -104,10 +104,11 @@ func TestClineSyncLifecycle(t *testing.T) {
 	changed, result, err := checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
 	require.NoError(t, err)
 	require.True(t, changed)
-	require.Equal(t, []string{"stealth/new-alpha"}, result.AddedModels)
-	require.Equal(t, []string{"old"}, result.RemovedModels)
-	require.ElementsMatch(t, []string{"paid", "manual", "cline-free/a", "stealth/new-alpha"}, ch.GetModels())
-	require.ElementsMatch(t, []string{"cline-free/a", "stealth/new-alpha"}, settings.ClineFreeModelManagedModels)
+	require.ElementsMatch(t, []string{"a", "new-alpha"}, result.AddedModels)
+	require.ElementsMatch(t, []string{"old", "cline-free/a"}, result.RemovedModels)
+	require.ElementsMatch(t, []string{"paid", "manual", "a", "new-alpha"}, ch.GetModels())
+	require.ElementsMatch(t, []string{"a", "new-alpha"}, settings.ClineFreeModelManagedModels)
+	require.Equal(t, map[string]string{"a": "cline-free/a", "new-alpha": "stealth/new-alpha", "manual": "paid/target"}, normalizeChannelModelMapping(&ch))
 	var abilities []model.Ability
 	require.NoError(t, db.Where("channel_id = ?", ch.Id).Find(&abilities).Error)
 	require.Len(t, abilities, 4)
@@ -117,7 +118,8 @@ func TestClineSyncLifecycle(t *testing.T) {
 	payload = `{"free":[{"id":"cline-free/a"}]}`
 	_, result, err = checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
 	require.NoError(t, err)
-	require.Equal(t, []string{"stealth/new-alpha"}, result.RemovedModels)
+	require.Equal(t, []string{"new-alpha"}, result.RemovedModels)
+	require.Equal(t, map[string]string{"a": "cline-free/a", "manual": "paid/target"}, normalizeChannelModelMapping(&ch))
 	before := ch.Models
 	payload = `{"free":[]}`
 	changed, _, err = checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
@@ -178,8 +180,9 @@ func TestClineCreateAndEditSync(t *testing.T) {
 	var saved model.Channel
 	require.NoError(t, db.Where("name = ?", "cline").First(&saved).Error)
 	require.Equal(t, 1, requests)
-	require.Contains(t, saved.GetModels(), "cline-free/current")
-	cached, err := model.GetRandomSatisfiedChannel("default", "cline-free/current", 0)
+	require.Contains(t, saved.GetModels(), "current")
+	require.Equal(t, "cline-free/current", normalizeChannelModelMapping(&saved)["current"])
+	cached, err := model.GetRandomSatisfiedChannel("default", "current", 0)
 	require.NoError(t, err)
 	require.NotNil(t, cached)
 	require.Equal(t, saved.Id, cached.Id)
@@ -188,7 +191,8 @@ func TestClineCreateAndEditSync(t *testing.T) {
 	saved.SetOtherSettings(dto.ChannelOtherSettings{})
 	callKiloChannelMutation(t, http.MethodPut, saved, UpdateChannel)
 	require.NoError(t, db.First(&saved, saved.Id).Error)
-	require.Equal(t, []string{"cline-free/current"}, saved.GetOtherSettings().ClineFreeModelManagedModels)
+	require.Equal(t, []string{"current"}, saved.GetOtherSettings().ClineFreeModelManagedModels)
+	require.Equal(t, map[string]string{"current": "cline-free/current"}, saved.GetOtherSettings().ClineModelGeneratedMappings)
 	require.Equal(t, lastCheck, saved.GetOtherSettings().UpstreamModelUpdateLastCheckTime)
 	require.Equal(t, 1, requests)
 	// Settings-only edits from an older form omit unchanged models/mappings.
@@ -198,13 +202,13 @@ func TestClineCreateAndEditSync(t *testing.T) {
 		"settings": "{}", "group": "default",
 	}, UpdateChannel)
 	require.NoError(t, db.First(&saved, saved.Id).Error)
-	require.Contains(t, saved.GetModels(), "cline-free/current")
+	require.Contains(t, saved.GetModels(), "current")
 	require.Equal(t, 1, requests)
 	saved.SetOtherSettings(dto.ChannelOtherSettings{ClineFreeModelSyncEnabled: common.GetPointer(false)})
 	callKiloChannelMutation(t, http.MethodPut, saved, UpdateChannel)
 	require.NoError(t, db.First(&saved, saved.Id).Error)
 	require.False(t, saved.GetOtherSettings().ShouldSyncClineFreeModels())
-	require.Contains(t, saved.GetModels(), "cline-free/current")
+	require.Contains(t, saved.GetModels(), "current")
 	require.Equal(t, 1, requests)
 	callKiloChannelMutation(t, http.MethodPut, map[string]any{
 		"id": saved.Id, "type": saved.Type, "name": "renamed-cline",
@@ -237,7 +241,7 @@ func TestClineCopyPreservesSyncChoice(t *testing.T) {
 	}))
 	defer upstream.Close()
 	for _, enabled := range []bool{true, false} {
-		ch := model.Channel{Type: constant.ChannelTypeCline, Key: "test-key", BaseURL: &upstream.URL, Name: fmt.Sprintf("copy-%t", enabled), Models: "manual", Group: "default", Status: common.ChannelStatusEnabled}
+		ch := model.Channel{Type: constant.ChannelTypeCline, Key: "test-key", BaseURL: &upstream.URL, Name: fmt.Sprintf("copy-%t", enabled), Models: "manual,cline-free/legacy", Group: "default", Status: common.ChannelStatusEnabled}
 		ch.SetOtherSettings(dto.ChannelOtherSettings{ClineFreeModelSyncEnabled: common.GetPointer(enabled)})
 		require.NoError(t, db.Create(&ch).Error)
 		w := httptest.NewRecorder()
@@ -258,6 +262,8 @@ func TestClineCopyPreservesSyncChoice(t *testing.T) {
 		var clone model.Channel
 		require.NoError(t, db.First(&clone, response.Data.ID).Error)
 		require.Equal(t, enabled, clone.GetOtherSettings().ShouldSyncClineFreeModels())
+		require.Contains(t, clone.GetModels(), "legacy")
+		require.Equal(t, "cline-free/legacy", normalizeChannelModelMapping(&clone)["legacy"])
 	}
 	require.Equal(t, 1, requests)
 }

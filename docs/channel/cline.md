@@ -4,7 +4,7 @@
 
 ## 客户端请求兼容
 
-渠道按官方 Cline CLI 的请求格式补齐客户端信息。其他客户端继续使用 New API 的 OpenAI 兼容地址、New API 令牌和完整模型 ID，无需自己填写 Cline 请求头。仅发送 Bearer Key 而缺少客户端字段时，部分 `cline-free/*` 模型会返回 `only available via Cline product surfaces`。
+渠道按官方 Cline CLI 的请求格式补齐客户端信息。其他客户端使用 New API 的 OpenAI 兼容地址、New API 令牌和渠道保存后的模型名称，无需自己填写 Cline 请求头。仅发送 Bearer Key 而缺少客户端字段时，部分 `cline-free/*` 模型会返回 `only available via Cline product surfaces`。
 
 实现依据为官方仓库提交 [`0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b`](https://github.com/cline/cline/commit/0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b)：
 
@@ -18,9 +18,17 @@
 
 请求保留用户的消息、工具、完整模型 ID 和显式零值。与官方 SDK 一致，OpenAI o1/o3/o4 和 GPT-5 模型的 `max_tokens` 转为 `max_completion_tokens`，已显式填写的 `max_completion_tokens` 优先。
 
+## 模型名称
+
+Cline 模型写入渠道列表时自动去掉第一个 `/` 及其前缀，并生成“简短名称 → 上游完整 ID”的模型映射。例如 `cline-free/deepseek-v4.1-flash` 保存为 `deepseek-v4.1-flash`，`stealth/space-bunny-alpha` 保存为 `space-bunny-alpha`；上游请求仍使用完整 ID。仅移除提供商前缀，保留 `:free` 等名称后缀。
+
+该行为覆盖新建、编辑、复制、API 保存和免费模型同步；关闭免费同步也不影响保存时的名称处理。已存在的受管完整 ID 会在下一次成功同步时转为短名。获取模型接口仍返回原始 ID，保存时建立映射。
+
+若多个 ID 去前缀后同名，或短名已被手动模型、手动映射占用，则保留完整 ID。用户修改或删除自动映射后，系统不再自动删除对应模型。模型退出免费专区时，仅删除受管模型及其未被修改的自动映射。
+
 ## 免费模型自动更新
 
-“自动更新 Cline 免费模型列表”默认开启，包括通过 API 创建且未填写该设置的渠道。系统读取 Cline 官方 `/v1/ai/cline/recommended-models` 的 `free[].id`，使用完整模型 ID，不根据名称后缀猜测免费资格，也不加入订阅模型。
+“自动更新 Cline 免费模型列表”默认开启，包括通过 API 创建且未填写该设置的渠道。系统读取 Cline 官方 `/v1/ai/cline/recommended-models` 的 `free[].id`，根据完整 ID 判断免费资格，再按上述规则保存短名与映射；不根据名称后缀猜测免费资格，也不加入订阅模型。
 
 - 自动加入新免费模型，移除此前受管且已退出免费专区的模型。
 - 保留其他手动模型和手动映射，支持现有的精确及 `regex:` 忽略列表。

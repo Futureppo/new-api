@@ -2058,6 +2058,8 @@ const EditChannelModal = (props) => {
     } else {
       delete settings.cline_auto_sync_free_models_enabled;
       delete settings.cline_free_model_managed_models;
+      delete settings.cline_model_generated_mappings;
+      delete settings.cline_free_model_pending_mappings;
     }
     if (localInputs.type === KILO_CHANNEL_TYPE) {
       settings.kilo_anonymous_enabled = kiloAnonymous;

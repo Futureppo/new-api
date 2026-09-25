@@ -99,8 +99,10 @@ type ChannelOtherSettings struct {
 	KiloFreeModelGeneratedMappings         map[string]string `json:"kilo_free_model_generated_mappings,omitempty"`
 	KiloFreeModelPendingMappings           map[string]string `json:"kilo_free_model_pending_mappings,omitempty"`
 
-	ClineFreeModelSyncEnabled   *bool    `json:"cline_auto_sync_free_models_enabled,omitempty"`
-	ClineFreeModelManagedModels []string `json:"cline_free_model_managed_models,omitempty"`
+	ClineFreeModelSyncEnabled     *bool             `json:"cline_auto_sync_free_models_enabled,omitempty"`
+	ClineFreeModelManagedModels   []string          `json:"cline_free_model_managed_models,omitempty"`
+	ClineModelGeneratedMappings   map[string]string `json:"cline_model_generated_mappings,omitempty"`
+	ClineFreeModelPendingMappings map[string]string `json:"cline_free_model_pending_mappings,omitempty"`
 }
 
 func (s ChannelOtherSettings) ShouldSyncClineFreeModels() bool {
