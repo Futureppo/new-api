@@ -3,6 +3,7 @@ package openai
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -20,8 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Explicit opt-in: discovers a currently free model and sends two small chat
-// requests. Credentials come only from the environment and are never logged.
+// Explicit opt-in: exercise every current free model, not just the first one.
+// Credentials come only from the environment and are never logged.
 func TestClineLiveChat(t *testing.T) {
 	if os.Getenv("CLINE_LIVE_TEST") != "1" {
 		t.Skip("set CLINE_LIVE_TEST=1 and CLINE_API_KEY to verify live Cline chat")
@@ -31,7 +32,11 @@ func TestClineLiveChat(t *testing.T) {
 		t.Fatal("CLINE_API_KEY is required")
 	}
 	client := &http.Client{Timeout: 25 * time.Second}
-	resp, err := client.Get(constant.ChannelBaseURLs[constant.ChannelTypeCline] + cline.FreeModelsPath)
+	req, err := http.NewRequest(http.MethodGet, constant.ChannelBaseURLs[constant.ChannelTypeCline]+cline.FreeModelsPath, nil)
+	require.NoError(t, err)
+	cline.SetClientHeaders(req.Header)
+	req.Header.Set("Authorization", "Bearer "+key)
+	resp, err := client.Do(req)
 	require.NoError(t, err)
 	defer resp.Body.Close()
 	catalogBody, err := io.ReadAll(resp.Body)
@@ -45,54 +50,105 @@ func TestClineLiveChat(t *testing.T) {
 	}
 	require.NoError(t, common.Unmarshal(catalogBody, &catalog))
 	require.NotEmpty(t, catalog.Free)
-	modelID := catalog.Free[0].ID
 	service.InitHttpClient()
 	previousTimeout := constant.StreamingTimeout
-	constant.StreamingTimeout = 40
+	constant.StreamingTimeout = 45
 	t.Cleanup(func() { constant.StreamingTimeout = previousTimeout })
-	for _, stream := range []bool{false, true} {
-		t.Run(map[bool]string{false: "json", true: "stream"}[stream], func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
-			defer cancel()
-			info := clineTestInfo(stream)
-			info.ApiKey = key
-			info.UpstreamModelName = modelID
-			request := &dto.GeneralOpenAIRequest{Model: modelID, Messages: []dto.Message{{Role: "user", Content: "Reply only OK."}}, MaxTokens: common.GetPointer(uint(32)), Stream: &stream}
-			if stream {
-				request.StreamOptions = &dto.StreamOptions{IncludeUsage: common.GetPointer(true)}
+	selected := os.Getenv("CLINE_LIVE_MODEL")
+	matched := false
+	for _, model := range catalog.Free {
+		modelID := model.ID
+		if selected != "" && selected != modelID {
+			continue
+		}
+		matched = true
+		for _, useTools := range []bool{false, true} {
+			if useTools && !strings.Contains(modelID, "deepseek") {
+				continue
 			}
-			a := &Adaptor{}
-			a.Init(info)
-			converted, err := a.ConvertOpenAIRequest(nil, info, request)
-			require.NoError(t, err)
-			body, err := common.Marshal(converted)
-			require.NoError(t, err)
-			w := httptest.NewRecorder()
-			c, _ := gin.CreateTestContext(w)
-			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
-			c.Request.Header.Set("Content-Type", "application/json")
-			raw, err := a.DoRequest(c, info, bytes.NewReader(body))
-			require.NoError(t, err)
-			response := raw.(*http.Response)
-			responseBody, err := io.ReadAll(response.Body)
-			response.Body.Close()
-			require.NoError(t, err)
-			t.Logf("chat stream=%t HTTP %d content-type=%s\n%s", stream, response.StatusCode, response.Header.Get("Content-Type"), strings.ReplaceAll(string(responseBody), key, "[REDACTED]"))
-			require.Equal(t, http.StatusOK, response.StatusCode)
-			response.Body = io.NopCloser(bytes.NewReader(responseBody))
-			defer response.Body.Close()
-			usage, apiErr := a.DoResponse(c, response, info)
-			require.Nil(t, apiErr)
-			require.Positive(t, usage.(*dto.Usage).TotalTokens)
-			require.Contains(t, w.Body.String(), "OK")
-			if stream {
-				require.Contains(t, w.Body.String(), "[DONE]")
-			} else {
-				var result dto.OpenAITextResponse
-				require.NoError(t, common.Unmarshal(w.Body.Bytes(), &result))
-				require.NotEmpty(t, result.Choices)
+			for _, stream := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/tools=%t/stream=%t", modelID, useTools, stream), func(t *testing.T) {
+					ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+					defer cancel()
+					info := clineTestInfo(stream)
+					info.ApiKey = key
+					info.UpstreamModelName = modelID
+					info.HeadersOverride = map[string]any{"*": ""}
+					request := &dto.GeneralOpenAIRequest{Model: modelID, Messages: []dto.Message{{Role: "user", Content: "Reply only OK."}}, MaxTokens: common.GetPointer(uint(128)), Stream: &stream}
+					if useTools {
+						require.NoError(t, common.UnmarshalJsonStr(`{"tools":[{"type":"function","function":{"name":"lookup","description":"Return the current test status.","parameters":{"type":"object","properties":{},"additionalProperties":false}}}],"tool_choice":{"type":"function","function":{"name":"lookup"}},"parallel_tool_calls":false}`, request))
+						request.Messages[0].Content = "Call lookup with no arguments."
+					}
+					if stream {
+						request.StreamOptions = &dto.StreamOptions{IncludeUsage: common.GetPointer(true)}
+					}
+					a := &Adaptor{}
+					a.Init(info)
+					converted, err := a.ConvertOpenAIRequest(nil, info, request)
+					require.NoError(t, err)
+					body, err := common.Marshal(converted)
+					require.NoError(t, err)
+					w := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(w)
+					c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
+					c.Request.Header.Set("Content-Type", "application/json")
+					c.Request.Header.Set("User-Agent", "OtherClient/1.0")
+					c.Request.Header.Set("X-CLIENT-TYPE", "other-client")
+					raw, err := a.DoRequest(c, info, bytes.NewReader(body))
+					require.NoError(t, err)
+					response := raw.(*http.Response)
+					defer response.Body.Close()
+					var responseBody bytes.Buffer
+					// Capture the actual wire response without buffering ahead of the relay.
+					response.Body = &clineRecordingBody{Reader: io.TeeReader(response.Body, &responseBody), Closer: response.Body}
+					if response.StatusCode != http.StatusOK {
+						_, _ = io.Copy(io.Discard, response.Body)
+						t.Fatalf("model=%s HTTP %d\n%s", modelID, response.StatusCode, strings.ReplaceAll(responseBody.String(), key, "[REDACTED]"))
+					}
+					usage, apiErr := a.DoResponse(c, response, info)
+					t.Logf("model=%s stream=%t tools=%t HTTP %d content-type=%s\n%s", modelID, stream, useTools, response.StatusCode, response.Header.Get("Content-Type"), strings.ReplaceAll(responseBody.String(), key, "[REDACTED]"))
+					require.Nil(t, apiErr)
+					require.Positive(t, usage.(*dto.Usage).TotalTokens)
+					var content, toolName strings.Builder
+					if stream {
+						require.Contains(t, w.Body.String(), "[DONE]")
+						for _, line := range strings.Split(w.Body.String(), "\n") {
+							data, ok := strings.CutPrefix(line, "data: ")
+							if !ok || strings.TrimSpace(data) == "[DONE]" {
+								continue
+							}
+							var chunk dto.ChatCompletionsStreamResponse
+							require.NoError(t, common.UnmarshalJsonStr(data, &chunk))
+							for _, choice := range chunk.Choices {
+								content.WriteString(choice.Delta.GetContentString())
+								for _, call := range choice.Delta.ToolCalls {
+									toolName.WriteString(call.Function.Name)
+								}
+							}
+						}
+					} else {
+						var result dto.OpenAITextResponse
+						require.NoError(t, common.Unmarshal(w.Body.Bytes(), &result))
+						require.NotEmpty(t, result.Choices)
+						content.WriteString(result.Choices[0].Message.StringContent())
+						for _, call := range result.Choices[0].Message.ParseToolCalls() {
+							toolName.WriteString(call.Function.Name)
+						}
+					}
+					if useTools {
+						require.Equal(t, "lookup", toolName.String())
+					} else {
+						require.Equal(t, "OK", strings.TrimSpace(content.String()))
+					}
+					t.Logf("model=%s stream=%t tools=%t prompt_tokens=%d completion_tokens=%d", modelID, stream, useTools, usage.(*dto.Usage).PromptTokens, usage.(*dto.Usage).CompletionTokens)
+				})
 			}
-			t.Logf("model=%s stream=%t prompt_tokens=%d completion_tokens=%d", modelID, stream, usage.(*dto.Usage).PromptTokens, usage.(*dto.Usage).CompletionTokens)
-		})
+		}
 	}
+	require.True(t, matched, "CLINE_LIVE_MODEL must belong to the current free catalog")
+}
+
+type clineRecordingBody struct {
+	io.Reader
+	io.Closer
 }

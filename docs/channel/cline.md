@@ -2,6 +2,22 @@
 
 选择 **Cline** 渠道并填写 API Key。默认地址为 `https://api.cline.bot/api`，也支持以 `/v1` 结尾的自定义地址。通过 `/v1/chat/completions` 转发普通、流式对话和工具调用；流式请求支持 `stream_options.include_usage`。普通响应的 `{success, data}` 包装会被转换成标准 OpenAI 响应。
 
+## 客户端请求兼容
+
+渠道按官方 Cline CLI 的请求格式补齐客户端信息。其他客户端继续使用 New API 的 OpenAI 兼容地址、New API 令牌和完整模型 ID，无需自己填写 Cline 请求头。仅发送 Bearer Key 而缺少客户端字段时，部分 `cline-free/*` 模型会返回 `only available via Cline product surfaces`。
+
+实现依据为官方仓库提交 [`0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b`](https://github.com/cline/cline/commit/0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b)：
+
+- [`request-headers.ts`](https://github.com/cline/cline/blob/0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b/sdk/packages/llms/src/providers/request-headers.ts)：客户端请求头。
+- [`apps/cli/src/main.ts`](https://github.com/cline/cline/blob/0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b/apps/cli/src/main.ts)：CLI 客户端与平台信息。
+- [`vendors/cline.ts`](https://github.com/cline/cline/blob/0cbfb91ac75c64b7a63535fde6f7f51e670dfa1b/sdk/packages/llms/src/providers/vendors/cline.ts)：Bearer 鉴权、Chat Completions 和流式用量。
+
+发送 `HTTP-Referer: https://cline.bot`、`X-Title: Cline`、`User-Agent: Cline/3.0.65`、`X-CLIENT-TYPE: cline-cli`、`X-CLIENT-VERSION: 3.0.65`、`X-PLATFORM: cli`、`X-PLATFORM-VERSION: 3.0.65`、`X-IS-MULTIROOT: false`；对话额外发送 `X-CORE-VERSION: 0.0.86` 和 `X-Task-ID`。模型目录请求复用相同客户端信息。
+
+调用方可通过 `X-Task-ID` 标识同一会话；未提供时自动生成，单次请求的渠道重试保持一致。通配及正则请求头透传不会用其他客户端的身份字段覆盖上述字段，渠道显式请求头配置仍然优先，可用于后续版本调整。
+
+请求保留用户的消息、工具、完整模型 ID 和显式零值。与官方 SDK 一致，OpenAI o1/o3/o4 和 GPT-5 模型的 `max_tokens` 转为 `max_completion_tokens`，已显式填写的 `max_completion_tokens` 优先。
+
 ## 免费模型自动更新
 
 “自动更新 Cline 免费模型列表”默认开启，包括通过 API 创建且未填写该设置的渠道。系统读取 Cline 官方 `/v1/ai/cline/recommended-models` 的 `free[].id`，使用完整模型 ID，不根据名称后缀猜测免费资格，也不加入订阅模型。
@@ -22,4 +38,6 @@
 
 运行 `go test ./controller ./relay/channel/openai ./relay/common ./common ./dto ./model` 和前端 `bun test src/hooks/channels/upstreamUpdateUtils.test.js`。
 
-显式设置环境变量 `CLINE_LIVE_TEST=1`、`CLINE_API_KEY` 后，运行 `go test ./relay/channel/openai -run '^TestClineLiveChat$' -count=1 -v`，会从实时官方免费目录选择模型并执行两次最小对话请求。不要将 Key 写入仓库。
+显式设置环境变量 `CLINE_LIVE_TEST=1`、`CLINE_API_KEY` 后，运行 `go test ./relay/channel/openai -run '^TestClineLiveChat$' -count=1 -v`，会逐个测试实时官方免费目录中的普通与流式对话，并测试 DeepSeek 的普通及流式工具调用。测试模拟其他客户端请求，经真实适配器发送和转换，打印上游原始响应。可设置 `CLINE_LIVE_MODEL` 仅测试指定的当前免费模型。不要将 Key 写入仓库。
+
+2026-09-25 实测：`stealth/space-bunny-alpha`、`cline-free/mimo-v2.6-flash`、`cline-free/deepseek-v4.1-flash`、`cline-free/gemini-3.8-flash` 的普通和流式对话，以及 DeepSeek 的两种工具调用共 10 项通过。`cline-free/muse-spark-1.3-contributor` 的两项请求均返回上游地区限制 403（`not available in your region`），实时测试如实报失败。目录同步不代表账户、地区或额度必然允许调用所有模型。

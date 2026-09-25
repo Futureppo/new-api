@@ -21,6 +21,10 @@ func TestClineModelFetch(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "Bearer overridden", r.Header.Get("Authorization"))
 		require.Equal(t, "test", r.Header.Get("X-Catalog"))
+		require.Equal(t, "Cline", r.Header.Get("X-Title"))
+		require.Equal(t, "cline-cli", r.Header.Get("X-CLIENT-TYPE"))
+		require.NotEmpty(t, r.Header.Get("X-CLIENT-VERSION"))
+		require.Empty(t, r.Header.Get("X-Task-ID"), "catalog requests have no task")
 		if r.URL.Path == "/api/v1/models" {
 			_, _ = w.Write([]byte(`{"data":[{"id":"paid"}]}`))
 			return

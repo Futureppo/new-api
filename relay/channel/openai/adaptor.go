@@ -283,7 +283,16 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 			header.Set("X-OpenRouter-Title", "New API")
 		}
 	}
+	if info.ChannelType == constant.ChannelTypeCline {
+		return cline.SetChatHeaders(c, *header)
+	}
 	return nil
+}
+
+func (a *Adaptor) FilterHeaderPassthrough(headers map[string]string, info *relaycommon.RelayInfo) {
+	if info.ChannelType == constant.ChannelTypeCline {
+		cline.FilterHeaderPassthrough(headers)
+	}
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
@@ -293,11 +302,15 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 	if !info.SupportStreamOptions {
 		request.StreamOptions = nil
 	}
+	if info.ChannelType == constant.ChannelTypeCline {
+		cline.NormalizeRequest(request)
+		return request, nil
+	}
 	// Modal deployments expose user-defined OpenAI-compatible servers. Their
 	// model names may start with "o" (for example, "orcarouter/...") without
 	// being OpenAI o-series reasoning models, so preserve the request instead
 	// of applying OpenAI-specific model-name heuristics below.
-	if info.ChannelType == constant.ChannelTypeModal || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline {
+	if info.ChannelType == constant.ChannelTypeModal || info.ChannelType == constant.ChannelTypeKilo {
 		return request, nil
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {

@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/relay/channel/cline"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
@@ -125,4 +126,114 @@ func TestClineResponses(t *testing.T) {
 	body := "data: " + `{"id":"x","choices":[{"index":0,"delta":{"content":"partial"}}]}` + "\n\ndata: " + `{"error":{"message":"disconnected","code":502}}` + "\n\n"
 	_, _ = (&Adaptor{}).DoResponse(c, &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, clineTestInfo(true))
 	require.NotContains(t, w.Body.String(), "[DONE]")
+}
+
+func TestClineClientHeadersOnWire(t *testing.T) {
+	service.InitHttpClient()
+	for _, tc := range []struct {
+		name, passthrough       string
+		test, runtime, override bool
+	}{
+		{name: "other client"},
+		{name: "channel test", test: true},
+		{name: "wildcard", passthrough: "*"},
+		{name: "regex", passthrough: "re:.*"},
+		{name: "runtime", passthrough: "*", runtime: true},
+		{name: "explicit override", passthrough: "*", override: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			captured := make(chan http.Header, 1)
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				captured <- r.Header.Clone()
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer upstream.Close()
+			info := clineTestInfo(false)
+			info.ChannelBaseUrl = upstream.URL
+			info.IsChannelTest = tc.test
+			info.HeadersOverride = map[string]any{}
+			if tc.passthrough != "" {
+				info.HeadersOverride[tc.passthrough] = ""
+			}
+			if tc.override {
+				info.HeadersOverride["X-CLIENT-VERSION"] = "custom-version"
+				info.HeadersOverride["Authorization"] = "Bearer override-key"
+			}
+			if tc.runtime {
+				info.UseRuntimeHeadersOverride = true
+				info.RuntimeHeadersOverride = info.HeadersOverride
+				info.HeadersOverride = map[string]any{"User-Agent": "stale-agent"}
+			}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			c.Request.Header.Set("Authorization", "Bearer downstream-key")
+			c.Request.Header.Set("Cookie", "downstream-cookie")
+			c.Request.Header.Set("User-Agent", "OtherClient/1.0")
+			c.Request.Header.Set("X-CLIENT-TYPE", "other-client")
+			c.Request.Header.Set("X-CLIENT-VERSION", "old-version")
+			c.Request.Header.Set("X-CORE-VERSION", "old-core")
+			if !tc.test {
+				c.Request.Header.Set("X-Task-ID", "conversation-1")
+			}
+			a := &Adaptor{}
+			a.Init(info)
+			raw, err := a.DoRequest(c, info, strings.NewReader(`{}`))
+			require.NoError(t, err)
+			raw.(*http.Response).Body.Close()
+			got := <-captured
+			for name, expected := range map[string]string{
+				"HTTP-Referer": "https://cline.bot", "X-Title": "Cline",
+				"User-Agent": "Cline/" + cline.ClientVersion, "X-IS-MULTIROOT": "false",
+				"X-CLIENT-TYPE": "cline-cli", "X-PLATFORM": "cli",
+				"X-PLATFORM-VERSION": cline.ClientVersion, "X-CORE-VERSION": cline.CoreVersion,
+				"Content-Type": "application/json",
+			} {
+				require.Equal(t, expected, got.Get(name), name)
+			}
+			if tc.override {
+				require.Equal(t, "custom-version", got.Get("X-CLIENT-VERSION"))
+				require.Equal(t, "Bearer override-key", got.Get("Authorization"))
+			} else {
+				require.Equal(t, cline.ClientVersion, got.Get("X-CLIENT-VERSION"))
+				require.Equal(t, "Bearer saved-key", got.Get("Authorization"))
+			}
+			require.Empty(t, got.Get("Cookie"))
+			if tc.test {
+				require.Regexp(t, `^\d{13}_[a-z0-9]{5}$`, got.Get("X-Task-ID"))
+			} else {
+				require.Equal(t, "conversation-1", got.Get("X-Task-ID"))
+			}
+			retryHeader := make(http.Header)
+			require.NoError(t, a.SetupRequestHeader(c, &retryHeader, info))
+			require.Equal(t, got.Get("X-Task-ID"), retryHeader.Get("X-Task-ID"))
+		})
+	}
+	// Adding a filter to the shared adaptor must not alter other channels.
+	headers := map[string]string{"user-agent": "another-client", "x-client-type": "other"}
+	(&Adaptor{}).FilterHeaderPassthrough(headers, kiloTestInfo(false))
+	require.Len(t, headers, 2)
+}
+
+func TestClineSDKTokenLimitConversion(t *testing.T) {
+	for _, modelID := range []string{"openai/o3-mini", "openai/o1", "openai/o4-mini", "openai/gpt-5-chat"} {
+		request := &dto.GeneralOpenAIRequest{Model: modelID, MaxTokens: common.GetPointer(uint(0))}
+		_, err := (&Adaptor{}).ConvertOpenAIRequest(nil, clineTestInfo(false), request)
+		require.NoError(t, err)
+		require.Nil(t, request.MaxTokens)
+		require.NotNil(t, request.MaxCompletionTokens)
+		require.Zero(t, *request.MaxCompletionTokens)
+		require.Equal(t, modelID, request.Model)
+		request.MaxTokens = common.GetPointer(uint(20))
+		_, err = (&Adaptor{}).ConvertOpenAIRequest(nil, clineTestInfo(false), request)
+		require.NoError(t, err)
+		require.Zero(t, *request.MaxCompletionTokens, "explicit zero must win")
+	}
+	for _, modelID := range []string{"openai/gpt-4o", "cline-free/deepseek-v4.1-flash", "vendor/yolo1", "vendor/gpt-50"} {
+		request := &dto.GeneralOpenAIRequest{Model: modelID, MaxTokens: common.GetPointer(uint(0))}
+		_, err := (&Adaptor{}).ConvertOpenAIRequest(nil, clineTestInfo(false), request)
+		require.NoError(t, err)
+		require.NotNil(t, request.MaxTokens)
+		require.Nil(t, request.MaxCompletionTokens)
+		require.Equal(t, modelID, request.Model)
+	}
 }

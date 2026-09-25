@@ -198,6 +198,9 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	default:
 		headers = GetAuthHeader(key)
 	}
+	if channel.Type == constant.ChannelTypeCline {
+		cline.SetClientHeaders(headers)
+	}
 
 	headerOverride := channel.GetHeaderOverride()
 	for k, v := range headerOverride {
