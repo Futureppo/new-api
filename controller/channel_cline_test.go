@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -22,6 +23,7 @@ func TestClineModelFetch(t *testing.T) {
 		require.Equal(t, "Bearer overridden", r.Header.Get("Authorization"))
 		require.Equal(t, "test", r.Header.Get("X-Catalog"))
 		require.Equal(t, "Cline", r.Header.Get("X-Title"))
+		require.Equal(t, []string{cline.UserAgent}, r.Header.Values("User-Agent"))
 		require.Equal(t, "cline-cli", r.Header.Get("X-CLIENT-TYPE"))
 		require.NotEmpty(t, r.Header.Get("X-CLIENT-VERSION"))
 		require.Empty(t, r.Header.Get("X-Task-ID"), "catalog requests have no task")
@@ -34,7 +36,7 @@ func TestClineModelFetch(t *testing.T) {
 		_, _ = w.Write([]byte(payload))
 	}))
 	defer upstream.Close()
-	ch := &model.Channel{Type: constant.ChannelTypeCline, HeaderOverride: common.GetPointer(`{"Authorization":"Bearer overridden","X-Catalog":"test"}`)}
+	ch := &model.Channel{Type: constant.ChannelTypeCline, HeaderOverride: common.GetPointer(`{"Authorization":"Bearer overridden","X-Catalog":"test","uSeR-aGeNt":"OtherClient/1.0"}`)}
 	for _, base := range []string{upstream.URL + "/api", upstream.URL + "/api/", upstream.URL + "/api/v1/"} {
 		ids, err := fetchChannelModelIDsWithKey(ch, base, "test-key", "")
 		require.NoError(t, err)

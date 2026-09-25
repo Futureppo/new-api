@@ -14,6 +14,7 @@ import (
 	common2 "github.com/QuantumNous/new-api/common"
 	projectconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -288,6 +289,10 @@ func processHeaderOverrideWithFilter(info *common.RelayInfo, c *gin.Context, fil
 		}
 
 		headerOverride[key] = value
+	}
+	// Cline requires its own User-Agent even with explicit or runtime overrides.
+	if info.ChannelType == projectconstant.ChannelTypeCline {
+		headerOverride["user-agent"] = cline.UserAgent
 	}
 	return headerOverride, nil
 }

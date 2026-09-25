@@ -216,6 +216,9 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 		}
 		headers.Set(k, str)
 	}
+	if channel.Type == constant.ChannelTypeCline {
+		headers.Set("User-Agent", cline.UserAgent)
+	}
 	if channel.Type == constant.ChannelTypeKilo && (channel.GetOtherSettings().KiloAnonymousEnabled || strings.TrimSpace(key) == "") {
 		headers.Del("Authorization")
 	}

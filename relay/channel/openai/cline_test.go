@@ -131,8 +131,8 @@ func TestClineResponses(t *testing.T) {
 func TestClineClientHeadersOnWire(t *testing.T) {
 	service.InitHttpClient()
 	for _, tc := range []struct {
-		name, passthrough       string
-		test, runtime, override bool
+		name, passthrough, userAgentName, userAgent string
+		test, runtime, override, stream             bool
 	}{
 		{name: "other client"},
 		{name: "channel test", test: true},
@@ -140,6 +140,14 @@ func TestClineClientHeadersOnWire(t *testing.T) {
 		{name: "regex", passthrough: "re:.*"},
 		{name: "runtime", passthrough: "*", runtime: true},
 		{name: "explicit override", passthrough: "*", override: true},
+		{name: "explicit UA", userAgentName: "User-Agent", userAgent: "OtherClient/1.0"},
+		{name: "lowercase UA", userAgentName: "user-agent", userAgent: "OtherClient/1.0"},
+		{name: "mixed case UA", userAgentName: "uSeR-aGeNt", userAgent: "OtherClient/1.0"},
+		{name: "empty UA", userAgentName: "User-Agent"},
+		{name: "client UA placeholder", userAgentName: "User-Agent", userAgent: "{client_header:User-Agent}"},
+		{name: "runtime UA", runtime: true, userAgentName: "User-Agent", userAgent: "RuntimeClient/1.0"},
+		{name: "channel test UA", test: true, userAgentName: "User-Agent", userAgent: "OtherClient/1.0"},
+		{name: "stream UA", stream: true, userAgentName: "User-Agent", userAgent: "OtherClient/1.0"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			captured := make(chan http.Header, 1)
@@ -148,7 +156,7 @@ func TestClineClientHeadersOnWire(t *testing.T) {
 				_, _ = io.WriteString(w, `{}`)
 			}))
 			defer upstream.Close()
-			info := clineTestInfo(false)
+			info := clineTestInfo(tc.stream)
 			info.ChannelBaseUrl = upstream.URL
 			info.IsChannelTest = tc.test
 			info.HeadersOverride = map[string]any{}
@@ -158,6 +166,9 @@ func TestClineClientHeadersOnWire(t *testing.T) {
 			if tc.override {
 				info.HeadersOverride["X-CLIENT-VERSION"] = "custom-version"
 				info.HeadersOverride["Authorization"] = "Bearer override-key"
+			}
+			if tc.userAgentName != "" {
+				info.HeadersOverride[tc.userAgentName] = tc.userAgent
 			}
 			if tc.runtime {
 				info.UseRuntimeHeadersOverride = true
@@ -181,6 +192,7 @@ func TestClineClientHeadersOnWire(t *testing.T) {
 			require.NoError(t, err)
 			raw.(*http.Response).Body.Close()
 			got := <-captured
+			require.Equal(t, []string{cline.UserAgent}, got.Values("User-Agent"))
 			for name, expected := range map[string]string{
 				"HTTP-Referer": "https://cline.bot", "X-Title": "Cline",
 				"User-Agent": "Cline/" + cline.ClientVersion, "X-IS-MULTIROOT": "false",

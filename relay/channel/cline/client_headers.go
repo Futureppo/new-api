@@ -15,12 +15,13 @@ import (
 const (
 	ClientVersion = "3.0.65"
 	CoreVersion   = "0.0.86"
+	UserAgent     = "Cline/" + ClientVersion
 )
 
 func SetClientHeaders(header http.Header) {
 	header.Set("HTTP-Referer", "https://cline.bot")
 	header.Set("X-Title", "Cline")
-	header.Set("User-Agent", "Cline/"+ClientVersion)
+	header.Set("User-Agent", UserAgent)
 	header.Set("X-IS-MULTIROOT", "false")
 	header.Set("X-CLIENT-TYPE", "cline-cli")
 	header.Set("X-CLIENT-VERSION", ClientVersion)
@@ -54,7 +55,8 @@ func SetChatHeaders(c *gin.Context, header http.Header) error {
 }
 
 // Wildcard/regex passthrough must not replace the upstream client identity
-// with another application's headers. Explicit channel overrides still win.
+// with another application's headers. Explicit channel overrides still win,
+// except User-Agent, which is enforced after all overrides.
 func FilterHeaderPassthrough(headers map[string]string) {
 	for name := range headers {
 		switch strings.ToLower(name) {

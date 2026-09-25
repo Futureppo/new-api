@@ -14,7 +14,7 @@
 
 发送 `HTTP-Referer: https://cline.bot`、`X-Title: Cline`、`User-Agent: Cline/3.0.65`、`X-CLIENT-TYPE: cline-cli`、`X-CLIENT-VERSION: 3.0.65`、`X-PLATFORM: cli`、`X-PLATFORM-VERSION: 3.0.65`、`X-IS-MULTIROOT: false`；对话额外发送 `X-CORE-VERSION: 0.0.86` 和 `X-Task-ID`。模型目录请求复用相同客户端信息。
 
-调用方可通过 `X-Task-ID` 标识同一会话；未提供时自动生成，单次请求的渠道重试保持一致。通配及正则请求头透传不会用其他客户端的身份字段覆盖上述字段，渠道显式请求头配置仍然优先，可用于后续版本调整。
+调用方可通过 `X-Task-ID` 标识同一会话；未提供时自动生成，单次请求的渠道重试保持一致。通配及正则请求头透传不会用其他客户端的身份字段覆盖上述字段。`User-Agent` 强制使用 `Cline/3.0.65`，客户端透传、渠道显式配置及运行时请求头覆盖均不能修改；对话、免费列表及通用模型目录请求都遵循此规则。其他字段仍允许渠道显式请求头配置覆盖。
 
 请求保留用户的消息、工具、完整模型 ID 和显式零值。与官方 SDK 一致，OpenAI o1/o3/o4 和 GPT-5 模型的 `max_tokens` 转为 `max_completion_tokens`，已显式填写的 `max_completion_tokens` 优先。
 
