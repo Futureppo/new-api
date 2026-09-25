@@ -18,10 +18,43 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { describe, expect, test } from 'bun:test';
-import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
+import {
+  collapseClineMappedModels,
+  parseUpstreamUpdateMeta,
+} from './upstreamUpdateUtils';
 import { isManualModelFetchSupported } from '../../constants/channel.constants';
 
 describe('Cline model synchronization', () => {
+  test('fetching mapped upstream IDs never duplicates existing short names', () => {
+    const mapping = JSON.stringify({
+      'space-bunny-alpha': 'stealth/space-bunny-alpha',
+      'deepseek-v4.1-flash': 'cline-free/deepseek-v4.1-flash',
+    });
+    const models = [
+      'space-bunny-alpha',
+      'deepseek-v4.1-flash',
+      'stealth/space-bunny-alpha',
+      'cline-free/deepseek-v4.1-flash',
+    ];
+    const expected = ['space-bunny-alpha', 'deepseek-v4.1-flash'];
+    expect(collapseClineMappedModels(models, mapping)).toEqual(expected);
+    expect(
+      collapseClineMappedModels([...expected, ...models], mapping),
+    ).toEqual(expected);
+  });
+
+  test('preserves unrelated mappings and new IDs until backend normalization', () => {
+    const models = ['a', 'one/a', 'two/b', 'new/model'];
+    const mapping = { a: 'manual/target', b: 'two/b', 'two/b': 'manual/other' };
+    expect(collapseClineMappedModels(models, mapping)).toEqual(models);
+    expect(collapseClineMappedModels(models, 'invalid json')).toEqual(models);
+    expect(mapping).toEqual({
+      a: 'manual/target',
+      b: 'two/b',
+      'two/b': 'manual/other',
+    });
+  });
+
   test('defaults to enabled only for Cline, including missing settings', () => {
     for (const settings of [
       null,

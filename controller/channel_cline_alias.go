@@ -34,6 +34,11 @@ func planClineModelAliases(channel *model.Channel, upstream []string, saved map[
 	owned := collectClineGeneratedMappings(channel, saved)
 	counts := make(map[string]int)
 	for _, id := range upstream {
+		// A saved alias and its upstream ID describe the same model. Counting
+		// both made an edit after fetching models look like a provider collision.
+		if target := mapping[id]; target != id && clineModelAlias(target) == id && slices.Contains(upstream, target) {
+			continue
+		}
 		counts[clineModelAlias(id)]++
 	}
 	desired := make([]string, 0, len(upstream))
@@ -43,6 +48,13 @@ func planClineModelAliases(channel *model.Channel, upstream []string, saved map[
 		_, autoAlias := owned[alias]
 		_, reservedAlias := mapping[alias]
 		_, mappedID := mapping[id]
+		// Reuse an exact mapping even if it predates ownership metadata or was
+		// entered manually. A separate mapping on the full ID still takes priority.
+		if alias != id && mapping[alias] == id && !mappedID {
+			desired = append(desired, alias)
+			aliases[alias] = id
+			continue
+		}
 		if alias == id || counts[alias] > 1 || mappedID ||
 			(!autoAlias && (slices.Contains(current, alias) || reservedAlias)) ||
 			isIgnoredUpstreamModel(id, ignored) || isIgnoredUpstreamModel(alias, ignored) {
@@ -53,6 +65,23 @@ func planClineModelAliases(channel *model.Channel, upstream []string, saved map[
 		aliases[alias] = id
 	}
 	return normalizeModelNames(desired), aliases
+}
+
+// Automatic sync must not fall back to prefixed IDs when a short name is
+// ambiguous or reserved. Keep manual entries, and wait for an explicit mapping.
+func planClineSyncModelAliases(channel *model.Channel, upstream []string, saved map[string]string, ignored []string) ([]string, map[string]string) {
+	desired, aliases := planClineModelAliases(channel, upstream, saved, ignored)
+	return filterClineSyncModelNames(desired, aliases), aliases
+}
+
+func filterClineSyncModelNames(names []string, aliases map[string]string) []string {
+	shortNames := make([]string, 0, len(names))
+	for _, name := range names {
+		if clineModelAlias(name) == name || aliases[name] != "" {
+			shortNames = append(shortNames, name)
+		}
+	}
+	return shortNames
 }
 
 // Normalize explicit channel writes too, including when free sync is disabled.
@@ -68,10 +97,14 @@ func normalizeClineChannelModels(channel *model.Channel) (bool, error) {
 		}
 	}
 	for alias, target := range aliases {
+		_, alreadyMapped := mapping[alias]
+		_, alreadyOwned := generated[alias]
 		mapping[alias] = target
-		generated[alias] = target
-		if slices.Contains(settings.ClineFreeModelManagedModels, target) {
-			settings.ClineFreeModelManagedModels = mergeModelNames(settings.ClineFreeModelManagedModels, []string{alias})
+		if !alreadyMapped || alreadyOwned {
+			generated[alias] = target
+			if slices.Contains(settings.ClineFreeModelManagedModels, target) {
+				settings.ClineFreeModelManagedModels = mergeModelNames(settings.ClineFreeModelManagedModels, []string{alias})
+			}
 		}
 	}
 	for alias := range generated {

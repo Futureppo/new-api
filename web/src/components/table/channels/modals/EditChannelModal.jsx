@@ -28,6 +28,7 @@ import {
   verifyJSON,
 } from '../../../../helpers';
 import { useIsMobile } from '../../../../hooks/common/useIsMobile';
+import { collapseClineMappedModels } from '../../../../hooks/channels/upstreamUpdateUtils';
 import { CHANNEL_OPTIONS, MODEL_FETCHABLE_CHANNEL_TYPES, isManualModelFetchSupported } from '../../../../constants';
 import {
   SideSheet,
@@ -637,11 +638,14 @@ const EditChannelModal = (props) => {
     ) {
       return;
     }
-    if (formApiRef.current) {
-      formApiRef.current.setValue(name, value);
-    }
     if (name === 'models' && Array.isArray(value)) {
       value = Array.from(new Set(value.map((m) => (m || '').trim())));
+      if (inputs.type === CLINE_CHANNEL_TYPE) {
+        value = collapseClineMappedModels(value, inputs.model_mapping);
+      }
+    }
+    if (formApiRef.current) {
+      formApiRef.current.setValue(name, value);
     }
 
     if (

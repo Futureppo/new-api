@@ -31,6 +31,9 @@ func TestClineAliasConflicts(t *testing.T) {
 		{name: "manual model", models: "a", upstream: []string{"one/a"}, desired: []string{"one/a"}},
 		{name: "manual alias", mapping: `{"a":"manual/target"}`, upstream: []string{"one/a"}, desired: []string{"one/a"}},
 		{name: "mapped original", models: "one/a", mapping: `{"one/a":"manual/target"}`, upstream: []string{"one/a"}, desired: []string{"one/a"}},
+		{name: "reuse exact existing mapping", models: "a", mapping: `{"a":"one/a"}`, upstream: []string{"one/a"}, desired: []string{"a"}, aliases: map[string]string{"a": "one/a"}},
+		{name: "short name and mapped ID are one model", models: "a,one/a", mapping: `{"a":"one/a"}`, upstream: []string{"a", "one/a"}, desired: []string{"a"}, aliases: map[string]string{"a": "one/a"}},
+		{name: "nested mapped alias", models: "nested/a,vendor/nested/a", mapping: `{"nested/a":"vendor/nested/a"}`, upstream: []string{"nested/a", "vendor/nested/a"}, desired: []string{"nested/a"}, aliases: map[string]string{"nested/a": "vendor/nested/a"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ch := model.Channel{Models: tc.models, ModelMapping: &tc.mapping}
@@ -39,6 +42,102 @@ func TestClineAliasConflicts(t *testing.T) {
 			require.True(t, modelMappingsEqual(tc.aliases, aliases))
 		})
 	}
+}
+
+func TestClineSyncRepairsDuplicatePrefixedModels(t *testing.T) {
+	for _, owned := range []bool{false, true} {
+		t.Run(map[bool]string{false: "legacy mapping", true: "generated mapping"}[owned], func(t *testing.T) {
+			db := openChannelRetryControllerTestDB(t)
+			payload := `{"free":[{"id":"stealth/space-bunny-alpha"},{"id":"cline-free/deepseek-v4.1-flash"}]}`
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(payload)) }))
+			defer upstream.Close()
+			mapping := map[string]string{"space-bunny-alpha": "stealth/space-bunny-alpha", "deepseek-v4.1-flash": "cline-free/deepseek-v4.1-flash", "manual": "other/paid"}
+			ch := model.Channel{Type: constant.ChannelTypeCline, Key: "test-key", BaseURL: &upstream.URL, Group: "default", Models: "space-bunny-alpha,deepseek-v4.1-flash,stealth/space-bunny-alpha,cline-free/deepseek-v4.1-flash,manual"}
+			_, err := setChannelModelMapping(&ch, mapping)
+			require.NoError(t, err)
+			settings := dto.ChannelOtherSettings{}
+			if owned {
+				settings.ClineModelGeneratedMappings = map[string]string{"space-bunny-alpha": "stealth/space-bunny-alpha", "deepseek-v4.1-flash": "cline-free/deepseek-v4.1-flash"}
+				settings.ClineFreeModelManagedModels = []string{"space-bunny-alpha", "deepseek-v4.1-flash"}
+			}
+			ch.SetOtherSettings(settings)
+			require.NoError(t, db.Create(&ch).Error)
+			// Saving a list containing both spellings must collapse it immediately.
+			copy := ch
+			_, err = normalizeClineChannelModels(&copy)
+			require.NoError(t, err)
+			require.ElementsMatch(t, []string{"space-bunny-alpha", "deepseek-v4.1-flash", "manual"}, copy.GetModels())
+			// The scheduled path must repair an already-persisted duplicate list.
+			changed, _, err := checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.ElementsMatch(t, []string{"space-bunny-alpha", "deepseek-v4.1-flash", "manual"}, ch.GetModels())
+			require.Equal(t, mapping, normalizeChannelModelMapping(&ch))
+			changed, _, err = checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
+			require.NoError(t, err)
+			require.False(t, changed, "repeated sync must never re-add prefixed IDs")
+			var abilities []model.Ability
+			require.NoError(t, db.Where("channel_id = ?", ch.Id).Find(&abilities).Error)
+			require.Len(t, abilities, 3)
+			if !owned {
+				require.Empty(t, settings.ClineModelGeneratedMappings, "reusing a manual mapping does not take ownership")
+			}
+		})
+	}
+}
+
+func TestClineAutomaticSyncNeverFallsBackToPrefixedNames(t *testing.T) {
+	for _, tc := range []struct {
+		name, models, mapping string
+		upstream              []string
+	}{
+		{name: "occupied short name", models: "a", upstream: []string{"one/a"}},
+		{name: "manual mapping", models: "a", mapping: `{"a":"manual/target"}`, upstream: []string{"one/a"}},
+		{name: "ambiguous provider", upstream: []string{"one/a", "two/a"}},
+		{name: "manual full ID with collision", models: "a,one/a", mapping: `{"a":"manual/target"}`, upstream: []string{"one/a"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ch := model.Channel{Type: constant.ChannelTypeCline, Models: tc.models, ModelMapping: &tc.mapping}
+			add, remove, _, _ := buildClineManagedModelChanges(&ch, dto.ChannelOtherSettings{}, tc.upstream)
+			require.Empty(t, add, "automatic sync must skip collisions instead of adding prefixed names")
+			require.Empty(t, remove, "unrelated manual models must survive")
+		})
+	}
+}
+
+func TestClineLegacyPendingIDsCannotReintroducePrefixes(t *testing.T) {
+	ch := model.Channel{Type: constant.ChannelTypeCline, Models: "a", ModelMapping: common.GetPointer(`{"a":"one/a"}`)}
+	settings := dto.ChannelOtherSettings{UpstreamModelUpdateLastDetectedModels: []string{"one/a"}}
+	added, _, _, _, changed, err := prepareClineModelUpdates(&ch, &settings, []string{"one/a"}, nil, nil)
+	require.NoError(t, err)
+	require.Empty(t, added)
+	require.False(t, changed)
+	require.Equal(t, "a", ch.Models)
+}
+
+func TestClineSyncReusesManualMappingWithoutTakingOwnership(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+	payload := `{"free":[{"id":"one/a"},{"id":"two/a"}]}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(payload)) }))
+	defer upstream.Close()
+	ch := model.Channel{Type: constant.ChannelTypeCline, Key: "test-key", BaseURL: &upstream.URL, Group: "default", Models: "one/a,old,retired/old", ModelMapping: common.GetPointer(`{"a":"one/a","old":"retired/old"}`)}
+	settings := dto.ChannelOtherSettings{}
+	ch.SetOtherSettings(settings)
+	require.NoError(t, db.Create(&ch).Error)
+	_, _, err := checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"a", "old"}, ch.GetModels())
+	require.Equal(t, map[string]string{"a": "one/a", "old": "retired/old"}, normalizeChannelModelMapping(&ch))
+	require.Empty(t, settings.ClineModelGeneratedMappings)
+	require.Empty(t, settings.ClineFreeModelManagedModels)
+	changed, _, err := checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
+	require.NoError(t, err)
+	require.False(t, changed)
+	// Retiring the model must not delete an explicit manual mapping.
+	payload = `{"free":[{"id":"three/b"}]}`
+	_, _, err = checkAndPersistChannelUpstreamModelUpdates(&ch, &settings, true, true)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"a", "old", "b"}, ch.GetModels())
 }
 
 func TestClineAliasRetargetAndManualProtection(t *testing.T) {
