@@ -683,6 +683,14 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.ChannelType == constant.ChannelTypeCline {
+		body, err := cline.ForceStreamRequest(requestBody)
+		if err != nil {
+			return nil, fmt.Errorf("prepare Cline stream request: %w", err)
+		}
+		relaycommon.SetConversationUpstreamRequest(info, body)
+		return channel.DoApiRequest(a, c, info, bytes.NewReader(body))
+	}
 	if info.ChannelType == constant.ChannelTypeOpenAI {
 		switch info.RelayMode {
 		case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits,
@@ -705,6 +713,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
 	if info.ChannelType == constant.ChannelTypeCline && !info.IsStream {
+		if resp != nil && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
+			return clineStreamToJSON(c, info, resp)
+		}
 		return OpenaiHandlerWithBodyTransformer(c, info, resp, cline.UnwrapChatResponse)
 	}
 	switch info.RelayMode {

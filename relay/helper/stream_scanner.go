@@ -35,6 +35,16 @@ func getScannerBufferSize() int {
 }
 
 func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
+	streamScannerHandler(c, resp, info, dataHandler, true)
+}
+
+// ScanSSE consumes upstream events without writing downstream headers or pings.
+// Use it when aggregating an upstream stream into a non-streaming response.
+func ScanSSE(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult)) {
+	streamScannerHandler(c, resp, info, dataHandler, false)
+}
+
+func streamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, dataHandler func(data string, sr *StreamResult), downstreamStream bool) {
 
 	if resp == nil || dataHandler == nil {
 		return
@@ -63,7 +73,7 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 	)
 
 	generalSettings := operation_setting.GetGeneralSetting()
-	pingEnabled := generalSettings.PingIntervalEnabled && !info.DisablePing
+	pingEnabled := downstreamStream && generalSettings.PingIntervalEnabled && !info.DisablePing
 	pingInterval := time.Duration(generalSettings.PingIntervalSeconds) * time.Second
 	if pingInterval <= 0 {
 		pingInterval = DefaultPingInterval
@@ -123,7 +133,9 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 	scanner.Buffer(make([]byte, InitialScannerBufferSize), getScannerBufferSize())
 	scanner.Split(bufio.ScanLines)
-	SetEventStreamHeaders(c)
+	if downstreamStream {
+		SetEventStreamHeaders(c)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

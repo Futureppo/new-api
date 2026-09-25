@@ -119,6 +119,7 @@ func TestClineLiveChat(t *testing.T) {
 					usage, apiErr := a.DoResponse(c, response, info)
 					t.Logf("model=%s stream=%t tools=%t HTTP %d content-type=%s\n%s", modelID, stream, useTools, response.StatusCode, response.Header.Get("Content-Type"), strings.ReplaceAll(responseBody.String(), key, "[REDACTED]"))
 					require.Nil(t, apiErr)
+					require.True(t, strings.HasPrefix(response.Header.Get("Content-Type"), "text/event-stream"), "Cline must use SSE upstream even for non-stream clients")
 					require.Positive(t, usage.(*dto.Usage).TotalTokens)
 					var content, toolName strings.Builder
 					if stream {
@@ -138,6 +139,9 @@ func TestClineLiveChat(t *testing.T) {
 							}
 						}
 					} else {
+						require.Equal(t, "application/json", w.Header().Get("Content-Type"))
+						require.NotContains(t, w.Body.String(), "data:")
+						t.Logf("aggregated downstream JSON\n%s", strings.ReplaceAll(w.Body.String(), key, "[REDACTED]"))
 						var result dto.OpenAITextResponse
 						require.NoError(t, common.Unmarshal(w.Body.Bytes(), &result))
 						require.NotEmpty(t, result.Choices)

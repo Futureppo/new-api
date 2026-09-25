@@ -1,6 +1,8 @@
 # Cline
 
-选择 **Cline** 渠道并填写 API Key。默认地址为 `https://api.cline.bot/api`，也支持以 `/v1` 结尾的自定义地址。通过 `/v1/chat/completions` 转发普通、流式对话和工具调用；流式请求支持 `stream_options.include_usage`。普通响应的 `{success, data}` 包装会被转换成标准 OpenAI 响应。
+选择 **Cline** 渠道并填写 API Key。默认地址为 `https://api.cline.bot/api`，也支持以 `/v1` 结尾的自定义地址。通过 `/v1/chat/completions` 转发普通、流式对话和工具调用。上游统一使用 `stream:true` 和 `stream_options.include_usage:true`，包括开启请求体透传或设置参数覆盖的情况。
+
+客户端使用 `stream:false` 或省略 `stream` 时，网关收齐上游 SSE 后返回普通 JSON；客户端使用 `stream:true` 时继续返回 SSE。聚合保留文本、思考内容、按索引拼接的工具调用参数、多候选结果、结束原因和用量。空响应、中途报错、未完成即断流、超时或取消均不会返回部分内容作为成功结果。兼容上游普通 JSON 及其 `{success, data}` 包装。
 
 ## 客户端请求兼容
 
