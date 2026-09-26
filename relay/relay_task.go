@@ -230,7 +230,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	}
 	// HY's queue endpoint actually blocks until generation completes. Persist a
 	// local job before the POST so both facades survive disconnects and restarts.
-	if info.ChannelType == constant.ChannelTypeGMICloud && info.Action == constant.TaskActionImageGeneration {
+	if info.ChannelType == constant.ChannelTypeGMICloud && constant.IsImageTaskAction(info.Action) {
 		body, err := io.ReadAll(requestBody)
 		if err != nil {
 			return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusBadRequest)
@@ -415,7 +415,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 		return
 	}
 	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/tasks/") &&
-		(originTask.Action != constant.TaskActionImageGeneration || originTask.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGMICloud))) {
+		(!constant.IsImageTaskAction(originTask.Action) || originTask.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGMICloud))) {
 		return nil, service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 	}
 	defer func() {

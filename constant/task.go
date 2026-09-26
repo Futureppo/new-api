@@ -30,3 +30,7 @@ var SunoModel2Action = map[string]string{
 	"suno_music":  SunoActionMusic,
 	"suno_lyrics": SunoActionLyrics,
 }
+
+func IsImageTaskAction(action string) bool {
+	return action == TaskActionImageGeneration || action == TaskActionImageEdit
+}

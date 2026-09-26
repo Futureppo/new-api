@@ -42,7 +42,7 @@ func RelayImageTaskFetch(c *gin.Context) {
 }
 
 func isGMICloudImageTask(info *relaycommon.RelayInfo) bool {
-	return info.ChannelType == constant.ChannelTypeGMICloud && info.Action == constant.TaskActionImageGeneration
+	return info.ChannelType == constant.ChannelTypeGMICloud && constant.IsImageTaskAction(info.Action)
 }
 
 func respondGMICloudImageError(c *gin.Context, status int, code, message, taskID string) {

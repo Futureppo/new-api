@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
@@ -19,19 +20,27 @@ import (
 const ImageResponseFormatKey = "gmicloud_image_response_format"
 
 func IsImageTaskRequest(c *gin.Context) bool {
-	return c.Request.URL.Path == "/v1/images/generations" || c.Request.URL.Path == "/v1/images/tasks"
+	return c.Request.URL.Path == "/v1/images/generations" || c.Request.URL.Path == "/v1/images/edits" || c.Request.URL.Path == "/v1/images/tasks"
 }
 
 func parseSyncImageRequest(c *gin.Context) (*TaskRequest, error) {
 	var req struct {
-		Model          string  `json:"model"`
-		Prompt         string  `json:"prompt"`
-		Size           *string `json:"size,omitempty"`
-		N              *uint   `json:"n,omitempty"`
-		Stream         *bool   `json:"stream,omitempty"`
-		ResponseFormat *string `json:"response_format,omitempty"`
-		Seed           *int64  `json:"seed,omitempty"`
-		MaxPixels      *int64  `json:"generate_max_pixels,omitempty"`
+		Model          string          `json:"model"`
+		Prompt         string          `json:"prompt"`
+		Size           *string         `json:"size,omitempty"`
+		N              *uint           `json:"n,omitempty"`
+		Stream         *bool           `json:"stream,omitempty"`
+		ResponseFormat *string         `json:"response_format,omitempty"`
+		Seed           *int64          `json:"seed,omitempty"`
+		MaxPixels      *int64          `json:"generate_max_pixels,omitempty"`
+		Image          json.RawMessage `json:"image,omitempty"`
+		Images         json.RawMessage `json:"images,omitempty"`
+		Mask           json.RawMessage `json:"mask,omitempty"`
+	}
+	// HY accepts publicly reachable reference URLs, not multipart uploads.
+	// Never silently drop uploaded images and produce text-to-image instead.
+	if c.ContentType() != "application/json" {
+		return nil, fmt.Errorf("HY requires application/json with image URLs; multipart file uploads are not supported")
 	}
 	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
 		return nil, err
@@ -60,6 +69,15 @@ func parseSyncImageRequest(c *gin.Context) (*TaskRequest, error) {
 	if req.MaxPixels != nil {
 		payload["generate_max_pixels"] = *req.MaxPixels
 	}
+	if len(req.Mask) != 0 && string(req.Mask) != "null" {
+		return nil, fmt.Errorf("HY reference-guided editing does not support mask")
+	}
+	if len(req.Image) != 0 {
+		payload["image"] = req.Image
+	}
+	if len(req.Images) != 0 {
+		payload["images"] = req.Images
+	}
 	body, err := common.Marshal(payload)
 	return &TaskRequest{Model: req.Model, Payload: body}, err
 }
@@ -73,8 +91,74 @@ func validateImagePayload(payload map[string]json.RawMessage) error {
 		if string(payload["size"]) == "null" || common.Unmarshal(payload["size"], &size) != nil {
 			return fmt.Errorf("payload.size must be a string (empty means Auto)")
 		}
+		// OpenAI clients use "auto"; GMI's Auto value is the empty string.
+		// Explicit sizes (including 4096x4096) must not be capped by the
+		// generate_max_pixels budget, which only applies in Auto mode.
+		if strings.EqualFold(strings.TrimSpace(size), "auto") {
+			payload["size"] = json.RawMessage(`""`)
+		}
 	}
 	return nil
+}
+
+// Normalize both GMI's image URL(s) and the OpenAI JSON images[].image_url
+// shape to the upstream array. The gateway does not download or publish input
+// images; the provider fetches them using its documented 20 MB/image limit.
+func normalizeImageReferences(payload map[string]json.RawMessage, required bool) (bool, error) {
+	if raw, ok := payload["mask"]; ok && string(raw) != "null" {
+		return false, fmt.Errorf("HY reference-guided editing does not support mask")
+	}
+	raw, hasImage := payload["image"]
+	images, hasImages := payload["images"]
+	if hasImage && hasImages {
+		return false, fmt.Errorf("specify only one of image or images")
+	}
+	var refs []string
+	if hasImages {
+		var items []struct {
+			ImageURL string `json:"image_url"`
+			FileID   string `json:"file_id"`
+		}
+		if common.Unmarshal(images, &items) != nil || items == nil {
+			return false, fmt.Errorf("images must be an array of image_url objects")
+		}
+		for _, item := range items {
+			if item.FileID != "" {
+				return false, fmt.Errorf("HY does not support file_id; use a public image_url")
+			}
+			refs = append(refs, item.ImageURL)
+		}
+	} else if hasImage {
+		var single string
+		if common.Unmarshal(raw, &single) == nil && string(raw) != "null" {
+			refs = []string{single}
+		} else if common.Unmarshal(raw, &refs) != nil || refs == nil {
+			return false, fmt.Errorf("image must be a public URL or an array of public URLs")
+		}
+	}
+	if len(refs) == 0 {
+		if required || hasImage || hasImages {
+			return false, fmt.Errorf("at least one reference image URL is required")
+		}
+		return false, nil
+	}
+	if len(refs) > 5 {
+		return false, fmt.Errorf("HY supports at most 5 reference images")
+	}
+	for i, ref := range refs {
+		refs[i] = strings.TrimSpace(ref)
+		u, err := url.Parse(refs[i])
+		if err != nil || u.Hostname() == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
+			return false, fmt.Errorf("reference image %d must be a public HTTP(S) URL; data URLs, files and authenticated URLs are not supported", i+1)
+		}
+	}
+	encoded, err := common.Marshal(refs)
+	if err != nil {
+		return false, err
+	}
+	payload["image"] = encoded
+	delete(payload, "images")
+	return true, nil
 }
 
 func (a *TaskAdaptor) SubmitImageTask(ctx context.Context, baseURL, key, body, proxy string) (*http.Response, error) {
@@ -99,7 +183,7 @@ func (a *TaskAdaptor) SubmitImageTask(ctx context.Context, baseURL, key, body, p
 // Model mapping happens after request validation, so validate the upstream ID
 // here rather than rejecting administrator-defined aliases before mapping.
 func (a *TaskAdaptor) ValidateMappedRequest(_ *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
-	if info.Action == constant.TaskActionImageGeneration && !channelgmicloud.IsImageModel(info.UpstreamModelName) {
+	if constant.IsImageTaskAction(info.Action) && !channelgmicloud.IsImageModel(info.UpstreamModelName) {
 		return service.TaskErrorWrapperLocal(fmt.Errorf("unsupported GMICLOUD image model: %s", info.UpstreamModelName), "unsupported_model", http.StatusBadRequest)
 	}
 	return nil

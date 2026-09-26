@@ -35,9 +35,63 @@ func setupGMICloudImageGateway(t *testing.T, baseURL string) (*gorm.DB, *gin.Eng
 	require.NoError(t, ch.Update())
 	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"hy-image-v3.5-preview":0.01,"hy-alias":0.01}`))
 	engine.POST("/v1/images/generations", RelayImageGeneration)
+	engine.POST("/v1/images/edits", RelayImageGeneration)
 	engine.POST("/v1/images/tasks", RelayImageTask)
 	engine.GET("/v1/images/tasks/:task_id", RelayImageTaskFetch)
 	return db, engine, ch
+}
+
+func TestGMICloudImageEditsGateway(t *testing.T) {
+	for _, path := range []string{"/v1/images/edits", "/v1/images/generations", "/v1/images/tasks"} {
+		t.Run(path, func(t *testing.T) {
+			var posts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				posts.Add(1)
+				require.Equal(t, gmicloud.TaskRequestsPath, r.URL.Path)
+				require.Equal(t, "Bearer upstream-key", r.Header.Get("Authorization"))
+				var body struct {
+					Model   string
+					Payload map[string]any
+				}
+				require.NoError(t, common.DecodeJson(r.Body, &body))
+				require.Equal(t, gmicloud.HYImageModel, body.Model)
+				require.Equal(t, "4096x4096", body.Payload["size"])
+				require.Equal(t, []any{"https://example.com/reference.png"}, body.Payload["image"])
+				require.Equal(t, float64(0), body.Payload["seed"])
+				require.NotContains(t, body.Payload, "images")
+				_, _ = io.WriteString(w, `{"request_id":"edited-image","model":"hy-image-v3.5-preview","status":"success","outcome":{"media_urls":[{"url":"https://example.com/edited.png","type":"image","width":4096,"height":4096}]}}`)
+			}))
+			defer server.Close()
+			db, engine, _ := setupGMICloudImageGateway(t, server.URL)
+			body := `{"model":"hy-alias","prompt":"make it blue","images":[{"image_url":"https://example.com/reference.png"}],"size":"4096x4096","seed":0}`
+			if path == "/v1/images/tasks" {
+				body = `{"model":"hy-alias","payload":{"prompt":"make it blue","image":"https://example.com/reference.png","size":"4096x4096","seed":0}}`
+			}
+			w := requestTypeSafe(t, engine, path, body, typeSafeGatewayKey)
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			var task model.Task
+			require.Eventually(t, func() bool {
+				return db.First(&task).Error == nil && task.Status == model.TaskStatusSuccess
+			}, 3*time.Second, 5*time.Millisecond)
+			require.Equal(t, constant.TaskActionImageEdit, task.Action)
+			require.Empty(t, task.PrivateData.GMICloudImageRequest)
+			require.EqualValues(t, 1, posts.Load())
+			assertTypeSafeQuota(t, db, 5000)
+			r := httptest.NewRequest(http.MethodGet, "/v1/images/tasks/"+task.TaskID, nil)
+			r.Header.Set("Authorization", "Bearer "+typeSafeGatewayKey)
+			w = httptest.NewRecorder()
+			engine.ServeHTTP(w, r)
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Contains(t, w.Body.String(), `"action":"image_edit"`)
+			require.Contains(t, w.Body.String(), "edited.png")
+			require.NotContains(t, w.Body.String(), "upstream-key")
+			// Invalid edits fail before a task, charge or upstream request.
+			w = requestTypeSafe(t, engine, "/v1/images/edits", `{"model":"hy-alias","prompt":"missing reference"}`, typeSafeGatewayKey)
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			require.EqualValues(t, 1, posts.Load())
+			assertTypeSafeQuota(t, db, 5000)
+		})
+	}
 }
 
 func TestGMICloudImageGateway(t *testing.T) {

@@ -78,7 +78,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	var req TaskRequest
-	if c.Request.URL.Path == "/v1/images/generations" {
+	if c.Request.URL.Path == "/v1/images/generations" || c.Request.URL.Path == "/v1/images/edits" {
 		imageReq, err := parseSyncImageRequest(c)
 		if err != nil {
 			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
@@ -102,8 +102,19 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
 		}
 		info.Action = constant.TaskActionImageGeneration
+		editing, err := normalizeImageReferences(payload, c.Request.URL.Path == "/v1/images/edits")
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
+		}
+		if editing {
+			info.Action = constant.TaskActionImageEdit
+		}
+		req.Payload, err = common.Marshal(payload)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
+		}
 	} else if channelgmicloud.IsImageModel(modelName) {
-		return service.TaskErrorWrapperLocal(fmt.Errorf("use /v1/images/generations or /v1/images/tasks for HY images"), "invalid_endpoint", http.StatusBadRequest)
+		return service.TaskErrorWrapperLocal(fmt.Errorf("use /v1/images/generations, /v1/images/edits or /v1/images/tasks for HY images"), "invalid_endpoint", http.StatusBadRequest)
 	} else if channelgmicloud.IsBatchModel(modelName) {
 		if err := requirePayloadString(payload, "model"); err != nil {
 			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
@@ -234,7 +245,7 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	}
 	// Image routes respond only after the task is persisted. The synchronous
 	// facade waits on the same task instead of creating a second generation.
-	if info.Action == constant.TaskActionImageGeneration {
+	if constant.IsImageTaskAction(info.Action) {
 		if info.IsChannelTest {
 			result, err := a.ParseTaskResult(responseBody)
 			if err != nil {

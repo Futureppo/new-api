@@ -132,7 +132,7 @@ func SetRelayRouter(router *gin.Engine) {
 		httpRouter.POST("/images/tasks", controller.RelayImageTask)
 		httpRouter.GET("/images/tasks/:task_id", controller.RelayImageTaskFetch)
 		httpRouter.POST("/images/edits", func(c *gin.Context) {
-			controller.Relay(c, types.RelayFormatOpenAIImage)
+			controller.RelayImageGeneration(c)
 		})
 
 		// OpenAI-local editable file tasks

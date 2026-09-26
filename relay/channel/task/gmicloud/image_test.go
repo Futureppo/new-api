@@ -1,7 +1,9 @@
 package gmicloud
 
 import (
+	"bytes"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,6 +17,82 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestHYImageReferenceRequests(t *testing.T) {
+	for _, tc := range []struct {
+		name, path, fields, errorText string
+		editing                       bool
+	}{
+		{"4k", "generations", `"size":"4096x4096","generate_max_pixels":4194304`, "", false},
+		{"auto", "generations", `"size":"auto","seed":0`, "", false},
+		{"image string", "generations", `"image":"https://example.com/a.png"`, "", true},
+		{"image array", "edits", `"image":["https://example.com/a.png","https://example.com/b.png"]`, "", true},
+		{"OpenAI JSON", "edits", `"images":[{"image_url":"https://example.com/a.png"}]`, "", true},
+		{"missing reference", "edits", `"size":"4096x4096"`, "reference image", false},
+		{"empty reference", "edits", `"image":[]`, "reference image", false},
+		{"null reference", "edits", `"image":null`, "image must", false},
+		{"null images", "edits", `"images":null`, "images must", false},
+		{"conflicting fields", "edits", `"image":"https://example.com/a.png","images":[]`, "only one", false},
+		{"file ID", "edits", `"images":[{"file_id":"file_123"}]`, "file_id", false},
+		{"mask", "edits", `"image":"https://example.com/a.png","mask":{"image_url":"https://example.com/mask.png"}`, "mask", false},
+		{"data URL", "edits", `"image":"data:image/png;base64,abc"`, "public HTTP(S)", false},
+		{"local file", "edits", `"image":"file:///tmp/a.png"`, "public HTTP(S)", false},
+		{"authenticated URL", "edits", `"image":"https://user:pass@example.com/a.png"`, "public HTTP(S)", false},
+		{"bad ref type", "edits", `"image":true`, "image must", false},
+		{"empty URL", "edits", `"images":[{}]`, "public HTTP(S)", false},
+		{"too many", "edits", `"image":["https://example.com/a","https://example.com/b","https://example.com/c","https://example.com/d","https://example.com/e","https://example.com/f"]`, "at most 5", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/"+tc.path, strings.NewReader(`{"model":"hy-image-v3.5-preview","prompt":"cat",`+tc.fields+`}`))
+			c.Request.Header.Set("Content-Type", "application/json")
+			info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, TaskRelayInfo: &relaycommon.TaskRelayInfo{}}
+			a := &TaskAdaptor{}
+			err := a.ValidateRequestAndSetAction(c, info)
+			if tc.errorText != "" {
+				require.NotNil(t, err)
+				require.Equal(t, http.StatusBadRequest, err.StatusCode)
+				require.Contains(t, err.Message, tc.errorText)
+				return
+			}
+			require.Nil(t, err)
+			require.Equal(t, tc.editing, info.Action == constant.TaskActionImageEdit)
+			body, buildErr := a.BuildRequestBody(c, info)
+			require.NoError(t, buildErr)
+			var req struct{ Payload map[string]any }
+			require.NoError(t, common.DecodeJson(body, &req))
+			if tc.editing {
+				require.NotEmpty(t, req.Payload["image"])
+				require.NotContains(t, req.Payload, "images")
+			}
+			if tc.name == "4k" {
+				require.Equal(t, "4096x4096", req.Payload["size"])
+				require.Equal(t, float64(4194304), req.Payload["generate_max_pixels"])
+			}
+			if tc.name == "auto" {
+				require.Equal(t, "", req.Payload["size"])
+				require.Equal(t, float64(0), req.Payload["seed"])
+			}
+		})
+	}
+}
+
+func TestHYRejectsMultipartInsteadOfDroppingUploadedImage(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", channelgmicloud.HYImageModel))
+	require.NoError(t, writer.WriteField("prompt", "edit this"))
+	file, err := writer.CreateFormFile("image", "image.png")
+	require.NoError(t, err)
+	_, err = file.Write([]byte("image bytes"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/edits", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+	_, err = parseSyncImageRequest(c)
+	require.ErrorContains(t, err, "multipart file uploads are not supported")
+}
 
 func TestHYImageRequests(t *testing.T) {
 	for _, tc := range []struct{ name, path, body, errorText string }{
