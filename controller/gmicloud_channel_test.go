@@ -27,7 +27,7 @@ func TestFetchGMICloudModelsDeduplicatesUpstreamList(t *testing.T) {
 		case "/v1/models":
 			_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"MiniMaxAI/MiniMax-M3"},{"id":"MiniMaxAI/MiniMax-M2.7"},{"id":"MiniMaxAI/MiniMax-M3"}]}`))
 		case "/api/v1/ie/requestqueue/apikey/models":
-			_, _ = w.Write([]byte(`{"model_ids":["minimax-tts-speech-2.8-turbo","minimax-music-3.0","minimax-music-3.0","Gemini-batch-inference","Gemini-batch-inference","unrelated-video-model"]}`))
+			_, _ = w.Write([]byte(`{"model_ids":["minimax-tts-speech-2.8-turbo","minimax-music-3.0","minimax-music-3.0","Gemini-batch-inference","Gemini-batch-inference","hy-image-v3.5-preview","hy-image-v3.5-preview","unrelated-video-model"]}`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -43,9 +43,13 @@ func TestFetchGMICloudModelsDeduplicatesUpstreamList(t *testing.T) {
 		"minimax-tts-speech-2.8-turbo",
 		"minimax-music-3.0",
 		"Gemini-batch-inference",
+		"hy-image-v3.5-preview",
 	}, models)
 }
 
 func TestGMICloudDashboardDefaultsToFreeModels(t *testing.T) {
 	require.Equal(t, gmicloud.ModelList, channelId2Models[constant.ChannelTypeGMICloud])
+	require.Contains(t, gmicloud.ModelList, gmicloud.HYImageModel)
+	require.True(t, gmicloud.IsTaskModel(gmicloud.HYImageModel))
+	require.Equal(t, string(constant.EndpointTypeImageGeneration), normalizeChannelTestEndpoint(&model.Channel{Type: constant.ChannelTypeGMICloud}, gmicloud.HYImageModel, ""))
 }

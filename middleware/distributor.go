@@ -307,6 +307,18 @@ func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
 			shouldSelectChannel = false
 		}
 		c.Set("relay_mode", relayMode)
+	} else if c.Request.URL.Path == "/v1/images/tasks" || strings.HasPrefix(c.Request.URL.Path, "/v1/images/tasks/") {
+		if c.Request.Method == http.MethodGet {
+			shouldSelectChannel = false
+			c.Set("relay_mode", relayconstant.RelayModeImageTaskFetchByID)
+		} else {
+			req, err := getModelFromRequest(c)
+			if err != nil {
+				return nil, false, err
+			}
+			modelRequest.Model = req.Model
+			c.Set("relay_mode", relayconstant.RelayModeImageTaskSubmit)
+		}
 	} else if strings.HasPrefix(c.Request.URL.Path, "/v1/batch/generations") {
 		relayMode := relayconstant.RelayModeUnknown
 		if c.Request.Method == http.MethodPost {

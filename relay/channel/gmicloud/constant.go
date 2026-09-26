@@ -24,11 +24,15 @@ var AudioModelList = []string{
 
 const BatchInferenceModel = "Gemini-batch-inference"
 
+const HYImageModel = "hy-image-v3.5-preview"
+
+var ImageModelList = []string{HYImageModel}
+
 var BatchModelList = []string{
 	BatchInferenceModel,
 }
 
-var TaskModelList = append(append([]string{}, AudioModelList...), BatchModelList...)
+var TaskModelList = append(append(append([]string{}, AudioModelList...), BatchModelList...), ImageModelList...)
 
 var ModelList = append(append([]string{}, LLMModelList...), TaskModelList...)
 
@@ -64,5 +68,9 @@ func IsBatchModel(model string) bool {
 }
 
 func IsTaskModel(model string) bool {
-	return IsAudioModel(model) || IsBatchModel(model)
+	return IsAudioModel(model) || IsBatchModel(model) || IsImageModel(model)
+}
+
+func IsImageModel(model string) bool {
+	return strings.TrimSpace(model) == HYImageModel
 }

@@ -781,7 +781,7 @@ func RelayTask(c *gin.Context) {
 		deferred := result.Quota < 0 ||
 			(relayInfo.PriceData.UsePrice && relayInfo.PriceData.ModelPrice < 0) ||
 			(!relayInfo.PriceData.UsePrice && relayInfo.PriceData.ModelRatio < 0)
-		if !deferred {
+		if !deferred && result.PendingImageRequest == "" {
 			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 				common.SysError("settle task billing error: " + settleErr.Error())
 			}
@@ -790,6 +790,10 @@ func RelayTask(c *gin.Context) {
 
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
+		task.PrivateData.GMICloudImageRequest = result.PendingImageRequest
+		if result.PendingImageRequest != "" {
+			task.PrivateData.Key = relayInfo.ApiKey
+		}
 		task.PrivateData.UpstreamVideoID = relayInfo.UpstreamVideoID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
@@ -814,9 +818,21 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
-			if deferred {
+			if deferred || result.PendingImageRequest != "" {
 				service.RefundBilling(c, relayInfo)
 			}
+			if isGMICloudImageTask(relayInfo) {
+				respondGMICloudImageError(c, http.StatusInternalServerError, "image_task_persist_failed", "Unable to persist image task; no upstream generation was submitted", "")
+				return
+			}
+		} else if isGMICloudImageTask(relayInfo) {
+			if !deferred {
+				if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+					common.SysError("settle image task billing error: " + settleErr.Error())
+				}
+				service.LogTaskConsumption(c, relayInfo)
+			}
+			respondGMICloudImageTask(c, task, relayInfo)
 		}
 	}
 
@@ -832,6 +848,10 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 		taskErr.Code != string(types.ErrorCodeChannelDailySuccessLimitExceeded) &&
 		taskErr.Code != string(types.ErrorCodeChannelRPMLimitExceeded) {
 		taskErr.Message = "当前分组上游负载已饱和，请稍后再试"
+	}
+	if c.Request != nil && c.Request.URL != nil && c.Request.URL.Path == "/v1/images/generations" {
+		respondGMICloudImageError(c, taskErr.StatusCode, taskErr.Code, taskErr.Message, "")
+		return
 	}
 	c.JSON(taskErr.StatusCode, taskErr)
 }

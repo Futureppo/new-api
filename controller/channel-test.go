@@ -303,6 +303,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if channel != nil && channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(modelName) {
 		return string(constant.EndpointTypeBatchGeneration)
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsImageModel(modelName) {
+		return string(constant.EndpointTypeImageGeneration)
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeVyceAI {
 		return string(constant.EndpointTypeImageGeneration)
 	}
@@ -529,7 +532,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo ||
-		constant.EndpointType(endpointType) == constant.EndpointTypeBatchGeneration {
+		constant.EndpointType(endpointType) == constant.EndpointTypeBatchGeneration ||
+		(channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsImageModel(testModel)) {
 		return testTaskChannel(c, channel, testModel, tik)
 	}
 
@@ -980,7 +984,14 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 	taskEndpointType := constant.EndpointTypeOpenAIVideo
 	var jsonData []byte
 	var err error
-	if channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(testModel) {
+	if channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsImageModel(testModel) {
+		taskEndpointType = constant.EndpointTypeImageGeneration
+		c.Request.URL.Path = "/v1/images/tasks"
+		jsonData, err = common.Marshal(map[string]any{
+			"model":   testModel,
+			"payload": map[string]any{"prompt": "A small red apple on a white background", "size": "1920x1080"},
+		})
+	} else if channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(testModel) {
 		taskEndpointType = constant.EndpointTypeBatchGeneration
 		jsonData, err = common.Marshal(map[string]any{
 			"model": testModel,

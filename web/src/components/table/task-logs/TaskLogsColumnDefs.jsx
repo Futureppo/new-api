@@ -51,6 +51,7 @@ import {
 } from '../../../constants/common.constant';
 import { CHANNEL_OPTIONS } from '../../../constants/channel.constants';
 import { renderModelTag, stringToColor } from '../../../helpers/render';
+import { extractImageResults } from '../../../helpers/taskImages';
 import { Avatar, Space } from '@douyinfe/semi-ui';
 
 const colors = [
@@ -249,14 +250,7 @@ const getEditableFileResult = (record) => {
 };
 
 const getImageResultCount = (record) => {
-  const data = record?.data;
-  if (Array.isArray(data)) {
-    return data.length;
-  }
-  if (Array.isArray(data?.data)) {
-    return data.data.length;
-  }
-  return record?.result_url ? 1 : 0;
+  return extractImageResults(record).length;
 };
 
 const audioTaskActions = new Set([
@@ -266,12 +260,16 @@ const audioTaskActions = new Set([
 ]);
 
 const getAudioClips = (record) => {
+  const isAudioTask =
+    record?.platform === 'suno' || audioTaskActions.has(record?.action);
+  if (!isAudioTask) return [];
   const clips = [];
   const seen = new Set();
   const modelName = getTaskModelName(record);
 
   const addClip = (clip, fallbackTitle = modelName) => {
     if (!clip || typeof clip !== 'object') return;
+    if (clip.type && clip.type !== 'audio') return;
     const audioUrl = clip.audio_url || clip.url;
     if (!audioUrl || seen.has(audioUrl)) return;
     seen.add(audioUrl);
@@ -311,8 +309,6 @@ const getAudioClips = (record) => {
     }
   }
 
-  const isAudioTask =
-    record?.platform === 'suno' || audioTaskActions.has(record?.action);
   if (isAudioTask && record?.result_url) {
     addClip({ audio_url: record.result_url });
   }

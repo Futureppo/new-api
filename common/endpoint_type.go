@@ -38,7 +38,9 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	case constant.ChannelTypeModal, constant.ChannelTypeKilo, constant.ChannelTypeCline:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeGMICloud:
-		if strings.EqualFold(strings.TrimSpace(modelName), "Gemini-batch-inference") {
+		if strings.TrimSpace(modelName) == "hy-image-v3.5-preview" {
+			return []constant.EndpointType{constant.EndpointTypeImageGeneration}
+		} else if strings.EqualFold(strings.TrimSpace(modelName), "Gemini-batch-inference") {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeBatchGeneration}
 		} else {
 			endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}

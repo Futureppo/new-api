@@ -22,18 +22,9 @@ import { Button, Empty, Modal, Space, Typography } from '@douyinfe/semi-ui';
 import { Copy, Download, ExternalLink } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { copy, showError, showSuccess } from '../../../../helpers';
+import { extractImageResults } from '../../../../helpers/taskImages';
 
 const { Text } = Typography;
-
-const toDataUrl = (value) => {
-  if (!value) {
-    return '';
-  }
-  if (value.startsWith('data:')) {
-    return value;
-  }
-  return `data:image/png;base64,${value}`;
-};
 
 const getFilename = (src, index) => {
   if (!src) {
@@ -55,47 +46,7 @@ const getFilename = (src, index) => {
   }
 };
 
-const extractImageResults = (record) => {
-  const data = record?.data;
-  const rawItems = Array.isArray(data)
-    ? data
-    : Array.isArray(data?.data)
-      ? data.data
-      : [];
-
-  const results = rawItems
-    .map((item, index) => {
-      const src =
-        item?.url ||
-        item?.image_url ||
-        item?.data_url ||
-        toDataUrl(item?.b64_json || item?.base64 || '');
-      return {
-        src,
-        index,
-        revisedPrompt: item?.revised_prompt || '',
-        hasB64: Boolean(item?.has_b64_json || item?.b64_json || item?.base64),
-      };
-    })
-    .filter((item) => item.src);
-
-  if (results.length === 0 && record?.result_url) {
-    results.push({
-      src: record.result_url,
-      index: 0,
-      revisedPrompt: '',
-      hasB64: false,
-    });
-  }
-
-  return results;
-};
-
-const ImageResultsModal = ({
-  isModalOpen,
-  setIsModalOpen,
-  imageRecord,
-}) => {
+const ImageResultsModal = ({ isModalOpen, setIsModalOpen, imageRecord }) => {
   const { t } = useTranslation();
   const images = extractImageResults(imageRecord);
 
@@ -186,7 +137,9 @@ const ImageResultsModal = ({
                     icon={<Copy size={14} />}
                     onClick={() => copySource(item.src)}
                   >
-                    {item.src.startsWith('data:') ? t('复制图片数据') : t('复制链接')}
+                    {item.src.startsWith('data:')
+                      ? t('复制图片数据')
+                      : t('复制链接')}
                   </Button>
                   {!item.src.startsWith('data:') && (
                     <Button

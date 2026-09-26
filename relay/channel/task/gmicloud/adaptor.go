@@ -37,6 +37,7 @@ type taskResponse struct {
 }
 
 type taskOutcome struct {
+	ThumbnailImageURL       string          `json:"thumbnail_image_url,omitempty"`
 	AudioURL                string          `json:"audio_url,omitempty"`
 	MediaURLs               []taskMedia     `json:"media_urls,omitempty"`
 	Medias                  []taskMedia     `json:"medias,omitempty"`
@@ -58,7 +59,10 @@ type batchTokenUsage struct {
 }
 
 type taskMedia struct {
-	URL string `json:"url"`
+	URL    string `json:"url"`
+	Type   string `json:"type,omitempty"`
+	Width  int    `json:"width,omitempty"`
+	Height int    `json:"height,omitempty"`
 }
 
 type TaskAdaptor struct {
@@ -74,7 +78,13 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
 	var req TaskRequest
-	if err := common.UnmarshalBodyReusable(c, &req); err != nil {
+	if c.Request.URL.Path == "/v1/images/generations" {
+		imageReq, err := parseSyncImageRequest(c)
+		if err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
+		}
+		req = *imageReq
+	} else if err := common.UnmarshalBodyReusable(c, &req); err != nil {
 		return service.TaskErrorWrapperLocal(err, "invalid_request", http.StatusBadRequest)
 	}
 
@@ -87,7 +97,14 @@ func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycom
 		return service.TaskErrorWrapperLocal(fmt.Errorf("payload must be a JSON object"), "invalid_payload", http.StatusBadRequest)
 	}
 
-	if channelgmicloud.IsBatchModel(modelName) {
+	if IsImageTaskRequest(c) {
+		if err := validateImagePayload(payload); err != nil {
+			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
+		}
+		info.Action = constant.TaskActionImageGeneration
+	} else if channelgmicloud.IsImageModel(modelName) {
+		return service.TaskErrorWrapperLocal(fmt.Errorf("use /v1/images/generations or /v1/images/tasks for HY images"), "invalid_endpoint", http.StatusBadRequest)
+	} else if channelgmicloud.IsBatchModel(modelName) {
 		if err := requirePayloadString(payload, "model"); err != nil {
 			return service.TaskErrorWrapperLocal(err, "invalid_payload", http.StatusBadRequest)
 		}
@@ -215,6 +232,20 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	if strings.TrimSpace(upstream.RequestID) == "" {
 		return "", nil, service.TaskErrorWrapper(fmt.Errorf("request_id is empty: %s", responseReason(upstream)), "invalid_response", http.StatusInternalServerError)
 	}
+	// Image routes respond only after the task is persisted. The synchronous
+	// facade waits on the same task instead of creating a second generation.
+	if info.Action == constant.TaskActionImageGeneration {
+		if info.IsChannelTest {
+			result, err := a.ParseTaskResult(responseBody)
+			if err != nil {
+				return "", nil, service.TaskErrorWrapper(err, "invalid_response", http.StatusBadGateway)
+			}
+			if result.Status == string(model.TaskStatusFailure) {
+				return "", nil, service.TaskErrorWrapper(fmt.Errorf("%s", result.Reason), "image_generation_failed", http.StatusBadGateway)
+			}
+		}
+		return upstream.RequestID, responseBody, nil
+	}
 
 	status := normalizedTaskStatus(upstream)
 	if status == "" {
@@ -267,6 +298,13 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		result.Status = model.TaskStatusSuccess
 		result.Progress = taskcommon.ProgressComplete
 		result.Url = response.Outcome.primaryURL()
+		if channelgmicloud.IsImageModel(response.Model) {
+			images := imageResults(response.Outcome)
+			result.Url = ""
+			if len(images) > 0 {
+				result.Url = images[0].URL
+			}
+		}
 		if result.Url == "" {
 			result.Status = model.TaskStatusFailure
 			result.Reason = "GMICLOUD task succeeded without a result URL"

@@ -18,6 +18,7 @@ func TestGMICloudChannelRegistration(t *testing.T) {
 }
 
 func TestGMICloudEndpointTypes(t *testing.T) {
+	require.Equal(t, []constant.EndpointType{constant.EndpointTypeImageGeneration}, GetEndpointTypesByChannelType(constant.ChannelTypeGMICloud, "hy-image-v3.5-preview"))
 	for _, modelName := range []string{"MiniMaxAI/MiniMax-M3", "o1-pro"} {
 		require.Equal(
 			t,

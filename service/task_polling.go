@@ -399,6 +399,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
 		return nil
 	}
+	if ch.Type == constant.ChannelTypeGMICloud && task.PrivateData.GMICloudImageRequest != "" {
+		return submitQueuedGMICloudImage(ctx, adaptor, ch, task)
+	}
 	key := ch.Key
 
 	privateData := task.PrivateData
@@ -421,12 +424,26 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if ch.Type == constant.ChannelTypeAgnesAI && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Agnes task retrieval returned HTTP %d", resp.StatusCode)
 	}
+	if ch.Type == constant.ChannelTypeGMICloud && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("GMICLOUD task retrieval returned HTTP %d", resp.StatusCode)
+	}
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	return ApplyTaskPollingResult(ctx, adaptor, ch, task, responseBody, resp.StatusCode)
+}
+
+// ApplyTaskPollingResult persists a provider response through the same guarded
+// completion and billing path for submission responses and background polls.
+func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch *model.Channel, task *model.Task, responseBody []byte, statusCode int) error {
+	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
+		return nil
+	}
+	taskId := task.GetUpstreamTaskID()
+	var err error
 
 	snap := task.Snapshot()
 	originalTask := *task
@@ -576,7 +593,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		RefundTaskQuota(ctx, task, task.FailReason)
 	}
 	if shouldChargeViolationFee {
-		ChargeTaskViolationFeeIfNeeded(ctx, task, ch.Type, resp.StatusCode, violationFeeReason)
+		ChargeTaskViolationFeeIfNeeded(ctx, task, ch.Type, statusCode, violationFeeReason)
 	}
 
 	return nil

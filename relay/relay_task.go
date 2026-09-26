@@ -25,10 +25,11 @@ import (
 )
 
 type TaskSubmitResult struct {
-	UpstreamTaskID string
-	TaskData       []byte
-	Platform       constant.TaskPlatform
-	Quota          int
+	PendingImageRequest string
+	UpstreamTaskID      string
+	TaskData            []byte
+	Platform            constant.TaskPlatform
+	Quota               int
 	//PerCallPrice   types.PriceData
 }
 
@@ -227,6 +228,19 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	if err != nil {
 		return nil, service.TaskErrorWrapper(err, "build_request_failed", http.StatusInternalServerError)
 	}
+	// HY's queue endpoint actually blocks until generation completes. Persist a
+	// local job before the POST so both facades survive disconnects and restarts.
+	if info.ChannelType == constant.ChannelTypeGMICloud && info.Action == constant.TaskActionImageGeneration {
+		body, err := io.ReadAll(requestBody)
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusBadRequest)
+		}
+		data, err := common.Marshal(gin.H{"model": info.UpstreamModelName, "status": "queued"})
+		if err != nil {
+			return nil, service.TaskErrorWrapperLocal(err, "build_request_failed", http.StatusBadRequest)
+		}
+		return &TaskSubmitResult{PendingImageRequest: string(body), TaskData: data, Platform: platform, Quota: info.PriceData.Quota}, nil
+	}
 
 	// 9. 发送请求
 	resp, err := doChannelRPMGuardedTaskRequest(c, info, func() (*http.Response, error) {
@@ -299,6 +313,7 @@ func recalcQuotaFromRatios(info *relaycommon.RelayInfo, ratios map[string]float6
 }
 
 var fetchRespBuilders = map[int]func(c *gin.Context) (respBody []byte, taskResp *dto.TaskError){
+	relayconstant.RelayModeImageTaskFetchByID:       videoFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeSunoFetchByID:            sunoFetchByIDRespBodyBuilder,
 	relayconstant.RelayModeSunoFetch:                sunoFetchRespBodyBuilder,
 	relayconstant.RelayModeVideoFetchByID:           videoFetchByIDRespBodyBuilder,
@@ -310,6 +325,7 @@ func RelayTaskFetch(c *gin.Context, relayMode int) (taskResp *dto.TaskError) {
 	respBuilder, ok := fetchRespBuilders[relayMode]
 	if !ok {
 		taskResp = service.TaskErrorWrapperLocal(errors.New("invalid_relay_mode"), "invalid_relay_mode", http.StatusBadRequest)
+		return
 	}
 
 	respBody, taskErr := respBuilder(c)
@@ -397,6 +413,10 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if !exist {
 		taskResp = service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 		return
+	}
+	if strings.HasPrefix(c.Request.URL.Path, "/v1/images/tasks/") &&
+		(originTask.Action != constant.TaskActionImageGeneration || originTask.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeGMICloud))) {
+		return nil, service.TaskErrorWrapperLocal(errors.New("task_not_exist"), "task_not_exist", http.StatusBadRequest)
 	}
 	defer func() {
 		if taskResp == nil && originTask.PrivateData.ModelMappingFullEnabled {

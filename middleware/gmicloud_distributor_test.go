@@ -29,3 +29,25 @@ func TestGMICloudBatchModelAliasIsCanonicalizedForDistribution(t *testing.T) {
 	require.Equal(t, gmicloud.BatchInferenceModel, request.Model)
 	require.Equal(t, relayconstant.RelayModeBatchGenerationSubmit, c.GetInt("relay_mode"))
 }
+
+func TestGMICloudImageTaskDistribution(t *testing.T) {
+	for _, method := range []string{http.MethodPost, http.MethodGet} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		path := "/v1/images/tasks"
+		mode := relayconstant.RelayModeImageTaskSubmit
+		if method == http.MethodGet {
+			path += "/task_public"
+			mode = relayconstant.RelayModeImageTaskFetchByID
+		}
+		c.Request = httptest.NewRequest(method, path, strings.NewReader(`{"model":"hy-image-v3.5-preview","payload":{"prompt":"cat"}}`))
+		c.Request.Header.Set("Content-Type", "application/json")
+		req, selectChannel, err := getModelRequest(c)
+		require.NoError(t, err)
+		require.Equal(t, method == http.MethodPost, selectChannel)
+		require.Equal(t, mode, c.GetInt("relay_mode"))
+		require.Equal(t, mode, relayconstant.Path2RelayMode(path))
+		if selectChannel {
+			require.Equal(t, gmicloud.HYImageModel, req.Model)
+		}
+	}
+}
