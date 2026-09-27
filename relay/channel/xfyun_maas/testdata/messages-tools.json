@@ -1,0 +1,1 @@
+{"content":[{"id":"fixture_1","input":{"city":"Paris"},"name":"get_weather","type":"tool_use"}],"id":"fixture_2","model":"spark-x2.5-1.7b","role":"assistant","sid":"fixture_2","stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_read_input_tokens":64,"input_tokens":41,"output_tokens":12}}

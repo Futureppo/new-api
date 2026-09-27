@@ -136,6 +136,7 @@ const KILO_CHANNEL_TYPE = 70;
 const TYPESAFE_CHANNEL_TYPE = 71;
 const MIMO_CHANNEL_TYPE = 72;
 const CLINE_CHANNEL_TYPE = 73;
+const XFYUN_MAAS_CHANNEL_TYPE = 74;
 const MIMO_TEST_MODEL = 'mimo-v2.6-pro-ultraspeed';
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
@@ -669,6 +670,20 @@ const EditChannelModal = (props) => {
     if (name === 'type') {
       let localModels = [];
       switch (value) {
+        case XFYUN_MAAS_CHANNEL_TYPE:
+          localModels = getChannelModels(value);
+          setInputs((prev) => ({
+            ...prev,
+            base_url: 'https://maas-api.cn-huabei-1.xf-yun.com',
+            models: [],
+            upstream_model_update_check_enabled: false,
+            upstream_model_update_auto_sync_enabled: false,
+          }));
+          formApiRef.current?.setValue('base_url', 'https://maas-api.cn-huabei-1.xf-yun.com');
+          formApiRef.current?.setValue('models', []);
+          formApiRef.current?.setValue('upstream_model_update_check_enabled', false);
+          formApiRef.current?.setValue('upstream_model_update_auto_sync_enabled', false);
+          break;
         case CLINE_CHANNEL_TYPE:
           localModels = [];
           setInputs((prev) => ({
@@ -772,6 +787,7 @@ const EditChannelModal = (props) => {
         value !== MODAL_CHANNEL_TYPE &&
         value !== KILO_CHANNEL_TYPE &&
         value !== CLINE_CHANNEL_TYPE &&
+        value !== XFYUN_MAAS_CHANNEL_TYPE &&
         inputs.models.length === 0
       ) {
         setInputs((inputs) => ({ ...inputs, models: localModels }));
@@ -2783,7 +2799,11 @@ const EditChannelModal = (props) => {
                     label={t('是否检测上游模型更新')}
                     checkedText={t('开')}
                     uncheckedText={t('关')}
-                    disabled={isManagedFreeSync}
+                    disabled={
+                      isManagedFreeSync ||
+                      (inputs.type === XFYUN_MAAS_CHANNEL_TYPE &&
+                        !inputs.custom_model_list_url?.trim())
+                    }
                     onChange={(value) =>
                       handleChannelOtherSettingsChange(
                         'upstream_model_update_check_enabled',
@@ -4228,6 +4248,16 @@ const EditChannelModal = (props) => {
                           className='!rounded-lg'
                         />
                       )}
+                      {inputs.type === XFYUN_MAAS_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={t(
+                            '讯飞星辰 MaaS：填写 APIKEY，可在同一渠道添加该密钥已启用的多个模型 ID；支持模型映射。模型预设不代表授权列表，请手动选择。支持 Chat、Responses、Anthropic、视觉、向量和重排序；生图仅支持单张 Base64，Kolors 请另建渠道使用 xingchen-api 域名。测试时请选择对应接口，价格需自行配置。',
+                          )}
+                          className='!rounded-lg'
+                        />
+                      )}
+
                       {inputs.type === MIMO_CHANNEL_TYPE && (
                         <Banner
                           type='info'

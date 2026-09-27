@@ -11,6 +11,23 @@ import (
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
 	var endpointTypes []constant.EndpointType
 	switch channelType {
+	case constant.ChannelTypeXunfeiMaas:
+		name := strings.ToLower(modelName)
+		if strings.Contains(name, "embedding") {
+			return []constant.EndpointType{constant.EndpointTypeEmbeddings}
+		}
+		if strings.Contains(name, "rerank") {
+			return []constant.EndpointType{constant.EndpointTypeJinaRerank}
+		}
+		if name == "xopzimageturbo" || name == "xopqwentti20b" || IsImageGenerationModel(modelName) || strings.Contains(name, "kolors") || strings.Contains(name, "flux") {
+			return []constant.EndpointType{constant.EndpointTypeImageGeneration}
+		}
+		switch name {
+		case "xop3qwen32bvl", "xopkimik27code", "xopkimik26", "xopkimik25",
+			"xopqwen36v35b", "xopqwen35397b", "xoppaddleocrv16", "xophunyuanocr", "xopdeepseekocr":
+			return []constant.EndpointType{constant.EndpointTypeOpenAI}
+		}
+		return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse, constant.EndpointTypeAnthropic}
 	case constant.ChannelTypeMiMo:
 		return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic}
 	case constant.ChannelTypeTypeSafe:

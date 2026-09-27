@@ -69,6 +69,7 @@ export const CHANNEL_OPTIONS = [
   { value: 71, color: 'blue', label: 'TypeSafe' },
   { value: 72, color: 'orange', label: 'Xiaomi MiMo' },
   { value: 73, color: 'grey', label: 'Cline' },
+  { value: 74, color: 'blue', label: '讯飞星辰 MaaS' },
   { value: 63, color: 'cyan', label: 'OpenCode Zen' },
   { value: 64, color: 'green', label: 'OpenCode Go' },
   {
@@ -226,6 +227,9 @@ export const isManualModelFetchSupported = (
   vertexKeyType = 'json',
   customModelListUrl = '',
 ) => {
+  if (Number(type) === 74) {
+    return String(customModelListUrl || '').trim() !== '';
+  }
   if (MODEL_FETCHABLE_CHANNEL_TYPES.has(Number(type))) {
     return true;
   }

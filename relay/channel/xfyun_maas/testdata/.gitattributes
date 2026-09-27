@@ -1,0 +1,2 @@
+# SSE events, including the final event, end with a blank delimiter line.
+*.sse text eol=lf whitespace=-blank-at-eof

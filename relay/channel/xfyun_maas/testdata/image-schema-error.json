@@ -1,0 +1,1 @@
+{"header":{"code":10004,"message":"SchemaCheckError:(00:14:51.252) '$.header.patch_id' field is required; ","sid":"fixture_1","status":2}}

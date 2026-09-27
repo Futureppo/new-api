@@ -1,0 +1,10 @@
+data: {"choices":[{"delta":{"content":"","reasoning_content":null,"role":"assistant"},"finish_reason":null,"index":0,"logprobs":null,"matched_stop":null}],"created":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"content":"OK","reasoning_content":null},"finish_reason":null,"index":0,"logprobs":null,"matched_stop":null}],"created":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"chat.completion.chunk"}
+
+data: {"choices":[{"delta":{"reasoning_content":null},"finish_reason":"stop","index":0,"logprobs":null,"matched_stop":1}],"created":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"chat.completion.chunk"}
+
+data: {"choices":[],"created":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"chat.completion.chunk","usage":{"completion_tokens":2,"completion_tokens_details":{"reasoning_tokens":0},"prompt_tokens":21,"prompt_tokens_details":null,"total_tokens":23}}
+
+data: [DONE]
+

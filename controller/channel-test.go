@@ -695,7 +695,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	default:
 		// Chat/Completion 等其他请求类型
-		if generalReq, ok := request.(*dto.GeneralOpenAIRequest); ok {
+		if claudeReq, ok := request.(*dto.ClaudeRequest); ok && channel.Type == constant.ChannelTypeXunfeiMaas {
+			convertedRequest, err = adaptor.ConvertClaudeRequest(c, info, claudeReq)
+		} else if generalReq, ok := request.(*dto.GeneralOpenAIRequest); ok {
 			convertedRequest, err = adaptor.ConvertOpenAIRequest(c, info, generalReq)
 		} else {
 			return testResult{
@@ -1332,6 +1334,12 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if channel != nil && channel.Type == constant.ChannelTypeXunfeiMaas && constant.EndpointType(endpointType) == constant.EndpointTypeAnthropic {
+		return &dto.ClaudeRequest{
+			Model: model, MaxTokens: lo.ToPtr(uint(16)), Stream: lo.ToPtr(isStream),
+			Messages: []dto.ClaudeMessage{{Role: "user", Content: "hi"}},
+		}
+	}
 	if constant.EndpointType(endpointType) == constant.EndpointTypeTypeSafeSystemOne ||
 		(endpointType == "" && channel != nil && channel.Type == constant.ChannelTypeTypeSafe) {
 		return &dto.TypeSafeRequest{Model: model, Fields: map[string]json.RawMessage{

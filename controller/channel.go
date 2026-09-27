@@ -29,6 +29,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
+	"github.com/QuantumNous/new-api/relay/channel/xfyun_maas"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -415,6 +416,9 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
 	}
+	if channel.Type == constant.ChannelTypeXunfeiMaas && strings.TrimSpace(customModelListURL) == "" {
+		return nil, fmt.Errorf("讯飞星辰 MaaS 未提供公开模型列表接口，请从模型预设选择或手动填写已启用的模型 ID")
+	}
 	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	customModelListURL = strings.TrimSpace(customModelListURL)
 
@@ -776,6 +780,9 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
+	}
+	if channel.Type == constant.ChannelTypeXunfeiMaas && (isAdd || channel.BaseURL != nil) {
+		channel.BaseURL = common.GetPointer(xfyun_maas.NormalizeBaseURL(channel.GetBaseURL()))
 	}
 	if channel.Type == constant.ChannelTypeCline && (isAdd || channel.BaseURL != nil) {
 		channel.BaseURL = common.GetPointer(cline.NormalizeBaseURL(channel.GetBaseURL()))

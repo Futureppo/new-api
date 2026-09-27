@@ -1,0 +1,1 @@
+{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"HELLO 123 ","role":"assistant"}}],"created":1790524800,"id":"fixture_1","model":"xophunyuanocr","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":293,"total_tokens":298}}

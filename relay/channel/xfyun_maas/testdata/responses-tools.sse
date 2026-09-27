@@ -1,0 +1,21 @@
+event: response.created
+data: {"response":{"created_at":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"response","output":[],"status":"in_progress"},"sequence_number":0,"type":"response.created"}
+
+event: response.in_progress
+data: {"response":{"created_at":1790524800,"id":"fixture_1","model":"spark-x2.5-1.7b","object":"response","output":[],"status":"in_progress"},"sequence_number":1,"type":"response.in_progress"}
+
+event: response.output_item.added
+data: {"item":{"arguments":"","fixture_2":"fixture_3","id":"fixture_3","name":"get_weather","status":"in_progress","type":"function_call"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+event: response.function_fixture_4.delta
+data: {"delta":"{\"city\":\"Paris\"}","item_id":"fixture_3","output_index":0,"sequence_number":3,"type":"response.function_fixture_4.delta"}
+
+event: response.function_fixture_4.done
+data: {"arguments":"{\"city\":\"Paris\"}","item_id":"fixture_3","output_index":0,"sequence_number":4,"type":"response.function_fixture_4.done"}
+
+event: response.output_item.done
+data: {"item":{"arguments":"{\"city\":\"Paris\"}","fixture_2":"fixture_3","id":"fixture_3","name":"get_weather","status":"completed","type":"function_call"},"output_index":0,"sequence_number":5,"type":"response.output_item.done"}
+
+event: response.completed
+data: {"response":{"created_at":1790524800,"id":"fixture_1","max_output_tokens":256,"model":"spark-x2.5-1.7b","object":"response","output":[{"arguments":"{\"city\":\"Paris\"}","fixture_2":"fixture_3","id":"fixture_3","name":"get_weather","status":"completed","type":"function_call"}],"output_text":"","status":"completed","tool_choice":"required","tools":[{"description":"Get current weather for a city","name":"get_weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"},"type":"function"}],"usage":{"input_tokens":105,"input_tokens_details":{"cached_tokens":64},"output_tokens":12,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":117}},"sequence_number":6,"type":"response.completed"}
+

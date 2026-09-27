@@ -118,6 +118,9 @@ func isOpenRouterManagedModelSyncEnabled(channel *model.Channel, settings dto.Ch
 }
 
 func isChannelUpstreamModelUpdateEnabled(channel *model.Channel, settings dto.ChannelOtherSettings) bool {
+	if channel != nil && channel.Type == constant.ChannelTypeXunfeiMaas && strings.TrimSpace(settings.CustomModelListURL) == "" {
+		return false
+	}
 	if isOpenCodeManagedModelSyncEnabled(channel, settings) {
 		return true
 	}

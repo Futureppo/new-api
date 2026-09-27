@@ -1,0 +1,1 @@
+{"content":[{"text":"OK","type":"text"}],"id":"fixture_1","model":"spark-x2.5-1.7b","role":"assistant","sid":"fixture_1","stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"input_tokens":21,"output_tokens":2}}

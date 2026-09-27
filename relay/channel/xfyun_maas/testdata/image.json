@@ -1,0 +1,1 @@
+{"header": {"code": 0, "message": "Success", "sid": "fixture_1", "status": 2}, "payload": {"choices": {"status": 2, "seq": 0, "text": [{"content": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZ9kAAAAASUVORK5CYII=", "role": "assistant", "index": 0}]}}}

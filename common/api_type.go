@@ -21,6 +21,8 @@ func ChannelType2APIType(channelType int) (int, bool) {
 		apiType = constant.APITypeAli
 	case constant.ChannelTypeXunfei:
 		apiType = constant.APITypeXunfei
+	case constant.ChannelTypeXunfeiMaas:
+		apiType = constant.APITypeXunfeiMaas
 	case constant.ChannelTypeAIProxyLibrary:
 		apiType = constant.APITypeAIProxyLibrary
 	case constant.ChannelTypeTencent:

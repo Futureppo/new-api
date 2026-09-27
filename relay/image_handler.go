@@ -36,9 +36,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if err != nil {
 		return types.NewError(fmt.Errorf("failed to copy request to ImageRequest: %w", err), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
-	// ImageRequest deliberately omits Extra when marshaling. Preserve Agnes'
-	// documented extension fields through the deep-copy boundary.
-	if info.ChannelType == constant.ChannelTypeAgnesAI && imageReq.Extra != nil {
+	// ImageRequest deliberately omits Extra when marshaling. Preserve these
+	// channels' documented extension fields through the deep-copy boundary.
+	if (info.ChannelType == constant.ChannelTypeAgnesAI || info.ChannelType == constant.ChannelTypeXunfeiMaas) && imageReq.Extra != nil {
 		extra, copyErr := common.DeepCopy(&imageReq.Extra)
 		if copyErr != nil {
 			return types.NewError(copyErr, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -311,7 +311,7 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
 	if info != nil && info.ChannelMeta != nil {
 		switch info.ChannelType {
-		case constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI:
+		case constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas:
 			return false
 		}
 	}
