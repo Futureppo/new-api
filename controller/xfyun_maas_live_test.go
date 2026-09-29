@@ -207,7 +207,6 @@ func TestXfyunMaasLiveGateway(t *testing.T) {
 			successes++
 		})
 	}
-	var floats []float32
 	for _, encoding := range []string{"float", "base64"} {
 		t.Run("embedding/"+encoding, func(t *testing.T) {
 			input := any("hello world")
@@ -221,8 +220,7 @@ func TestXfyunMaasLiveGateway(t *testing.T) {
 				}
 				require.NoError(t, common.Unmarshal(data, &out))
 				require.Len(t, out.Data, 1)
-				floats = out.Data[0].Embedding
-				require.Len(t, floats, 32)
+				require.Len(t, out.Data[0].Embedding, 32)
 			} else {
 				var out struct{ Data []struct{ Embedding string } }
 				require.NoError(t, common.Unmarshal(data, &out))
@@ -231,8 +229,12 @@ func TestXfyunMaasLiveGateway(t *testing.T) {
 					decoded, err := base64.StdEncoding.DecodeString(item.Embedding)
 					require.NoError(t, err)
 					require.Len(t, decoded, 32*4)
-					for i, f := range floats {
-						require.InDelta(t, f, math.Float32frombits(binary.LittleEndian.Uint32(decoded[i*4:])), 1e-6)
+					// Exact conversion is checked against the same upstream response
+					// by TestXfyunMaasEmbeddingDimensionsLive. A second inference
+					// can legitimately differ in its vector values.
+					for i := 0; i < 32; i++ {
+						value := float64(math.Float32frombits(binary.LittleEndian.Uint32(decoded[i*4:])))
+						require.False(t, math.IsNaN(value) || math.IsInf(value, 0))
 					}
 				}
 			}

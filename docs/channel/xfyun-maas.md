@@ -84,6 +84,10 @@ Anthropic 的 thinking.type=enabled/adaptive 转为 enable_thinking=true，disab
 
 向量 input 仅接受非空字符串或字符串数组，不接受 Token ID。上游统一返回 float；客户端请求 encoding_format=base64 时，网关转换为 float32 小端字节序的 Base64。dimensions 原样传递，实际可用维度取决于模型。
 
+`xop3qwen8bembedding` 的上游校验明确列出 9 档维度：**32、64、128、256、512、768、1024、2048、4096**。2026-09-28 已逐档验证单条／批量输入及 float／Base64 输出，返回长度均符合请求；省略 dimensions 时实测默认 **768**。1536、3072 等非列表值会返回 HTTP 400，不能直接套用其他厂商模型的维度。
+
+维度专项测试覆盖 40 个成功请求（9 档加默认值，各验证两种输入形式和两种编码）及 9 个非法维度请求；每个输出均与**同一次请求**的上游原始向量逐项比较，Base64 解码后的 float32 数值完全一致。重复推理的向量数值可能小幅变化，因此跨请求的逐位相等不能作为编码转换正确性的判断依据。非法维度不会产生成功消费记录，余额退还检查通过。
+
 重排序 documents 必须为字符串数组。网关对完整结果稳定降序排序，再应用正整数 top_n；return_documents=true 时按原始索引补回 `document: {"text": "..."}`。不支持 max_chunk_per_doc、overlap_tokens。计费使用上游完整 usage。
 
 ## 测试及已知文档差异
@@ -99,7 +103,7 @@ Anthropic 的 thinking.type=enabled/adaptive 转为 enable_thinking=true，disab
 | xophunyuanocr | HTTPS /v2/chat/completions；Base64 和 HTTPS 图片 URL；普通／流式 OCR |
 | xopzimageturbo | 标准生图请求转换；768x768、seed=0、负面提示；返回可解码 PNG |
 | xopqwentti20b | 同上；默认 20 步、guidance=5、DPM++ 2M Karras 可用 |
-| xop3qwen8bembedding | 单条／批量文本、dimensions=32；float 与 Base64 的 float32 数值一致 |
+| xop3qwen8bembedding | 全部 9 档维度及默认 768；单条／批量文本；float／Base64 均与各自上游响应逐项一致 |
 | xop3qwen8breranker | 三份文档排序、top_n=1、文档回填；按完整 254 Token 结算 |
 
 完整网关已通过 31 项真实测试，包括鉴权、渠道分发、模型别名、响应转换、用量日志以及用户／令牌余额一致性。测试使用内存数据库和人工测试价格，不修改正式渠道、账户或模型定价。另有模拟上游错误、连接中断、显式零值和退款测试；生图业务错误或空结果不会产生成功消费记录。脱敏上游响应保存在 `relay/channel/xfyun_maas/testdata/`，生图样例中的图片内容替换为测试 PNG。
@@ -111,7 +115,7 @@ Anthropic 的 thinking.type=enabled/adaptive 转为 enable_thinking=true，disab
 3. 公共生图必须带 patch_id=["0"]；768x768 和 payload.negative_prompts.text 可用。未验证有冲突的 512x512，因此不开放该尺寸。
 4. 免费服务存在 QPS 限制，连续快速请求曾返回 429 / 11202；降低频率后同一模型成功。生产请求不会因协议猜测自动再次生成。
 
-边界：上述验证不代表其他模型已开通。Qwen 的工具／思考能力、FLUX.1-dev 参数、Kolors 独立域名和其他向量维度尚未实测；服务价格与免费额度仍需按平台及站内配置管理。Responses 历史检索、后台任务等未列入支持范围。
+边界：上述验证不代表其他模型已开通。Qwen 的工具／思考能力、FLUX.1-dev 参数、Kolors 独立域名和其他向量模型尚未实测；服务价格与免费额度仍需按平台及站内配置管理。Responses 历史检索、后台任务等未列入支持范围。
 
 可选复测（从环境变量读取密钥，不将密钥写入仓库）：
 
@@ -119,6 +123,8 @@ Anthropic 的 thinking.type=enabled/adaptive 转为 enable_thinking=true，disab
 $env:XFYUN_MAAS_LIVE_TEST = '1'
 # 提前在当前环境中设置 XFYUN_MAAS_API_KEY
 go test ./controller -run '^TestXfyunMaasLiveGateway$' -count=1 -v
+# 仅复测向量的全部维度、编码及非法值退款
+go test ./controller -run '^TestXfyunMaasEmbeddingDimensionsLive$' -count=1 -v
 ```
 
 参考：[星辰 MaaS 官方文档](https://maas.xfyun.cn/doc/)，开源模型 API 3.2.1–3.2.5；[OpenAI Responses 流事件](https://developers.openai.com/api/docs/guides/migrate-to-responses#7-update-streaming-consumers)。
