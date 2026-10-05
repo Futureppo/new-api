@@ -111,6 +111,11 @@ func NormalizeRequest(body []byte, channelType int, responses bool) ([]byte, str
 			}
 		}
 	}
+	if isQwen38(model) {
+		if err := normalizeQwenMessages(fields, responses); err != nil {
+			return nil, "", "", err
+		}
+	}
 	var tools []json.RawMessage
 	if raw := fields["tools"]; len(raw) > 0 {
 		if err := common.Unmarshal(raw, &tools); err != nil {

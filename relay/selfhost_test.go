@@ -38,10 +38,10 @@ func TestSelfHostedRegistrationAndPipeline(t *testing.T) {
 		for _, responses := range []bool{false, true} {
 			for _, passthrough := range []bool{false, true} {
 				path, format := "/v1/chat/completions", types.RelayFormatOpenAI
-				fields := `"messages":[{"role":"assistant","content":null,"reasoning_content":"reason","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"ok"}],"reasoning_effort":"low","temperature":0,"parallel_tool_calls":false,"stream_options":{"include_usage":false},"tools":[{"type":"function","function":{"name":"lookup","strict":false,"parameters":{"type":"object"}}}],"allowed_openai_params":["tools"]`
+				fields := `"messages":[{"role":"assistant","content":null,"reasoning_content":"reason","tool_calls":[{"id":"call_1","type":"function","function":{"name":"lookup","arguments":"{}"}}]},{"role":"tool","tool_call_id":"call_1","content":"ok"},{"role":"system","content":"late policy"},{"role":"developer","content":"developer policy"}],"reasoning_effort":"low","temperature":0,"parallel_tool_calls":false,"stream_options":{"include_usage":false},"tools":[{"type":"function","function":{"name":"lookup","strict":false,"parameters":{"type":"object"}}}],"allowed_openai_params":["tools"]`
 				if responses {
 					path, format = "/v1/responses", types.RelayFormatOpenAIResponses
-					fields = `"input":[{"type":"function_call_output","call_id":"call_1","output":"ok"}],"reasoning":{"effort":"low","summary":"auto"},"store":false`
+					fields = `"input":[{"type":"function_call_output","call_id":"call_1","output":"ok"},{"role":"system","content":"late policy"}],"instructions":"request policy","reasoning":{"effort":"low","summary":"auto"},"store":false`
 				}
 				model := "alias"
 				if passthrough {
@@ -69,7 +69,11 @@ func TestSelfHostedRegistrationAndPipeline(t *testing.T) {
 				common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: passthrough})
 				override := map[string]any{"reasoning_effort": "high"}
 				if responses {
-					override = map[string]any{"reasoning": map[string]any{"effort": "high", "summary": "auto"}}
+					override = map[string]any{"reasoning": map[string]any{"effort": "high", "summary": "auto"}, "instructions": "channel policy"}
+				} else {
+					var messages []map[string]any
+					require.NoError(t, common.UnmarshalJsonStr(gjson.Get(body, "messages").Raw, &messages))
+					override["messages"] = append(messages, map[string]any{"role": "system", "content": "channel policy"})
 				}
 				common.SetContextKey(c, constant.ContextKeyChannelParamOverride, override)
 				request, parseErr := helper.GetAndValidateRequest(c, format)
@@ -92,14 +96,25 @@ func TestSelfHostedRegistrationAndPipeline(t *testing.T) {
 					}
 					if responses {
 						require.Equal(t, "medium", gjson.GetBytes(raw, "reasoning.effort").String())
-						require.Equal(t, "call_1", gjson.GetBytes(raw, "input.0.call_id").String())
+						require.Equal(t, "call_1", gjson.GetBytes(raw, "input.1.call_id").String())
+						policy := "channel policy\n\nlate policy"
+						if passthrough {
+							policy = "request policy\n\nlate policy"
+						}
+						require.Equal(t, policy, gjson.GetBytes(raw, "input.0.content").String())
+						require.False(t, gjson.GetBytes(raw, "instructions").Exists())
 						require.Equal(t, "false", gjson.GetBytes(raw, "store").Raw)
 					} else {
 						require.Equal(t, "medium", gjson.GetBytes(raw, "reasoning_effort").String())
-						for key, want := range map[string]string{"temperature": "0", "parallel_tool_calls": "false", "tools.0.function.strict": "false", "messages.0.content": "null"} {
+						for key, want := range map[string]string{"temperature": "0", "parallel_tool_calls": "false", "tools.0.function.strict": "false", "messages.1.content": "null"} {
 							require.Equal(t, want, gjson.GetBytes(raw, key).Raw)
 						}
-						require.Equal(t, "reason", gjson.GetBytes(raw, "messages.0.reasoning_content").String())
+						policy := "late policy\n\ndeveloper policy"
+						if !passthrough {
+							policy += "\n\nchannel policy"
+						}
+						require.Equal(t, policy, gjson.GetBytes(raw, "messages.0.content").String())
+						require.Equal(t, "reason", gjson.GetBytes(raw, "messages.1.reasoning_content").String())
 						if channelType == constant.ChannelTypeLiteLLM {
 							require.JSONEq(t, `["tools","reasoning_effort"]`, gjson.GetBytes(raw, "allowed_openai_params").Raw)
 						}

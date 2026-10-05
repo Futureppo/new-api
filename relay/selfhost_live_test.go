@@ -98,6 +98,48 @@ func TestLiveSelfHosted(t *testing.T) {
 				} else {
 					name += "/json"
 				}
+				t.Run(name+"/message_order", func(t *testing.T) {
+					cases := map[string]string{
+						"late_system":     `"messages":[{"role":"user","content":"Reply only OK."},{"role":"system","content":"Be concise."}]`,
+						"leading_systems": `"messages":[{"role":"system","content":"Be concise."},{"role":"system","content":"Use English."},{"role":"user","content":"Reply only OK."}]`,
+						"developer_parts": `"messages":[{"role":"system","content":[{"type":"text","text":"Be concise."}]},{"role":"user","content":"Reply only OK."},{"role":"developer","content":"Use English."}]`,
+					}
+					if responses {
+						cases = map[string]string{
+							"late_system":        `"input":[{"role":"user","content":"Reply only OK."},{"role":"system","content":"Be concise."}]`,
+							"leading_systems":    `"input":[{"role":"system","content":"Be concise."},{"role":"system","content":"Use English."},{"role":"user","content":"Reply only OK."}]`,
+							"instructions_parts": `"instructions":"Be concise.","input":[{"role":"user","content":"Reply only OK."},{"role":"system","content":[{"type":"input_text","text":"Use English."}]}]`,
+						}
+					}
+					for scenario, fields := range cases {
+						t.Run(scenario, func(t *testing.T) {
+							var body map[string]any
+							require.NoError(t, common.UnmarshalJsonStr("{"+fields+"}", &body))
+							body["model"], body["stream"] = strings.TrimSpace(model), stream
+							if responses {
+								body["reasoning"] = map[string]any{"effort": "high"}
+								body["max_output_tokens"], body["store"] = 96, false
+							} else {
+								body["reasoning_effort"], body["max_tokens"] = "high", 96
+								if stream {
+									body["stream_options"] = map[string]any{"include_usage": true}
+								}
+							}
+							out := invoke(t, body, responses, stream)
+							if stream {
+								if responses {
+									require.Contains(t, string(out), "response.completed")
+								} else {
+									require.Contains(t, string(out), "[DONE]")
+								}
+							} else if responses {
+								require.Equal(t, "completed", gjson.GetBytes(out, "status").String())
+							} else {
+								require.Equal(t, "stop", gjson.GetBytes(out, "choices.0.finish_reason").String())
+							}
+						})
+					}
+				})
 				t.Run(name, func(t *testing.T) {
 					fn := map[string]any{"name": "lookup_weather", "parameters": map[string]any{"type": "object", "properties": map[string]any{"city": map[string]any{"type": "string"}}, "required": []string{"city"}}}
 					body := map[string]any{"model": strings.TrimSpace(model), "stream": stream, "tool_choice": "required"}
@@ -140,6 +182,7 @@ func TestLiveSelfHosted(t *testing.T) {
 							}
 						}
 						require.Greater(t, len(inputs), 1)
+						inputs = append(inputs, map[string]any{"role": "system", "content": "Report the temperature from the tool result concisely."})
 						body["input"] = inputs
 					} else {
 						var message map[string]any
@@ -150,6 +193,7 @@ func TestLiveSelfHosted(t *testing.T) {
 						for _, call := range calls {
 							messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.Get("id").String(), "content": "The temperature is 23 degrees Celsius."})
 						}
+						messages = append(messages, map[string]any{"role": "system", "content": "Report the temperature from the tool result concisely."})
 						body["messages"] = messages
 					}
 					out = invoke(t, body, responses, false)

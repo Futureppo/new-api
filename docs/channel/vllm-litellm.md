@@ -15,7 +15,15 @@
 
 LiteLLM 的 Qwen3.8 Chat 请求携带推理档位时，自动将 `reasoning_effort` 合并到 `allowed_openai_params`。该字段用于让 LiteLLM 向后端转发参数，不会注入 vLLM 直连请求。
 
+Qwen3.8 后端的聊天模板只接受开头的一条 `system`。多条或后置的 `system` 会按原出现顺序合并到开头，字符串之间使用空行分隔，内容数组保留原有内容块。Chat 中的 `developer` 一并合并为 `system`，因为 LiteLLM 会将这类角色转换为 `system`。该后端无法分别表示这些指令角色的优先级。
+
+Responses 同时提供 `instructions` 和 `input` 中的 `system` 时，将 `instructions` 内容放在合并后的系统指令最前面，并移除独立的 `instructions` 字段，避免后端再次生成一条系统消息。只有 `instructions`、没有 `system` 输入时保持原样；Responses 的 `developer` 输入保持原角色和顺序。
+
+普通对话、工具调用与工具结果的相对顺序不变。合并不丢弃指令内容；如果多条指令含有无法同时保留的不同 `name`、`id` 等消息级属性，会明确返回 400。已有服务端会话中未随请求传入的历史消息无法在此处整理。
+
 这些规则在发送前执行，包括参数覆盖和请求体透传模式；日志记录实际发送的推理档位。其他模型不应用 Qwen3.8 档位转换。
+
+已有 OpenAI 渠道不会自动变为新渠道，也不应用以上兼容处理。部署本版本后，连接 LiteLLM 的渠道需由管理员选择 **LiteLLM（76）**；直连 vLLM 则选择 **vLLM（75）**。
 
 vLLM 渠道将 JSON 请求中的 `extra_body` 展开到顶层，显式顶层字段优先。可通过 `chat_template_kwargs` 传递思考开关，`false` 和数值 `0` 会保留。
 
@@ -23,7 +31,7 @@ vLLM 渠道将 JSON 请求中的 `extra_body` 展开到顶层，显式顶层字�
 
 ## 验证
 
-单元测试覆盖地址、鉴权、模型映射、参数覆盖、透传、工具调用、推理档位、显式零值及流式错误。
+单元测试覆盖地址、鉴权、模型映射、参数覆盖、透传、指令消息合并、工具调用、推理档位、显式零值及流式错误。
 
 真实调用测试默认跳过。设置 `SELFHOST_LIVE_BASE_URL`、逗号分隔的 `SELFHOST_LIVE_MODELS`，以及可选的 `SELFHOST_LIVE_KEY`；`SELFHOST_LIVE_TYPE` 为 `vllm` 或 `litellm`（默认），然后运行：
 
@@ -31,4 +39,4 @@ vLLM 渠道将 JSON 请求中的 `extra_body` 展开到顶层，显式顶层字�
 go test ./relay -run '^TestLiveSelfHosted$' -v -count=1
 ```
 
-测试会产生真实推理调用，覆盖 Chat/Responses 普通与流式工具调用，以及工具结果回传。
+测试会产生真实推理调用，覆盖 Chat/Responses 普通与流式工具调用、工具结果回传，以及多条/后置系统指令、Chat developer 和 Responses instructions 的组合。
