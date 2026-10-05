@@ -1,7 +1,7 @@
 package opencode
 
 const (
-	defaultUserAgent = "opencode/1.18.32"
+	defaultUserAgent = "opencode/1.18.34"
 	defaultClient    = "cli"
 	defaultProject   = "global"
 )

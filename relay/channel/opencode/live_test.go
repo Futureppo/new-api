@@ -18,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -49,7 +50,7 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 	if apiKey == "" {
 		apiKey = "public"
 	}
-	models := []string{"mimo-v2.5-free", "muse-spark-1.3-contributor-free"}
+	models := []string{"mimo-v2.6-flash-free", "muse-spark-1.3-contributor-free"}
 	if os.Getenv("OPENCODE_LIVE_ALL_FREE") == "1" {
 		var err error
 		models, err = liveFreeModels(apiKey)
@@ -62,6 +63,10 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 	}
 	gin.SetMode(gin.TestMode)
 	service.InitHttpClient()
+	settings := model_setting.GetGlobalSettings()
+	previousPassThrough := settings.PassThroughRequestEnabled
+	settings.PassThroughRequestEnabled = os.Getenv("OPENCODE_LIVE_GLOBAL_PASSTHROUGH") == "1"
+	t.Cleanup(func() { settings.PassThroughRequestEnabled = previousPassThrough })
 	var results []liveClientHeaderResult
 	t.Cleanup(func() {
 		path := os.Getenv("OPENCODE_LIVE_REPORT")
@@ -88,6 +93,7 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			defer cancel()
 			info := newRelayInfo(model)
 			info.ApiKey = apiKey
+			info.ChannelSetting.PassThroughBodyEnabled = os.Getenv("OPENCODE_LIVE_CHANNEL_PASSTHROUGH") == "1"
 			info.IsStream = true
 			info.DisablePing = true
 			info.ShouldIncludeUsage = true
@@ -128,6 +134,13 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx)
 			c.Request.Header.Set("Content-Type", "application/json")
 			c.Request.Header.Set("User-Agent", "claude-code/2.0")
+			c.Request.Header.Set("x-opencode-client", "other-agent")
+			c.Request.Header.Set("x-opencode-session", "downstream-session")
+			c.Request.Header.Set("x-opencode-session-id", "different-session")
+			c.Request.Header.Set("x-opencode-request", "downstream-request")
+			c.Request.Header.Set("x-opencode-project", "downstream-project")
+			c.Request.Header.Set("x-opencode-parent-session-id", "downstream-parent")
+			c.Request.Header.Set("x-stainless-package-version", "downstream-sdk")
 			adaptor := &Adaptor{}
 			adaptor.Init(info)
 			result.Endpoint, err = adaptor.GetRequestURL(info)
@@ -142,11 +155,18 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			defer response.Body.Close()
 			result.Status = response.StatusCode
 			result.Headers = make(map[string]string)
-			for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+			for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project"} {
 				result.Headers[name] = response.Request.Header.Get(name)
 				require.NotEmpty(t, result.Headers[name], "missing outbound %s", name)
 			}
 			require.Equal(t, defaultUserAgent, result.Headers["User-Agent"])
+			require.Equal(t, defaultClient, result.Headers["x-opencode-client"])
+			require.Equal(t, defaultProject, result.Headers["x-opencode-project"])
+			require.Equal(t, result.Headers["x-opencode-session"], result.Headers["x-opencode-session-id"])
+			require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, result.Headers["x-opencode-session"])
+			require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, result.Headers["x-opencode-request"])
+			require.Empty(t, response.Request.Header.Get("x-opencode-parent-session-id"))
+			require.Empty(t, response.Request.Header.Get("x-stainless-package-version"))
 			if response.StatusCode != http.StatusOK {
 				data, _ := io.ReadAll(io.LimitReader(response.Body, 2000))
 				result.Error = redact(string(data))

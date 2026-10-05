@@ -35,34 +35,40 @@ func clientIdentifier(c *gin.Context, prefix string) (string, error) {
 }
 
 func fillClientHeaders(c *gin.Context, header *http.Header) error {
-	header.Set("User-Agent", openCodeUserAgent(header.Get("User-Agent")))
+	// Do not allow a downstream SDK's identity to survive into the OpenCode
+	// request, including through wildcard/regex passthrough. Explicit channel
+	// header overrides are still applied afterwards by DoApiRequest.
+	for name := range *header {
+		if isClientIdentityHeader(name) {
+			header.Del(name)
+		}
+	}
+	header.Set("User-Agent", defaultUserAgent)
 	for _, item := range []struct{ name, value string }{
 		{"x-opencode-client", defaultClient},
 		{"x-opencode-project", defaultProject},
 	} {
-		if header.Get(item.name) == "" {
-			header.Set(item.name, item.value)
-		}
+		header.Set(item.name, item.value)
 	}
 	for _, item := range []struct{ name, prefix string }{
 		{"x-opencode-session", "ses"},
 		{"x-opencode-request", "msg"},
 	} {
-		if header.Get(item.name) != "" {
-			continue
-		}
 		value, err := clientIdentifier(c, item.prefix)
 		if err != nil {
 			return err
 		}
 		header.Set(item.name, value)
 	}
+	// Official request.ts sends both session header names with the same value.
+	header.Set("x-opencode-session-id", header.Get("x-opencode-session"))
 	return nil
 }
 
-func openCodeUserAgent(value string) string {
-	if strings.HasPrefix(value, "opencode/") {
-		return value
-	}
-	return defaultUserAgent
+func isClientIdentityHeader(name string) bool {
+	name = strings.ToLower(name)
+	return name == "user-agent" || strings.HasPrefix(name, "x-opencode-") ||
+		name == "x-parent-session-id" || name == "x-session-id" || name == "x-session-affinity" ||
+		strings.HasPrefix(name, "x-stainless-") || strings.HasPrefix(name, "x-cline-") ||
+		name == "x-app" || name == "x-title"
 }

@@ -95,13 +95,13 @@ func TestFreeStreamSizeLimits(t *testing.T) {
 	}
 }
 
-func TestFreePassThroughStaysUnmodified(t *testing.T) {
+func TestFreeCompatibilitySurvivesPassThroughSettings(t *testing.T) {
 	info := newRelayInfo("mimo-v2.5-free")
 	adaptor := &Adaptor{}
 	adaptor.Init(info)
 	require.True(t, adaptor.needsFreeCompatibility(info))
 	info.ChannelSetting.PassThroughBodyEnabled = true
-	require.False(t, adaptor.needsFreeCompatibility(info))
+	require.True(t, adaptor.needsFreeCompatibility(info))
 	info.ChannelSetting.PassThroughBodyEnabled = false
 	info.ChannelType = constant.ChannelTypeOpenCodeGo
 	require.False(t, adaptor.needsFreeCompatibility(info))
@@ -110,7 +110,7 @@ func TestFreePassThroughStaysUnmodified(t *testing.T) {
 	before := settings.PassThroughRequestEnabled
 	t.Cleanup(func() { settings.PassThroughRequestEnabled = before })
 	settings.PassThroughRequestEnabled = true
-	require.False(t, adaptor.needsFreeCompatibility(info))
+	require.True(t, adaptor.needsFreeCompatibility(info))
 }
 
 func TestFreeResponsesGuardCoversNativeAndConvertedClients(t *testing.T) {

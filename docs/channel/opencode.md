@@ -14,20 +14,22 @@ OpenCode Zen 的“上游模型管理”中提供“自动更新 OpenCode 免费
 
 ## 客户端标识
 
-OpenCode Zen 和 Go 共用“补齐 OpenCode 客户端标识”开关，保存在渠道 `settings.opencode_client_headers_enabled`。缺省或 `null` 默认开启，显式 `false` 关闭补齐，旧渠道无需迁移。
+OpenCode Zen 和 Go 共用“统一使用 OpenCode 客户端标识”开关，保存在渠道 `settings.opencode_client_headers_enabled`。缺省或 `null` 默认开启，显式 `false` 关闭，旧渠道无需迁移。
 
 | 请求头 | 开启时的行为 |
 | --- | --- |
-| `User-Agent` | 保留以 `opencode/` 开头的值，否则使用 `opencode/1.18.32` |
-| `x-opencode-client` | 保留已有值，缺失时使用 `cli` |
-| `x-opencode-project` | 保留已有值，缺失时使用 `global` |
-| `x-opencode-session` | 保留已有值，缺失时生成 OpenCode 格式的 `ses_` 标识 |
-| `x-opencode-request` | 保留已有值，缺失时生成 OpenCode 格式的 `msg_` 标识 |
-| `x-parent-session-id` | 仅在客户端提供时透传 |
+| `User-Agent` | 覆盖为 `opencode/1.18.34` |
+| `x-opencode-client` | 覆盖为 `cli` |
+| `x-opencode-project` | 覆盖为 `global` |
+| `x-opencode-session`、`x-opencode-session-id` | 覆盖为同一个生成的 OpenCode 格式 `ses_` 标识 |
+| `x-opencode-request` | 覆盖为生成的 OpenCode 格式 `msg_` 标识 |
+| `x-parent-session-id`、`x-opencode-parent-session-id` | 网关生成新的请求会话，不携带调用方的父会话标识 |
 
-生成的标识在同一次入口请求的重试中保持不变。需要跨轮会话连续性时，调用方应传入稳定的 `x-opencode-session`。
+生成的标识在同一次入口请求的重试中保持不变，不继承调用方的跨轮会话身份。需要自行管理上游会话时，可关闭此开关或使用显式渠道请求头配置。
 
-关闭开关后仅透传已有标识。通配符及正则请求头透传不能把非 OpenCode 的 UA 覆盖回去；显式渠道／运行时自定义请求头最后应用，优先级最高。协议鉴权头沿用各适配器规则。
+关闭开关后仅透传已有标识。开启时，通配符及正则透传不能恢复调用方的 UA、`x-opencode-*`、父会话、`x-session-id`、`x-session-affinity`、`x-stainless-*`、`x-cline-*`、`x-app`、`x-title`；显式渠道／运行时自定义请求头最后应用，优先级最高。协议鉴权头沿用各适配器规则。
+
+请求头定义对照 [OpenCode 官方源码 907b3bc 的 request.ts](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/llm/request.ts#L187)，其中新增的 `x-opencode-session-id` 与 `x-opencode-session` 使用相同值。
 
 ## 免费对话模型兼容
 
@@ -40,9 +42,17 @@ Zen 的 Chat Completions／Responses 免费模型（`-free` 后缀及 `big-pickl
 - Chat 请求开启流式用量；没有客户端工具且未指定 `tool_choice` 时设为 `none`。Responses 保留客户端原有选择。
 - 模型若调用仅为兼容而补充的工具，返回明确错误；调用方原本声明的同名工具正常透传。
 - 校验 SSE 错误、结束事件、工具名分片、超时和取消；错误或截断后不补成功结束标记。单事件限 8 MiB，非流式汇总限 32 MiB。
-- Zen 付费模型、Go、Messages／Gemini 上游以及开启渠道或全局请求体透传的请求不应用此兼容逻辑。
+- Zen 付费模型、Go、Messages／Gemini 上游不应用此兼容逻辑。客户端使用 Claude／Gemini 协议、但转为免费 Chat 上游的请求仍应用兼容处理。
 
-这部分处理独立于请求头开关。使用免费模型时，保持请求头补齐开启、请求体透传关闭。既有 Chat／Messages → Responses 转换也经过同一响应校验；`muse-spark-*` 使用 `/v1/responses`。
+这部分处理独立于请求头开关，全局或渠道请求体透传均不会将其关闭。OpenCode 按模型选择协议，Chat、Messages、Gemini 及 Responses 入口均须经过相应转换及模型映射。既有 Chat／Messages → Responses 转换也经过同一响应校验；`muse-spark-*` 使用 `/v1/responses`。
+
+## 403 回归修复：2026-10-05
+
+修复前，转发层对 OpenCode 强制执行协议转换，但适配器仍在全局／渠道请求体透传开启时跳过免费模型的流式和工具兼容，导致处理不一致。使用 `public` 匿名凭据、`mimo-v2.6-flash-free`、流式请求及全局透传，实测复现 HTTP 403 `FreeTierError`。修复后，同时开启全局和渠道透传，并传入第三方客户端 UA 与冲突的身份请求头，同一模型返回 HTTP 200、`OK` 和正常结束事件。
+
+MiMo-V2.6-Flash Free 与 Muse Spark 1.3 Contributor Free 的流式工具调用也均返回 HTTP 200，原有 `read` 工具及参数正常返回。最新免费目录的修复前抽测中，9 个对话模型正常，DeepSeek V4 Flash、Fledge Alpha、Ling 3.0 Flash Fin、Ling 3.1 Flash 分别返回上游模型／端点不可用错误（400、502、400、429），未出现 `FreeTierError`；这些服务可用性错误仍原样保留。
+
+官方目录中的模型 ID 是 `mimo-v2.6-flash-free`。如果对外使用 `mimo-v2.6-flash`，应配置模型映射 `{"mimo-v2.6-flash":"mimo-v2.6-flash-free"}`；本次直接请求无后缀 ID 得到的是上游 `ModelError`，而非 `FreeTierError`，不应混为同一故障。
 
 `jev-1.13-free` 属于非流式 SystemOne 原生模型，不属于上述 Chat／Responses 兼容范围。本次不把它映射为普通对话模型。上游的权限、地域、额度及服务故障仍可能导致失败，非 2xx 原始错误会保留。
 

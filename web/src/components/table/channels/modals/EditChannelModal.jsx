@@ -3256,7 +3256,7 @@ const EditChannelModal = (props) => {
                   {[63, 64].includes(inputs.type) && (
                     <Form.Switch
                       field='opencode_client_headers_enabled'
-                      label={t('补齐 OpenCode 客户端标识')}
+                      label={t('统一使用 OpenCode 客户端标识')}
                       checkedText={t('开')}
                       uncheckedText={t('关')}
                       onChange={(value) =>
@@ -3266,7 +3266,7 @@ const EditChannelModal = (props) => {
                         )
                       }
                       extraText={t(
-                        '默认开启，补齐缺失的客户端、会话、请求和项目标识，并将非 OpenCode 的 User-Agent 替换为 OpenCode 标识。关闭后仅透传已有值；自定义请求头优先。',
+                        '默认开启，覆盖调用方的客户端身份请求头，统一使用 OpenCode 标识并生成会话、请求标识。关闭后仅透传已有值；显式自定义请求头优先。',
                       )}
                     />
                   )}
@@ -3274,7 +3274,7 @@ const EditChannelModal = (props) => {
                   {inputs.type === 63 && (
                     <div className='text-xs text-gray-500'>
                       {t(
-                        'Zen 免费对话模型默认使用上游流式请求并补充必要的工具声明，保留调用方原有工具；请求体透传开启时不补充。',
+                        'Zen 免费对话模型始终使用上游流式请求并补充必要的工具声明，保留调用方原有工具；全局或渠道请求体透传不会关闭此兼容处理。',
                       )}
                     </div>
                   )}

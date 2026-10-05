@@ -54,6 +54,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 		{name: "agent user agent", incomingUA: "claude-code/2.0", status: http.StatusOK},
 		{name: "wildcard passthrough", incomingUA: "openai-python/1.0", passthrough: "*", status: http.StatusOK},
 		{name: "regex passthrough", incomingUA: "codex/1.0", passthrough: "re:(?i)^user-agent$", status: http.StatusOK},
+		{name: "identity regex passthrough", incomingUA: "codex/1.0", passthrough: "re:(?i)^(user-agent|x-.*)$", status: http.StatusOK},
 		{name: "original user agent passthrough", incomingUA: "opencode/2.0.0 custom", passthrough: "*", status: http.StatusOK},
 		{name: "disabled passthrough", enabled: common.GetPointer(false), incomingUA: "curl/8.0.0", passthrough: "*", status: http.StatusOK},
 		{name: "explicit override after passthrough", incomingUA: "curl/8.0.0", passthrough: "*", override: true, status: http.StatusOK},
@@ -94,7 +95,8 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						overrides := map[string]any{
 							"user-agent": "custom-agent", "X-OpenCode-Client": "custom-client",
 							"x-opencode-session": "custom-session", "x-opencode-request": "custom-request",
-							"x-opencode-project": "custom-project",
+							"x-opencode-project": "custom-project", "x-opencode-session-id": "custom-session-id",
+							"x-opencode-parent-session-id": "custom-parent", "x-app": "custom-app",
 						}
 						info.HeadersOverride = overrides
 					}
@@ -114,8 +116,13 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					c.Request.Header.Set("x-opencode-unlisted", "private-value")
 					c.Request.Header.Set("User-Agent", tc.incomingUA)
 					c.Request.Header.Set("x-opencode-client", tc.client)
+					c.Request.Header.Set("x-stainless-package-version", "downstream-sdk")
+					c.Request.Header.Set("x-cline-version", "downstream-cline")
+					c.Request.Header.Set("x-app", "downstream-app")
+					c.Request.Header.Set("x-title", "downstream-title")
 					metadata := map[string]string{
 						"x-opencode-session": "ses_original", "x-opencode-request": "msg_original", "x-opencode-project": "project-original",
+						"x-opencode-session-id": "ses_other", "x-opencode-parent-session-id": "ses_other_parent",
 					}
 					// Background tests normally have no incoming client metadata.
 					if !channelTest && !tc.omitMetadata {
@@ -138,12 +145,13 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					require.Equal(t, protocol.authValue, got.header.Get(protocol.authHeader))
 					require.Equal(t, "application/json", got.header.Get("Content-Type"))
 					require.Empty(t, got.header.Get("Cookie"))
-					if tc.passthrough == "*" && !channelTest {
+					enabled := info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders()
+					if tc.passthrough == "*" && !channelTest && !enabled {
 						require.Equal(t, "private-value", got.header.Get("x-opencode-unlisted"))
 					} else {
 						require.Empty(t, got.header.Get("x-opencode-unlisted"))
 					}
-					if !channelTest && !tc.omitMetadata {
+					if !channelTest && !tc.omitMetadata && !enabled {
 						require.Equal(t, "ses_parent", got.header.Get("x-parent-session-id"))
 					} else {
 						require.Empty(t, got.header.Get("x-parent-session-id"))
@@ -154,6 +162,9 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						for _, suffix := range []string{"session", "request", "project"} {
 							require.Equal(t, "custom-"+suffix, got.header.Get("x-opencode-"+suffix))
 						}
+						require.Equal(t, "custom-session-id", got.header.Get("x-opencode-session-id"))
+						require.Equal(t, "custom-parent", got.header.Get("x-opencode-parent-session-id"))
+						require.Equal(t, "custom-app", got.header.Get("x-app"))
 						return
 					}
 					if tc.enabled != nil && !*tc.enabled {
@@ -164,31 +175,20 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						}
 						require.Equal(t, tc.client, got.header.Get("x-opencode-client"))
 					} else {
-						wantUA := tc.incomingUA
-						if !strings.HasPrefix(wantUA, "opencode/") {
-							wantUA = "opencode/1.18.32"
+						require.Equal(t, defaultUserAgent, got.header.Get("User-Agent"))
+						require.Equal(t, "cli", got.header.Get("x-opencode-client"))
+						require.Equal(t, "global", got.header.Get("x-opencode-project"))
+						require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get("x-opencode-session"))
+						require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get("x-opencode-request"))
+						require.Equal(t, got.header.Get("x-opencode-session"), got.header.Get("x-opencode-session-id"))
+						for _, name := range []string{"x-parent-session-id", "x-opencode-parent-session-id", "x-stainless-package-version", "x-cline-version", "x-app", "x-title"} {
+							require.Empty(t, got.header.Get(name), name)
 						}
-						wantClient := tc.client
-						if wantClient == "" {
-							wantClient = "cli"
-						}
-						require.Equal(t, wantUA, got.header.Get("User-Agent"))
-						require.Equal(t, wantClient, got.header.Get("x-opencode-client"))
+						return
 					}
 					for name, value := range metadata {
 						if channelTest || tc.omitMetadata {
-							if tc.enabled != nil && !*tc.enabled {
-								require.Empty(t, got.header.Get(name))
-							} else {
-								switch name {
-								case "x-opencode-session":
-									require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get(name))
-								case "x-opencode-request":
-									require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get(name))
-								case "x-opencode-project":
-									require.Equal(t, "global", got.header.Get(name))
-								}
-							}
+							require.Empty(t, got.header.Get(name))
 						} else {
 							require.Equal(t, value, got.header.Get(name))
 						}
@@ -207,7 +207,7 @@ func TestMissingClientIdentifiersRemainStableAcrossRetries(t *testing.T) {
 	require.NoError(t, adaptor.SetupRequestHeader(c, &first, newRelayInfo("mimo-v2.5-free")))
 	retry := make(http.Header)
 	require.NoError(t, adaptor.SetupRequestHeader(c, &retry, newGoRelayInfo("kimi-k3")))
-	for _, name := range []string{"x-opencode-session", "x-opencode-request", "x-opencode-project"} {
+	for _, name := range []string{"x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project"} {
 		require.NotEmpty(t, first.Get(name))
 		require.Equal(t, first.Get(name), retry.Get(name))
 	}
@@ -219,7 +219,7 @@ func TestMissingClientIdentifiersRemainStableAcrossRetries(t *testing.T) {
 	require.NotEqual(t, first.Get("x-opencode-request"), other.Get("x-opencode-request"))
 }
 
-func TestPartiallyMissingClientIdentifiers(t *testing.T) {
+func TestPartiallyMissingClientIdentifiersAreNormalized(t *testing.T) {
 	for _, missing := range []string{"x-opencode-session", "x-opencode-request", "x-opencode-project"} {
 		t.Run(missing, func(t *testing.T) {
 			c, _ := gin.CreateTestContext(httptest.NewRecorder())
@@ -233,8 +233,10 @@ func TestPartiallyMissingClientIdentifiers(t *testing.T) {
 			require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &header, newRelayInfo("mimo-v2.5-free")))
 			require.NotEmpty(t, header.Get(missing))
 			for name, values := range c.Request.Header {
-				require.Equal(t, values[0], header.Get(name))
+				require.NotEqual(t, values[0], header.Get(name))
 			}
+			require.Equal(t, defaultProject, header.Get("x-opencode-project"))
+			require.Equal(t, header.Get("x-opencode-session"), header.Get("x-opencode-session-id"))
 		})
 	}
 }

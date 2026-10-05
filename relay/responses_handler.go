@@ -80,7 +80,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 	adaptor.Init(info)
 	var requestBody io.Reader
-	if info.ChannelType != appconstant.ChannelTypeXunfeiMaas && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
+	if info.ChannelType != appconstant.ChannelTypeXunfeiMaas &&
+		info.ChannelType != appconstant.ChannelTypeOpenCode && info.ChannelType != appconstant.ChannelTypeOpenCodeGo &&
+		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		info.MarkModelMappingBypassed()
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {

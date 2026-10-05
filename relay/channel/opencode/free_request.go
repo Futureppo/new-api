@@ -12,7 +12,6 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
-	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -20,10 +19,13 @@ import (
 var freeCoreTools = []string{"bash", "edit", "glob", "grep", "read"}
 
 func (a *Adaptor) needsFreeCompatibility(info *relaycommon.RelayInfo) bool {
-	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeOpenCode || info.ChannelSetting.PassThroughBodyEnabled || model_setting.GetGlobalSettings().PassThroughRequestEnabled {
+	// OpenCode always selects and converts the upstream protocol by model.
+	// Match that policy here: a generic passthrough flag must not disable the
+	// stream/tool contract after the relay has already converted the request.
+	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeOpenCode {
 		return false
 	}
-	if info.RelayMode != relayconstant.RelayModeUnknown && info.RelayMode != relayconstant.RelayModeChatCompletions && info.RelayMode != relayconstant.RelayModeResponses {
+	if info.RelayMode != relayconstant.RelayModeUnknown && info.RelayMode != relayconstant.RelayModeChatCompletions && info.RelayMode != relayconstant.RelayModeResponses && info.RelayMode != relayconstant.RelayModeGemini {
 		return false
 	}
 	if a.freeRequestMode != constant.OpenCodeEndpointChat && a.freeRequestMode != constant.OpenCodeEndpointResponses {

@@ -96,14 +96,14 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 	if err != nil {
 		return err
 	}
-	// Preserve client identifiers independently of whether missing values are filled.
-	for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-request", "x-opencode-project", "x-parent-session-id"} {
+	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
+		return fillClientHeaders(c, header)
+	}
+	// With identity normalization disabled, preserve explicitly supplied headers.
+	for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project", "x-parent-session-id", "x-opencode-parent-session-id"} {
 		if value := c.GetHeader(name); value != "" {
 			header.Set(name, value)
 		}
-	}
-	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
-		return fillClientHeaders(c, header)
 	}
 	return nil
 }
@@ -123,8 +123,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 
 func (a *Adaptor) FilterHeaderPassthrough(headers map[string]string, info *relaycommon.RelayInfo) {
 	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
-		if value, ok := headers["user-agent"]; ok {
-			headers["user-agent"] = openCodeUserAgent(value)
+		for name := range headers {
+			if isClientIdentityHeader(name) {
+				delete(headers, name)
+			}
 		}
 	}
 }
