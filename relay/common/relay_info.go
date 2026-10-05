@@ -316,6 +316,8 @@ func (info *RelayInfo) ToString() string {
 
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
+	constant.ChannelTypeVLLM:        true,
+	constant.ChannelTypeLiteLLM:     true,
 	constant.ChannelTypeXunfeiMaas:  true, // Documented for vision; the adaptor strips it for unverified text models.
 	constant.ChannelTypeCline:       true, // Cline SDK sends stream_options.include_usage.
 	constant.ChannelTypeMiMo:        true, // Verified stream_options.include_usage with MiMo on 2026-09-21.

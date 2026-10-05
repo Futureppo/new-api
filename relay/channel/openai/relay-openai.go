@@ -51,7 +51,7 @@ func sendStreamData(c *gin.Context, info *relaycommon.RelayInfo, data string, fo
 	if !forceFormat && !thinkToContent {
 		return helper.StringData(c, data)
 	}
-	if info.ChannelType == constant.ChannelTypeDeepSeek {
+	if info.ChannelType == constant.ChannelTypeDeepSeek || constant.IsSelfHostedChannel(info.ChannelType) {
 		var envelope dto.SimpleResponse
 		if err := common.UnmarshalJsonStr(data, &envelope); err != nil {
 			return err
@@ -185,7 +185,7 @@ func OaiStreamHandlerWithDataTransformer(c *gin.Context, info *relaycommon.Relay
 
 			lastStreamData = data
 			streamItems = append(streamItems, data)
-			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline {
+			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline || constant.IsSelfHostedChannel(info.ChannelType) {
 				var envelope dto.SimpleResponse
 				if err := common.UnmarshalJsonStr(data, &envelope); err != nil {
 					upstreamStreamError = true
@@ -197,6 +197,13 @@ func OaiStreamHandlerWithDataTransformer(c *gin.Context, info *relaycommon.Relay
 			}
 		}
 	})
+
+	if constant.IsSelfHostedChannel(info.ChannelType) && info.StreamStatus != nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonDone {
+		upstreamStreamError = true
+		if !info.StreamStatus.HasErrors() && info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
+			info.StreamStatus.RecordError("upstream Chat Completions stream ended without [DONE]")
+		}
+	}
 
 	// 对音频模型，从倒数第二个stream data中提取usage信息
 	if isAudioModel && secondLastStreamData != "" {
@@ -290,8 +297,8 @@ func OpenaiHandlerWithBodyTransformer(c *gin.Context, info *relaycommon.RelayInf
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
-	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline) {
-		if (info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline) && resp.StatusCode == http.StatusOK {
+	if oaiError := simpleResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline || constant.IsSelfHostedChannel(info.ChannelType)) {
+		if (info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline || constant.IsSelfHostedChannel(info.ChannelType)) && resp.StatusCode == http.StatusOK {
 			return nil, types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		}
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)

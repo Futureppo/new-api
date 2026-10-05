@@ -27,6 +27,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
+	"github.com/QuantumNous/new-api/relay/channel/selfhost"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/relay/channel/xfyun_maas"
@@ -223,6 +224,9 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 	if channel.Type == constant.ChannelTypeKilo && (channel.GetOtherSettings().KiloAnonymousEnabled || strings.TrimSpace(key) == "") {
 		headers.Del("Authorization")
 	}
+	if constant.IsSelfHostedChannel(channel.Type) && strings.TrimSpace(key) == "" {
+		headers.Del("Authorization")
+	}
 
 	return headers, nil
 }
@@ -234,6 +238,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:
+		return selfhost.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeCline:
 		return cline.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeMiMo:
@@ -415,6 +421,11 @@ func fetchCohereModelIDs(channel *model.Channel, baseURL string, key string) ([]
 func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
+	}
+	if constant.IsSelfHostedChannel(channel.Type) && strings.TrimSpace(customModelListURL) == "" {
+		if err := selfhost.ValidateBaseURL(baseURL); err != nil {
+			return nil, err
+		}
 	}
 	if channel.Type == constant.ChannelTypeXunfeiMaas && strings.TrimSpace(customModelListURL) == "" {
 		return nil, fmt.Errorf("讯飞星辰 MaaS 未提供公开模型列表接口，请从模型预设选择或手动填写已启用的模型 ID")
@@ -803,7 +814,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel.Key == "" && !(channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled) {
+		if channel.Key == "" && !constant.IsSelfHostedChannel(channel.Type) && !(channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled) {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -822,6 +833,11 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 		}
 	}
 
+	if constant.IsSelfHostedChannel(channel.Type) && (isAdd || channel.BaseURL != nil) {
+		if err := selfhost.ValidateBaseURL(channel.GetBaseURL()); err != nil {
+			return err
+		}
+	}
 	// Modal deployments have per-app URLs. Accept both the deployment origin
 	// and Modal's full curl-example endpoint, then store a canonical origin.
 	if channel.Type == constant.ChannelTypeModal {
@@ -980,6 +996,13 @@ func AddChannel(c *gin.Context) {
 		}
 	}
 
+	if ch := addChannelRequest.Channel; ch != nil && constant.IsSelfHostedChannel(ch.Type) {
+		ch.Key = strings.TrimSpace(ch.Key)
+		if ch.Key == "" && addChannelRequest.Mode != "single" {
+			common.ApiError(c, fmt.Errorf("无上游密钥时仅支持单渠道创建"))
+			return
+		}
+	}
 	// 使用统一的校验函数
 	if err := validateChannel(addChannelRequest.Channel, true); err != nil {
 		c.JSON(http.StatusOK, gin.H{
@@ -1024,6 +1047,9 @@ func AddChannel(c *gin.Context) {
 					continue
 				}
 				key = strings.TrimSpace(key)
+				if key == "" && constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) {
+					continue
+				}
 				cleanKeys = append(cleanKeys, key)
 			}
 			addChannelRequest.Channel.ChannelInfo.MultiKeySize = len(cleanKeys)
@@ -1056,7 +1082,11 @@ func AddChannel(c *gin.Context) {
 
 	channels := make([]model.Channel, 0, len(keys))
 	for _, key := range keys {
-		if key == "" && !(addChannelRequest.Channel.Type == constant.ChannelTypeKilo && addChannelRequest.Channel.GetOtherSettings().KiloAnonymousEnabled) {
+		if constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) {
+			key = strings.TrimSpace(key)
+		}
+		allowEmptyKey := constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) && addChannelRequest.Mode == "single"
+		if key == "" && !allowEmptyKey && !(addChannelRequest.Channel.Type == constant.ChannelTypeKilo && addChannelRequest.Channel.GetOtherSettings().KiloAnonymousEnabled) {
 			continue
 		}
 		localChannel := addChannelRequest.Channel
@@ -1265,6 +1295,7 @@ func DeleteChannelBatch(c *gin.Context) {
 
 type PatchChannel struct {
 	model.Channel
+	ClearKey     bool    `json:"clear_key"`
 	MultiKeyMode *string `json:"multi_key_mode"`
 	KeyMode      *string `json:"key_mode"` // 多key模式下密钥覆盖或者追加
 }
@@ -1309,6 +1340,24 @@ func UpdateChannel(c *gin.Context) {
 		return
 	}
 
+	effectiveType := channel.Type
+	if _, provided := rawBody["type"]; !provided {
+		effectiveType = originChannel.Type
+	}
+	if channel.ClearKey && (!constant.IsSelfHostedChannel(effectiveType) || originChannel.ChannelInfo.IsMultiKey || strings.TrimSpace(channel.Key) != "") {
+		common.ApiError(c, fmt.Errorf("仅 vLLM/LiteLLM 单密钥渠道支持清除密钥，且不能同时设置新密钥"))
+		return
+	}
+	if constant.IsSelfHostedChannel(effectiveType) {
+		channel.Type = effectiveType
+		if channel.BaseURL == nil {
+			channel.BaseURL = originChannel.BaseURL
+		}
+		if err := selfhost.ValidateBaseURL(channel.GetBaseURL()); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	// Always copy the original ChannelInfo so that fields like IsMultiKey and MultiKeySize are retained.
 	channel.ChannelInfo = originChannel.ChannelInfo
 	clineSyncNeeded := false
@@ -1503,7 +1552,7 @@ func UpdateChannel(c *gin.Context) {
 			// 覆盖模式：直接使用新密钥（默认行为，不需要特殊处理）
 		}
 	}
-	err = channel.Update()
+	err = channel.UpdateWithKeyClear(channel.ClearKey)
 	if err != nil {
 		common.ApiError(c, err)
 		return

@@ -38,6 +38,7 @@ type GeneralOpenAIRequest struct {
 	MaxTokens           *uint             `json:"max_tokens,omitempty"`
 	MaxCompletionTokens *uint             `json:"max_completion_tokens,omitempty"`
 	ReasoningEffort     string            `json:"reasoning_effort,omitempty"`
+	AllowedOpenAIParams []string          `json:"allowed_openai_params,omitempty"`
 	Verbosity           json.RawMessage   `json:"verbosity,omitempty"` // gpt-5
 	Temperature         *float64          `json:"temperature,omitempty"`
 	TopP                *float64          `json:"top_p,omitempty"`
@@ -896,7 +897,9 @@ type OpenAIResponsesRequest struct {
 	MaxToolCalls     *uint           `json:"max_tool_calls,omitempty"`
 	Prompt           json.RawMessage `json:"prompt,omitempty"`
 	// qwen
-	EnableThinking json.RawMessage `json:"enable_thinking,omitempty"`
+	EnableThinking     json.RawMessage `json:"enable_thinking,omitempty"`
+	ChatTemplateKwargs json.RawMessage `json:"chat_template_kwargs,omitempty"`
+	ExtraBody          json.RawMessage `json:"extra_body,omitempty"`
 	// perplexity
 	Preset json.RawMessage `json:"preset,omitempty"`
 }

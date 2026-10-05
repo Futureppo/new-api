@@ -137,6 +137,7 @@ const TYPESAFE_CHANNEL_TYPE = 71;
 const MIMO_CHANNEL_TYPE = 72;
 const CLINE_CHANNEL_TYPE = 73;
 const XFYUN_MAAS_CHANNEL_TYPE = 74;
+const isSelfHostedChannel = (type) => [75, 76].includes(Number(type));
 const MIMO_TEST_MODEL = 'mimo-v2.6-pro-ultraspeed';
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
@@ -148,6 +149,9 @@ const getServiceAccountKeyType = (type, keyType) =>
 function type2secretPrompt(type) {
   // inputs.type === 15 ? '按照如下格式输入：APIKey|SecretKey' : (inputs.type === 18 ? '按照如下格式输入：APPID|APISecret|APIKey' : '请输入渠道对应的鉴权密钥')
   switch (type) {
+    case 75:
+    case 76:
+      return '上游 API Key（可选）';
     case 15:
       return '按照如下格式输入：APIKey|SecretKey';
     case 18:
@@ -248,6 +252,7 @@ const EditChannelModal = (props) => {
     modal_keepalive_interval_seconds: 30,
     openrouter_auto_sync_free_and_alpha_models_enabled: false,
     openrouter_free_model_name_simplification_enabled: false,
+    clear_key: false,
     kilo_anonymous_enabled: false,
     kilo_auto_sync_free_models_enabled: false,
     kilo_free_model_name_simplification_enabled: false,
@@ -1192,6 +1197,7 @@ const EditChannelModal = (props) => {
       }
 
       initialBaseUrlRef.current = data.base_url || '';
+      data.clear_key = false;
       setInputs(data);
       if (formApiRef.current) {
         formApiRef.current.setValues(data);
@@ -1252,7 +1258,7 @@ const EditChannelModal = (props) => {
     let err = false;
     let errorMessage = '';
 
-    if (isEdit) {
+    if (isEdit && !(isSelfHostedChannel(inputs.type) && inputs.clear_key)) {
       // 如果是编辑模式，使用已有的 channelId 获取模型列表
       try {
         const res = await API.get('/api/channel/fetch_models/' + channelId, {
@@ -1286,7 +1292,10 @@ const EditChannelModal = (props) => {
       }
     } else {
       // 如果是新建模式，通过后端代理获取模型列表
-      let fetchKey = inputs?.['key'] || '';
+      let fetchKey =
+        isSelfHostedChannel(inputs.type) && inputs.clear_key
+          ? ''
+          : inputs?.['key'] || '';
       if (
         isVertexChannel(inputs.type) &&
         getServiceAccountKeyType(inputs.type, inputs.vertex_key_type) === 'json'
@@ -1313,7 +1322,7 @@ const EditChannelModal = (props) => {
         }
       }
 
-      if (!fetchKey && !isKiloAnonymous) {
+      if (!fetchKey && !isKiloAnonymous && !isSelfHostedChannel(inputs.type)) {
         errorMessage = errorMessage || t('请填写密钥');
         err = true;
       } else {
@@ -1811,6 +1820,15 @@ const EditChannelModal = (props) => {
   const submit = async () => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
+    if (isSelfHostedChannel(localInputs.type)) {
+      if (!isEdit && batch && !(localInputs.key || '').trim()) {
+        showInfo(t('无上游密钥时仅支持单渠道创建'));
+        return;
+      }
+      if (isEdit && localInputs.clear_key) delete localInputs.key;
+    } else {
+      delete localInputs.clear_key;
+    }
     localInputs.param_override = inputs.param_override;
     const kiloAnonymous =
       localInputs.type === KILO_CHANNEL_TYPE &&
@@ -1928,7 +1946,11 @@ const EditChannelModal = (props) => {
     }
     delete localInputs.vertex_files;
 
-    if (!isEdit && (!localInputs.name || !localInputs.key)) {
+    if (
+      !isEdit &&
+      (!localInputs.name ||
+        (!localInputs.key && !isSelfHostedChannel(localInputs.type)))
+    ) {
       showInfo(t('请填写渠道名称和渠道密钥！'));
       return;
     }
@@ -1937,7 +1959,9 @@ const EditChannelModal = (props) => {
       return;
     }
     if (
-      (localInputs.type === 45 || localInputs.type === MODAL_CHANNEL_TYPE) &&
+      (localInputs.type === 45 ||
+        localInputs.type === MODAL_CHANNEL_TYPE ||
+        isSelfHostedChannel(localInputs.type)) &&
       (!localInputs.base_url || localInputs.base_url.trim() === '')
     ) {
       showInfo(t('请输入API地址！'));
@@ -3932,9 +3956,14 @@ const EditChannelModal = (props) => {
                                     )
                                 : t(type2secretPrompt(inputs.type))
                             }
-                            disabled={isKiloAnonymous}
+                            disabled={
+                              isKiloAnonymous ||
+                              (isSelfHostedChannel(inputs.type) && inputs.clear_key)
+                            }
                             rules={
-                              isEdit || isKiloAnonymous
+                              isEdit ||
+                              isKiloAnonymous ||
+                              isSelfHostedChannel(inputs.type)
                                 ? []
                                 : [{ required: true, message: t('请输入密钥') }]
                             }
@@ -4087,6 +4116,18 @@ const EditChannelModal = (props) => {
                       />
                     )}
 
+                    {isEdit &&
+                      isSelfHostedChannel(inputs.type) &&
+                      !isMultiKeyChannel && (
+                      <Form.Switch
+                        field='clear_key'
+                        label={t('清除上游密钥')}
+                        extraText={t(
+                          '保存后删除现有上游密钥；未开启时留空表示保留密钥。',
+                        )}
+                        onChange={(value) => handleInputChange('clear_key', value)}
+                      />
+                    )}
                     {inputs.type === 1 && (
                       <Form.Input
                         field='openai_organization'
@@ -4219,6 +4260,15 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {isSelfHostedChannel(inputs.type) && (
+                        <Banner
+                          type='info'
+                          description={t(
+                            'vLLM / LiteLLM 支持 Chat Completions 和 Responses。填写部署地址，可包含路径前缀、/v1 或完整接口路径；上游未启用鉴权时密钥可留空。模型可获取或手动填写，简称请配置模型映射。Qwen3.8 的 high 将映射为 medium。',
+                          )}
+                          className='!rounded-lg'
+                        />
+                      )}
                       {inputs.type === MODAL_CHANNEL_TYPE && (
                         <Banner
                           type='info'
@@ -4331,7 +4381,9 @@ const EditChannelModal = (props) => {
                                   : t('API地址')
                               }
                               placeholder={
-                                inputs.type === TYPESAFE_CHANNEL_TYPE
+                                isSelfHostedChannel(inputs.type)
+                                  ? 'https://your-server.example/prefix/v1'
+                                  : inputs.type === TYPESAFE_CHANNEL_TYPE
                                   ? 'https://api.typesafe.ai'
                                   : inputs.type === CLINE_CHANNEL_TYPE
                                   ? 'https://api.cline.bot/api'
@@ -4346,11 +4398,14 @@ const EditChannelModal = (props) => {
                                     )
                               }
                               rules={
-                                inputs.type === MODAL_CHANNEL_TYPE
+                                inputs.type === MODAL_CHANNEL_TYPE ||
+                                isSelfHostedChannel(inputs.type)
                                   ? [
                                       {
                                         required: true,
-                                        message: t('请输入 Modal 部署地址'),
+                                        message: inputs.type === MODAL_CHANNEL_TYPE
+                                          ? t('请输入 Modal 部署地址')
+                                          : t('请输入API地址！'),
                                       },
                                     ]
                                   : []
@@ -4361,7 +4416,11 @@ const EditChannelModal = (props) => {
                               showClear
                               disabled={isIonetLocked}
                               extraText={
-                                inputs.type === MODAL_CHANNEL_TYPE
+                                isSelfHostedChannel(inputs.type)
+                                  ? t(
+                                      '请填写上游模型的完整名称，或使用模型映射配置别名。',
+                                    )
+                                  : inputs.type === MODAL_CHANNEL_TYPE
                                   ? t(
                                       '模型由你的 Modal 部署决定，可手动填写或尝试获取模型列表。',
                                     )

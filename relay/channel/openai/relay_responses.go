@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -30,7 +31,10 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || constant.IsSelfHostedChannel(info.ChannelType)) {
+		if constant.IsSelfHostedChannel(info.ChannelType) && resp.StatusCode == http.StatusOK {
+			return nil, types.WithOpenAIError(*oaiError, http.StatusBadGateway)
+		}
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
 

@@ -72,7 +72,9 @@ const (
 	ChannelTypeMiMo           = 72
 	ChannelTypeCline          = 73
 	ChannelTypeXunfeiMaas     = 74
-	ChannelTypeDummy          = ChannelTypeXunfeiMaas + 1 // this one is only for count, do not add any channel after this
+	ChannelTypeVLLM           = 75
+	ChannelTypeLiteLLM        = 76
+	ChannelTypeDummy          = ChannelTypeLiteLLM + 1 // this one is only for count, do not add any channel after this
 
 )
 
@@ -152,6 +154,8 @@ var ChannelBaseURLs = []string{
 	"https://api.xiaomimimo.com",                //72
 	"https://api.cline.bot/api",                 //73
 	"https://maas-api.cn-huabei-1.xf-yun.com",   //74
+	"", //75, vLLM deployments use custom base URLs
+	"", //76, LiteLLM proxies use custom base URLs
 }
 
 var ChannelTypeNames = map[int]string{
@@ -226,6 +230,12 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeMiMo:           "MiMo",
 	ChannelTypeCline:          "Cline",
 	ChannelTypeXunfeiMaas:     "Xunfei MaaS",
+	ChannelTypeVLLM:           "vLLM",
+	ChannelTypeLiteLLM:        "LiteLLM",
+}
+
+func IsSelfHostedChannel(channelType int) bool {
+	return channelType == ChannelTypeVLLM || channelType == ChannelTypeLiteLLM
 }
 
 func GetChannelTypeName(channelType int) string {

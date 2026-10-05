@@ -19,6 +19,8 @@ For commercial licensing, please contact support@quantumnous.com
 
 export const CHANNEL_OPTIONS = [
   { value: 1, color: 'green', label: 'OpenAI' },
+  { value: 75, color: 'orange', label: 'vLLM' },
+  { value: 76, color: 'cyan', label: 'LiteLLM' },
   {
     value: 2,
     color: 'light-blue',
