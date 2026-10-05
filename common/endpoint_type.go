@@ -9,6 +9,9 @@ import (
 
 // GetEndpointTypesByChannelType returns the preferred endpoint types for a channel/model pair.
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
+	if channelType == constant.ChannelTypeMistral && strings.HasPrefix(strings.ToLower(modelName), "mistral-moderation-") {
+		return []constant.EndpointType{constant.EndpointTypeModerations}
+	}
 	var endpointTypes []constant.EndpointType
 	switch channelType {
 	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:

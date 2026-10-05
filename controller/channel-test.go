@@ -264,6 +264,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		return string(constant.EndpointTypeTypeSafeSystemOne)
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeMistral {
+		if mistral.IsModerationModel(modelName) {
+			return string(constant.EndpointTypeModerations)
+		}
 		if mistral.IsTranscriptionModel(modelName) {
 			return string(constant.EndpointTypeAudioTranscription)
 		}
@@ -382,6 +385,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
+	if endpointType == string(constant.EndpointTypeModerations) {
+		isStream = false
+	}
 	if channel.Type == constant.ChannelTypeTypeSafe {
 		if endpointType != string(constant.EndpointTypeTypeSafeSystemOne) {
 			return testResult{localErr: errors.New("TypeSafe only supports /v1/systemone")}
@@ -1355,6 +1361,8 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			// 返回 EmbeddingRequest
 			return buildTestEmbeddingRequest(model, channel)
+		case constant.EndpointTypeModerations:
+			return &dto.GeneralOpenAIRequest{Model: model, Input: "Have a nice day."}
 		case constant.EndpointTypeImageGeneration:
 			// 返回 ImageRequest
 			imageRequest := &dto.ImageRequest{

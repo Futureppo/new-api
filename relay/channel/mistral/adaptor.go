@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -24,6 +25,7 @@ type Adaptor struct {
 	audioFormat       string
 	audioGranularity  string
 	audioDuration     *float64
+	moderationInputs  int
 }
 
 func unsupported() error {
@@ -63,6 +65,8 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		endpoint = "/v1/chat/completions"
 	case relayconstant.RelayModeEmbeddings:
 		endpoint = "/v1/embeddings"
+	case relayconstant.RelayModeModerations:
+		endpoint = "/v1/moderations"
 	case relayconstant.RelayModeAudioTranscription:
 		endpoint = "/v1/audio/transcriptions"
 	default:
@@ -83,6 +87,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
+	if info.RelayMode == relayconstant.RelayModeModerations {
+		return a.convertModerationRequest(request)
+	}
 	if info.RelayMode != relayconstant.RelayModeChatCompletions {
 		return nil, unsupported()
 	}
@@ -103,6 +110,21 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(*gin.Context, *relaycommon.Relay
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io.Reader) (any, error) {
+	if info.RelayMode == relayconstant.RelayModeModerations {
+		// Validate the final body too: overrides and passthrough can change input.
+		data, err := io.ReadAll(body)
+		if err != nil {
+			return nil, err
+		}
+		var request dto.GeneralOpenAIRequest
+		if err := common.Unmarshal(data, &request); err != nil {
+			return nil, invalidRequest("invalid Mistral moderation JSON")
+		}
+		if _, err := a.convertModerationRequest(&request); err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(data)
+	}
 	var resp *http.Response
 	var err error
 	if info.RelayMode == relayconstant.RelayModeAudioTranscription {
@@ -134,6 +156,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return nil, badResponse(errors.New("empty Mistral response"))
 	}
 	switch info.RelayMode {
+	case relayconstant.RelayModeModerations:
+		return a.moderationResponse(c, resp, info)
 	case relayconstant.RelayModeEmbeddings:
 		return a.embeddingResponse(c, resp, info)
 	case relayconstant.RelayModeAudioTranscription:

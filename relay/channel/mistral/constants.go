@@ -7,6 +7,7 @@ var ModelList = []string{
 	"mistral-medium-latest",
 	"mistral-large-latest",
 	"mistral-embed",
+	"mistral-moderation-latest",
 	"ministral-3b-latest",
 	"ministral-8b-latest",
 	"ministral-14b-latest",

@@ -21,6 +21,7 @@ var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
 	constant.EndpointTypeCohereEmbeddings:      {Path: "/v1/embeddings", Method: "POST"},
 	constant.EndpointTypeImageGeneration:       {Path: "/v1/images/generations", Method: "POST"},
 	constant.EndpointTypeEmbeddings:            {Path: "/v1/embeddings", Method: "POST"},
+	constant.EndpointTypeModerations:           {Path: "/v1/moderations", Method: "POST"},
 	constant.EndpointTypeOpenAIVideo:           {Path: "/v1/videos", Method: "POST"},
 	constant.EndpointTypeBatchGeneration:       {Path: "/v1/batch/generations", Method: "POST"},
 	constant.EndpointTypeAudioSpeech:           {Path: "/v1/audio/speech", Method: "POST"},

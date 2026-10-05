@@ -50,3 +50,23 @@ func TestMistralChannelTranscriptionTestBuildsRealMultipart(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, reader)
 }
+
+func TestMistralModerationChannelTest(t *testing.T) {
+	channel := &model.Channel{Type: constant.ChannelTypeMistral}
+	for _, name := range []string{"mistral-moderation-latest", "mistral-moderation-2603"} {
+		endpoint := normalizeChannelTestEndpoint(channel, name, "")
+		require.Equal(t, string(constant.EndpointTypeModerations), endpoint)
+		info, ok := common.GetDefaultEndpointInfo(constant.EndpointType(endpoint))
+		require.True(t, ok)
+		require.Equal(t, "/v1/moderations", info.Path)
+		require.Equal(t, []constant.EndpointType{constant.EndpointTypeModerations}, common.GetEndpointTypesByChannelType(channel.Type, name))
+		request := buildTestRequest(name, endpoint, channel, true).(*dto.GeneralOpenAIRequest)
+		require.False(t, request.IsStream(nil))
+		require.NotEmpty(t, request.Input)
+		converted, err := (&mistral.Adaptor{}).ConvertOpenAIRequest(nil, &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeModerations}, request)
+		require.NoError(t, err)
+		body, err := common.Marshal(converted)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "messages")
+	}
+}

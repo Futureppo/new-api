@@ -15,6 +15,7 @@ const (
 	EndpointTypeCohereEmbeddings      EndpointType = "cohere-embeddings"
 	EndpointTypeImageGeneration       EndpointType = "image-generation"
 	EndpointTypeEmbeddings            EndpointType = "embeddings"
+	EndpointTypeModerations           EndpointType = "moderations"
 	EndpointTypeOpenAIVideo           EndpointType = "openai-video"
 	EndpointTypeBatchGeneration       EndpointType = "batch-generation"
 	EndpointTypeAudioSpeech           EndpointType = "audio-speech"

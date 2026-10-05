@@ -6,6 +6,7 @@
 | --- | --- |
 | `/v1/chat/completions` | 文本、原生流式、工具调用、JSON Schema、推理、模型支持的图片和音频输入 |
 | `/v1/embeddings` | 单条及批量文本、float/base64、模型支持的维度调整 |
+| `/v1/moderations` | 单条及批量文本审核，模型 `mistral-moderation-latest` |
 | `/v1/audio/transcriptions` | multipart 文件上传；json、text、verbose_json、srt、vtt 输出 |
 
 聊天请求保留通用 DTO，因此模型映射、渠道系统提示和参数覆盖继续生效。`developer` 转为 `system`，`seed` 转为 `random_seed`，`max_completion_tokens` 优先映射为 `max_tokens`（包括显式零值）。工具调用 ID 转为九位字母数字并保持历史关联。最终答案返回 `content`，thinking 返回 `reasoning_content`。
@@ -13,6 +14,8 @@
 Mistral 原生流式响应总是包含 usage，网关按现有默认策略及客户端 `stream_options.include_usage` 控制输出：最终正文/工具事件、可选独立 usage 事件、一次 `[DONE]`。异常中断或上游错误不会输出正常完成标记。
 
 Embedding 的 `dimensions` 映射为 `output_dimension`；上游固定请求浮点向量，base64 输出由网关编码为 float32 小端字节。模型不支持维度调整时保留上游错误，不截断向量；不接受 token ID 输入。
+
+审核请求示例：`{"model":"mistral-moderation-latest","input":["Have a nice day.","I will kill you."]}`。返回 `id`、`model`、`results`，每个结果补齐 `flagged`（任一上游分类为 true 时为 true）。`categories` 和 `category_scores` 保留 Mistral 原始分类及阈值，不将其强行映射为语义不同的 OpenAI 分类。仅支持字符串和字符串数组，不支持图片、token ID 或流式审核；聊天参数和渠道系统提示不参与审核。支持模型映射、参数覆盖和后台自动审核测试。优先使用上游 usage 结算；旧版上游缺失 usage 时沿用网关本地输入 token 估算，不向响应伪造 usage。不改动模型价格。
 
 兼容模式转写传递语言、温度和时间戳粒度。每次只支持一种粒度：`segment` 或 `word`；verbose_json/srt/vtt 默认请求 segment。字幕和词时间戳使用上游数据，缺少字幕必需时间戳时返回错误。verbose_json 的 duration 在能够读取上传文件真实时长时提供；不会补造语言、概率或 token 明细。不支持非空 prompt。流式转写使用下述官方透传模式。
 
@@ -69,6 +72,7 @@ go test -race ./relay/channel/mistral ./relay/channel/openai ./relay/helper
 
 ```sh
 go test ./relay -run 'TestMistral(LiveGateway|NativeLiveGateway)' -count=1 -v
+go test ./relay -run TestMistralModerationLiveGateway -count=1 -v
 ```
 
 可选 `MISTRAL_TEST_WAV` 指向内容含 “Paris” 的英文语音 WAV，用于校验识别内容；缺省使用合成静音样本。如运行环境需要代理，请显式设置 Go 使用的 `HTTPS_PROXY`/`HTTP_PROXY` 环境变量。不要将凭证写入源码或夹具。
@@ -76,3 +80,5 @@ go test ./relay -run 'TestMistral(LiveGateway|NativeLiveGateway)' -count=1 -v
 已通过网关实测 Ministral、Codestral、mistral-embed、codestral-embed 和 Voxtral。真实推理模型验收受测试账号权限限制，thinking 格式使用官方样例回归；账号 Small/Medium 的零请求限额及 Large 的套餐限制保留为上游错误。
 
 原生透传已实测 OCR、FIM 普通/流式、TTS 普通/流式、SSE 文件转写和 WebSocket 实时转写，共 7 个场景。Agents 通过模拟上游回归，真实成功调用需要已有且可访问的 Agent ID。
+
+审核接口已通过网关实测普通文本、威胁文本及两条混合批量输入；验证 `flagged`、原始分类及 usage 结算。
