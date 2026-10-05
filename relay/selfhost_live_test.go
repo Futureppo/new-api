@@ -39,7 +39,7 @@ func TestLiveSelfHosted(t *testing.T) {
 	previous := constant.StreamingTimeout
 	constant.StreamingTimeout = 30
 	t.Cleanup(func() { constant.StreamingTimeout = previous })
-	invoke := func(t *testing.T, body map[string]any, responses, stream bool) []byte {
+	invoke := func(t *testing.T, body map[string]any, responses, stream bool, expectedEffort string, noThinking bool) []byte {
 		t.Helper()
 		path, format := "/v1/chat/completions", types.RelayFormatOpenAI
 		if responses {
@@ -79,8 +79,11 @@ func TestLiveSelfHosted(t *testing.T) {
 		}
 		usage, apiErr := a.DoResponse(c, resp, info)
 		require.Nil(t, apiErr)
-		require.Equal(t, "medium", info.ReasoningEffort)
+		require.Equal(t, expectedEffort, info.ReasoningEffort)
 		require.Positive(t, usage.(*dto.Usage).TotalTokens)
+		if noThinking {
+			require.Zero(t, usage.(*dto.Usage).CompletionTokenDetails.ReasoningTokens)
+		}
 		if stream {
 			require.False(t, info.StreamStatus.HasErrors(), info.StreamStatus)
 		}
@@ -125,7 +128,7 @@ func TestLiveSelfHosted(t *testing.T) {
 									body["stream_options"] = map[string]any{"include_usage": true}
 								}
 							}
-							out := invoke(t, body, responses, stream)
+							out := invoke(t, body, responses, stream, "medium", false)
 							if stream {
 								if responses {
 									require.Contains(t, string(out), "response.completed")
@@ -136,6 +139,61 @@ func TestLiveSelfHosted(t *testing.T) {
 								require.Equal(t, "completed", gjson.GetBytes(out, "status").String())
 							} else {
 								require.Equal(t, "stop", gjson.GetBytes(out, "choices.0.finish_reason").String())
+							}
+						})
+					}
+				})
+				t.Run(name+"/reasoning", func(t *testing.T) {
+					for _, tc := range []struct {
+						name, input, want  string
+						nested, noThinking bool
+					}{
+						{"minimal", "minimal", "low", false, false},
+						{"max", "max", "xhigh", false, false},
+						{"nested_high", "high", "medium", true, false},
+						{"nested_minimal", "minimal", "low", true, false},
+						{"nested_max", "max", "xhigh", true, false},
+						{"none", "none", "none", false, true},
+						{"template_false", "high", "medium", false, true},
+					} {
+						t.Run(tc.name, func(t *testing.T) {
+							body := map[string]any{"model": strings.TrimSpace(model), "stream": stream}
+							key := "reasoning_effort"
+							var value any = tc.input
+							if responses {
+								body["input"], body["max_output_tokens"], body["store"] = "Reply only OK.", 96, false
+								key, value = "reasoning", map[string]any{"effort": tc.input}
+							} else {
+								body["messages"] = []any{map[string]any{"role": "user", "content": "Reply only OK."}}
+								body["max_tokens"] = 96
+								if stream {
+									body["stream_options"] = map[string]any{"include_usage": true}
+								}
+							}
+							if tc.nested {
+								body["extra_body"] = map[string]any{key: value}
+							} else {
+								body[key] = value
+							}
+							if tc.name == "template_false" {
+								body["chat_template_kwargs"] = map[string]any{"enable_thinking": false}
+							}
+							out := invoke(t, body, responses, stream, tc.want, tc.noThinking)
+							if stream {
+								terminal := "[DONE]"
+								if responses {
+									terminal = "response.completed"
+								}
+								require.Contains(t, string(out), terminal)
+							}
+							if !stream && tc.noThinking {
+								if responses {
+									for _, item := range gjson.GetBytes(out, "output").Array() {
+										require.NotEqual(t, "reasoning", item.Get("type").String())
+									}
+								} else {
+									require.Empty(t, gjson.GetBytes(out, "choices.0.message.reasoning_content").String())
+								}
 							}
 						})
 					}
@@ -159,7 +217,7 @@ func TestLiveSelfHosted(t *testing.T) {
 							body["stream_options"] = map[string]any{"include_usage": true}
 						}
 					}
-					out := invoke(t, body, responses, stream)
+					out := invoke(t, body, responses, stream, "medium", false)
 					require.Contains(t, string(out), "lookup_weather")
 					require.Contains(t, string(out), "Beijing")
 					if stream {
@@ -196,7 +254,7 @@ func TestLiveSelfHosted(t *testing.T) {
 						messages = append(messages, map[string]any{"role": "system", "content": "Report the temperature from the tool result concisely."})
 						body["messages"] = messages
 					}
-					out = invoke(t, body, responses, false)
+					out = invoke(t, body, responses, false, "medium", false)
 					require.Contains(t, string(out), "23")
 				})
 			}
