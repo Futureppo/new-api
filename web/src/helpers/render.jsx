@@ -28,6 +28,7 @@ import {
 } from '../constants';
 import { visit } from 'unist-util-visit';
 import * as LobeIcons from '@lobehub/icons';
+import { modelBrandIcons } from './modelBrandIcons';
 import {
   OpenAI,
   Claude,
@@ -463,7 +464,7 @@ export function getLobeHubIcon(iconName, size = 14) {
   // 解析组件路径与点号链式属性
   const segments = String(iconName).split('.');
   const baseKey = segments[0];
-  const BaseIcon = LobeIcons[baseKey];
+  const BaseIcon = modelBrandIcons[baseKey] || LobeIcons[baseKey];
 
   let IconComponent = undefined;
   let propStartIndex = 1;
@@ -472,7 +473,7 @@ export function getLobeHubIcon(iconName, size = 14) {
     IconComponent = BaseIcon[segments[1]];
     propStartIndex = 2;
   } else {
-    IconComponent = LobeIcons[baseKey];
+    IconComponent = BaseIcon;
     propStartIndex = 1;
   }
 

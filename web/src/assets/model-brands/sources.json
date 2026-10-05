@@ -1,0 +1,64 @@
+[
+  {
+    "key": "xiaomimimo-custom",
+    "file": "xiaomimimo-custom.png",
+    "source": "User-provided attachment codex-clipboard-ad0c941e-be61-4e62-aa07-eafcf4cbc79a.png",
+    "usage": "User-selected custom Xiaomi MiMo model icon; used unchanged"
+  },
+  {
+    "key": "agnesai",
+    "file": "agnesai.svg",
+    "source": "https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-svg-1.95.1.tgz",
+    "member": "package/icons/agnesai.svg",
+    "license": "MIT"
+  },
+  {
+    "key": "dotsstudio",
+    "file": "dotsstudio.svg",
+    "source": "https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-svg-1.95.1.tgz",
+    "member": "package/icons/dotsstudio.svg",
+    "license": "MIT"
+  },
+  {
+    "key": "kilocode",
+    "file": "kilocode.svg",
+    "source": "https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-svg-1.95.1.tgz",
+    "member": "package/icons/kilocode.svg",
+    "license": "MIT"
+  },
+  {
+    "key": "longcat",
+    "file": "longcat.svg",
+    "source": "https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-svg-1.95.1.tgz",
+    "member": "package/icons/longcat.svg",
+    "license": "MIT"
+  },
+  {
+    "key": "poolside",
+    "file": "poolside.svg",
+    "source": "https://registry.npmjs.org/@lobehub/icons-static-svg/-/icons-static-svg-1.95.1.tgz",
+    "member": "package/icons/poolside.svg",
+    "license": "MIT"
+  },
+  {
+    "key": "typesafe",
+    "file": "typesafe.png",
+    "source": "https://framerusercontent.com/images/kcuF2BEp5XaVfkmFB634IPRKQH0.png",
+    "website": "https://typesafe.ai/",
+    "usage": "Official brand identification"
+  },
+  {
+    "key": "thinkingmachines",
+    "file": "thinkingmachines.png",
+    "source": "https://thinkingmachines.ai/images/apple-touch-icon.png",
+    "website": "https://thinkingmachines.ai/",
+    "usage": "Official brand identification"
+  },
+  {
+    "key": "apodex",
+    "file": "apodex.png",
+    "source": "https://apodex.ai/apple-touch-icon.png",
+    "website": "https://apodex.ai/",
+    "usage": "Official brand identification"
+  }
+]
