@@ -95,11 +95,8 @@ func (a *Adaptor) nativeStream(c *gin.Context, resp *http.Response, info *relayc
 	}
 	timer := time.AfterFunc(timeout, func() { _ = resp.Body.Close() })
 	defer timer.Stop()
-	for key, values := range resp.Header {
-		if len(values) > 0 && key != "Content-Length" && key != "Transfer-Encoding" {
-			c.Writer.Header()[key] = values
-		}
-	}
+	common.CopyUpstreamResponseHeaders(c.Writer.Header(), resp.Header)
+	c.Writer.Header().Del("Content-Length")
 	helper.SetEventStreamHeaders(c)
 	reader := bufio.NewReader(resp.Body)
 	var data strings.Builder

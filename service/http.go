@@ -36,13 +36,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	// So the httpClient will be confused by the response.
 	// For example, Postman will report error, and we cannot check the response at all.
 	if src != nil {
-		for k, v := range src.Header {
-			// avoid setting Content-Length
-			if k == "Content-Length" {
-				continue
-			}
-			c.Writer.Header().Set(k, v[0])
-		}
+		common.CopyUpstreamResponseHeaders(c.Writer.Header(), src.Header)
 	}
 
 	// set Content-Length header manually BEFORE calling WriteHeader

@@ -92,11 +92,17 @@ func TestMistralNativeResponsesAreVerbatim(t *testing.T) {
 		resp := mockResponse(tc.body)
 		resp.StatusCode = tc.status
 		resp.Header.Set("Content-Type", tc.contentType)
+		resp.Header.Set("X-Litellm-Model-Api-Base", "https://private.example/v1")
+		resp.Header.Set("Server", "private-provider")
+		resp.Header.Set("Set-Cookie", "secret=value")
 		info := testInfo(relayconstant.RelayModeUnknown)
 		info.ChannelSetting.ForceFormat = true
 		result, apiErr := (&Adaptor{}).NativeResponse(c, resp, info)
 		require.Equal(t, tc.body, w.Body.String())
 		require.Equal(t, tc.status, w.Code)
+		for _, name := range []string{"X-Litellm-Model-Api-Base", "Server", "Set-Cookie"} {
+			require.Empty(t, w.Result().Header.Get(name), name)
+		}
 		if tc.status == 422 {
 			require.NotNil(t, apiErr)
 			require.Equal(t, 422, apiErr.StatusCode)
@@ -119,12 +125,19 @@ func TestMistralNativeSSEPreservesFrames(t *testing.T) {
 		c, w := testContext()
 		resp := mockResponse(body)
 		resp.Header.Set("Content-Type", "text/event-stream")
+		resp.Header.Set("Content-Length", "9999")
+		resp.Header.Set("X-Litellm-Model-Api-Base", "https://private.example/v1")
+		resp.Header.Set("Server", "private-provider")
+		resp.Header.Set("Set-Cookie", "secret=value")
 		info := testInfo(relayconstant.RelayModeUnknown)
 		info.ShouldIncludeUsage, info.ChannelSetting.ForceFormat, info.ChannelSetting.ThinkingToContent = false, true, true
 		result, apiErr := (&Adaptor{}).NativeResponse(c, resp, info)
 		require.Nil(t, apiErr)
 		require.Equal(t, body, w.Body.String())
 		require.NotNil(t, result.Usage)
+		for _, name := range []string{"X-Litellm-Model-Api-Base", "Server", "Set-Cookie", "Content-Length"} {
+			require.Empty(t, w.Result().Header.Get(name), name)
+		}
 		if strings.Contains(body, "audio_tokens") {
 			require.Equal(t, 381, result.Usage.PromptTokens)
 		}

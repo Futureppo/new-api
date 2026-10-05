@@ -35,7 +35,7 @@ func WriteUpstreamError(c *gin.Context, apiErr *types.NewAPIError) bool {
 		return false
 	}
 	if upstream.RetryAfter != "" {
-		c.Header("Retry-After", upstream.RetryAfter)
+		common.CopyUpstreamResponseHeaders(c.Writer.Header(), http.Header{"Retry-After": {upstream.RetryAfter}})
 	}
 	// c.Writer applies the existing error privacy and full model mapping policy.
 	c.Data(apiErr.StatusCode, gin.MIMEJSON, upstream.Body)
