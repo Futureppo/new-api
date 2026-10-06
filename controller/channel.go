@@ -25,6 +25,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/mimo"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
+	mistralconsole "github.com/QuantumNous/new-api/relay/channel/mistral_console"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/selfhost"
@@ -486,7 +487,7 @@ func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Chan
 	}
 
 	if customModelListURL == "" && channel.Type == constant.ChannelTypeMistralConsole {
-		return []string{"glm-5-2"}, nil
+		return append([]string(nil), mistralconsole.ModelList...), nil
 	}
 
 	if customModelListURL == "" && channel.Type == constant.ChannelTypeGMICloud {

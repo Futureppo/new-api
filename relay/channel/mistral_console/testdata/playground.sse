@@ -1,0 +1,30 @@
+event: conversation.response.started
+data: {"type":"conversation.response.started","created_at":"2026-10-06T14:49:35.924571Z","conversation_id":"conv_01a111b100ff7063bdbd4975107cab70"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:35.928945Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"你好"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:35.936538Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"！很"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:35.975464Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"高兴"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:36.013418Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"见到"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:36.048902Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"你。有什么我"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:36.083129Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"可以帮"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:36.126292Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"你的"}
+
+event: message.output.delta
+data: {"type":"message.output.delta","created_at":"2026-10-06T14:49:36.682687Z","output_index":0,"id":"msg_01a111b103b87429b43ed1272fbdf13c","content_index":0,"model":"mistral-large-4","role":"assistant","content":"吗？"}
+
+event: conversation.response.done
+data: {"type":"conversation.response.done","created_at":"2026-10-06T14:49:36.707214Z","usage":{"prompt_tokens":4,"completion_tokens":16,"total_tokens":20}}
+

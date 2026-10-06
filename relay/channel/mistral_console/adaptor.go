@@ -51,6 +51,14 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 	req.Set("Accept", "text/event-stream")
 	req.Set("Content-Type", "application/json")
 	req.Set("Cookie", cookie)
+	req.Set("Internal-Source", "playground")
+	req.Set("X-Metadata", `{"call_type":"agent_playground"}`)
+	origin := strings.TrimRight(strings.TrimSpace(info.ChannelBaseUrl), "/")
+	if origin == "" {
+		origin = "https://console.mistral.ai"
+	}
+	req.Set("Origin", origin)
+	req.Set("Referer", origin+"/playground")
 	req.Del("Authorization")
 	return nil
 }
@@ -78,7 +86,7 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 		return nil, invalidRequestError("at least one text message or function result is required")
 	}
 
-	tools, toolInstruction, err := convertBoraTools(request.Tools, request.ToolChoice, info.ChannelOtherSettings, functionNames)
+	tools, toolInstruction, err := convertBoraTools(info.UpstreamModelName, request.Tools, request.ToolChoice, info.ChannelOtherSettings, functionNames)
 	if err != nil {
 		return nil, invalidRequestError(err.Error())
 	}
@@ -88,16 +96,21 @@ func (a *Adaptor) ConvertOpenAIRequest(_ *gin.Context, info *relaycommon.RelayIn
 	if toolInstruction != "" {
 		instructions = appendInstruction(instructions, toolInstruction)
 	}
-	reasoningEffort := normalizeBoraReasoningEffort(request.ReasoningEffort)
-	info.ReasoningEffort = reasoningEffort
+	// The playground omits reasoning_effort for ordinary chat. Forcing high
+	// here applies a reasoning-only option to every model in the catalog.
+	var reasoningEffort *string
+	info.ReasoningEffort = ""
+	if request.ReasoningEffort != "" {
+		reasoningEffort = common.GetPointer(normalizeBoraReasoningEffort(request.ReasoningEffort))
+		info.ReasoningEffort = *reasoningEffort
+	}
 
-	maxTokens := boraMaxTokens(request)
 	return &boraConversationRequest{
 		Model:        info.UpstreamModelName,
 		Instructions: instructions,
 		CompletionArgs: boraCompletionArgs{
 			Temperature:     normalizeBoraTemperature(request.Temperature),
-			MaxTokens:       &maxTokens,
+			MaxTokens:       boraMaxTokens(request),
 			TopP:            normalizeBoraTopP(request.TopP),
 			ReasoningEffort: reasoningEffort,
 		},
@@ -247,15 +260,14 @@ func rawJSONHasValue(value []byte) bool {
 	return trimmed != "" && trimmed != "null" && trimmed != "[]" && trimmed != "{}"
 }
 
-func boraMaxTokens(request *dto.GeneralOpenAIRequest) uint {
-	value := defaultBoraMaxTokens
-	if request.MaxCompletionTokens != nil {
-		value = *request.MaxCompletionTokens
-	} else if request.MaxTokens != nil {
-		value = *request.MaxTokens
+func boraMaxTokens(request *dto.GeneralOpenAIRequest) *uint {
+	value := request.MaxCompletionTokens
+	if value == nil {
+		value = request.MaxTokens
 	}
-	if value > maximumBoraMaxTokens {
-		return maximumBoraMaxTokens
+	// Let each model choose its own default when the client omits a limit.
+	if value != nil && *value > maximumBoraMaxTokens {
+		return common.GetPointer(maximumBoraMaxTokens)
 	}
 	return value
 }
@@ -264,7 +276,7 @@ func normalizeBoraReasoningEffort(value string) string {
 	if value == boraNoReasoningEffort {
 		return boraNoReasoningEffort
 	}
-	// Bora only accepts none/high. Missing and unsupported values (including
+	// Bora only accepts none/high. Unsupported values (including
 	// low, medium, xhigh, max, and incorrectly cased values) safely fall back.
 	return boraMaxReasoningEffort
 }
@@ -420,7 +432,14 @@ func convertAssistantToolCalls(raw []byte, functionNames *boraFunctionNameMapper
 	return inputs, nil
 }
 
-func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, settings dto.ChannelOtherSettings, functionNames *boraFunctionNameMapper) ([]boraTool, string, error) {
+func convertBoraTools(model string, openAITools []dto.ToolCallRequest, toolChoice any, settings dto.ChannelOtherSettings, functionNames *boraFunctionNameMapper) ([]boraTool, string, error) {
+	if !supportsBoraBuiltinTools(model) {
+		// Limit only this request. Keep the channel's stored settings and custom
+		// functions intact when switching between models with different support.
+		settings.MistralConsoleCodeInterpreterEnabled = common.GetPointer(false)
+		settings.MistralConsoleImageGenerationEnabled = common.GetPointer(false)
+		settings.MistralConsoleWebSearchEnabled = common.GetPointer(false)
+	}
 	tools := make([]boraTool, 0, len(openAITools))
 	for index := range openAITools {
 		tool := &openAITools[index]
@@ -468,16 +487,10 @@ func convertBoraTools(openAITools []dto.ToolCallRequest, toolChoice any, setting
 		}
 	}
 
-	// Built-ins enabled in channel settings remain available even when the
-	// downstream request does not send a tools field. Apply tool_choice to
-	// custom tools, then merge enabled built-ins again so "none" cannot
-	// disable channel-configured tools.
+	// Channel-configured built-ins participate in tool_choice just like
+	// caller-provided functions. In particular, "none" must disable them.
 	tools = mergeForcedBoraTools(tools, settings)
-	selectedTools, instruction, err := applyBoraToolChoice(tools, toolChoice, functionNames)
-	if err != nil {
-		return nil, "", err
-	}
-	return mergeForcedBoraTools(selectedTools, settings), instruction, nil
+	return applyBoraToolChoice(tools, toolChoice, functionNames)
 }
 
 func mergeForcedBoraTools(tools []boraTool, settings dto.ChannelOtherSettings) []boraTool {
@@ -515,7 +528,7 @@ func applyBoraToolChoice(tools []boraTool, choice any, functionNames *boraFuncti
 		case "auto":
 			return tools, "", nil
 		case "none":
-			return nil, "", nil
+			return []boraTool{}, "", nil
 		case "required":
 			if len(tools) == 0 {
 				return nil, "", errors.New("tool_choice required needs at least one tool")

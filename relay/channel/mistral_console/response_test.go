@@ -109,7 +109,7 @@ func TestHandleBoraNonStreamResponseRestoresClientMode(t *testing.T) {
 	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 	require.Equal(t, "chatcmpl-conv-123", response.Id)
 	require.Equal(t, "chat.completion", response.Object)
-	require.Equal(t, "glm-5-2", response.Model)
+	require.Equal(t, "mistral-large-4", response.Model)
 	require.Equal(t, "Hello world", response.Choices[0].Message.StringContent())
 	require.Equal(t, "stop", response.Choices[0].FinishReason)
 	require.Equal(t, 7, response.Usage.PromptTokens)

@@ -106,12 +106,12 @@ func TestChannelOtherSettingsRemoveGifImagesExplicitValueRoundTrip(t *testing.T)
 	}
 }
 
-func TestChannelOtherSettingsMistralConsoleToolsDefaultOn(t *testing.T) {
+func TestChannelOtherSettingsMistralConsoleToolsDefaultOff(t *testing.T) {
 	var settings dto.ChannelOtherSettings
 	require.NoError(t, common.Unmarshal([]byte(`{}`), &settings))
-	require.True(t, settings.ShouldEnableMistralConsoleCodeInterpreter())
-	require.True(t, settings.ShouldEnableMistralConsoleImageGeneration())
-	require.True(t, settings.ShouldEnableMistralConsoleWebSearch())
+	require.False(t, settings.ShouldEnableMistralConsoleCodeInterpreter())
+	require.False(t, settings.ShouldEnableMistralConsoleImageGeneration())
+	require.False(t, settings.ShouldEnableMistralConsoleWebSearch())
 }
 
 func TestChannelOtherSettingsMistralConsoleToolsExplicitValues(t *testing.T) {

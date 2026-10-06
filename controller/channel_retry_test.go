@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	mistralconsole "github.com/QuantumNous/new-api/relay/channel/mistral_console"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -364,7 +365,9 @@ func TestFetchMistralConsoleModelsUsesStaticList(t *testing.T) {
 		"",
 	)
 	require.NoError(t, err)
-	require.Equal(t, []string{"glm-5-2"}, models)
+	require.Equal(t, mistralconsole.ModelList, models)
+	models[0] = "mutated"
+	require.Equal(t, "codestral-latest", mistralconsole.ModelList[0])
 }
 
 func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {

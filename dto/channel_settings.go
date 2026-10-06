@@ -121,15 +121,15 @@ func (s ChannelOtherSettings) ShouldRemoveGifImages() bool {
 }
 
 func (s ChannelOtherSettings) ShouldEnableMistralConsoleCodeInterpreter() bool {
-	return s.MistralConsoleCodeInterpreterEnabled == nil || *s.MistralConsoleCodeInterpreterEnabled
+	return s.MistralConsoleCodeInterpreterEnabled != nil && *s.MistralConsoleCodeInterpreterEnabled
 }
 
 func (s ChannelOtherSettings) ShouldEnableMistralConsoleImageGeneration() bool {
-	return s.MistralConsoleImageGenerationEnabled == nil || *s.MistralConsoleImageGenerationEnabled
+	return s.MistralConsoleImageGenerationEnabled != nil && *s.MistralConsoleImageGenerationEnabled
 }
 
 func (s ChannelOtherSettings) ShouldEnableMistralConsoleWebSearch() bool {
-	return s.MistralConsoleWebSearchEnabled == nil || *s.MistralConsoleWebSearchEnabled
+	return s.MistralConsoleWebSearchEnabled != nil && *s.MistralConsoleWebSearchEnabled
 }
 
 func (s ChannelOtherSettings) ShouldFillOpenCodeClientHeaders() bool {

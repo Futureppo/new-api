@@ -6,7 +6,7 @@ type boraConversationRequest struct {
 	Model          string             `json:"model"`
 	Instructions   string             `json:"instructions"`
 	CompletionArgs boraCompletionArgs `json:"completion_args"`
-	Tools          []boraTool         `json:"tools,omitempty"`
+	Tools          []boraTool         `json:"tools"`
 	Stream         bool               `json:"stream"`
 	Inputs         []boraInput        `json:"inputs"`
 }
@@ -15,7 +15,7 @@ type boraCompletionArgs struct {
 	Temperature     *float64 `json:"temperature,omitempty"`
 	MaxTokens       *uint    `json:"max_tokens,omitempty"`
 	TopP            *float64 `json:"top_p,omitempty"`
-	ReasoningEffort string   `json:"reasoning_effort"`
+	ReasoningEffort *string  `json:"reasoning_effort,omitempty"`
 }
 
 type boraTool struct {

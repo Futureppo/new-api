@@ -24,6 +24,11 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 	info := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{
 		ApiKey:            `ory_session_test="session"`,
 		UpstreamModelName: "glm-5-2",
+		ChannelOtherSettings: dto.ChannelOtherSettings{
+			MistralConsoleCodeInterpreterEnabled: common.GetPointer(true),
+			MistralConsoleImageGenerationEnabled: common.GetPointer(true),
+			MistralConsoleWebSearchEnabled:       common.GetPointer(true),
+		},
 	}}
 	request := &dto.GeneralOpenAIRequest{
 		Model:           "client-model",
@@ -67,7 +72,7 @@ func TestConvertOpenAIRequestBuildsBoraPayload(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, "glm-5-2", payload.Model)
 	require.True(t, payload.Stream)
-	require.Equal(t, "high", payload.CompletionArgs.ReasoningEffort)
+	require.Equal(t, "high", *payload.CompletionArgs.ReasoningEffort)
 	require.Equal(t, uint(2048), *payload.CompletionArgs.MaxTokens)
 	functionAlias := payload.Tools[3].Function.Name
 	require.NotEqual(t, "get_time", functionAlias)
@@ -197,47 +202,47 @@ func TestConvertOpenAIRequestSupportsTrailingAssistantPrefill(t *testing.T) {
 
 func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 	zero := uint(0)
-	aboveDefault := uint(defaultBoraMaxTokens + 1)
+	explicitLimit := uint(4096)
 	tooLarge := uint(maximumBoraMaxTokens + 100)
 	tests := []struct {
 		name     string
 		request  *dto.GeneralOpenAIRequest
-		expected uint
+		expected *uint
 		tools    int
 	}{
 		{
-			name:     "large default",
+			name:     "omitted limit uses model default",
 			request:  &dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "user", Content: "hi"}}},
-			expected: defaultBoraMaxTokens,
-			tools:    3,
+			expected: nil,
+			tools:    0,
 		},
 		{
-			name:     "explicit value above default preserved",
-			request:  &dto.GeneralOpenAIRequest{MaxTokens: &aboveDefault, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
-			expected: aboveDefault,
-			tools:    3,
+			name:     "explicit value preserved",
+			request:  &dto.GeneralOpenAIRequest{MaxTokens: &explicitLimit, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
+			expected: &explicitLimit,
+			tools:    0,
 		},
 		{
 			name:     "explicit zero preserved",
 			request:  &dto.GeneralOpenAIRequest{MaxCompletionTokens: &zero, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
-			expected: 0,
-			tools:    3,
+			expected: &zero,
+			tools:    0,
 		},
 		{
 			name:     "oversized value clamped",
 			request:  &dto.GeneralOpenAIRequest{MaxTokens: &tooLarge, Messages: []dto.Message{{Role: "user", Content: "hi"}}},
-			expected: maximumBoraMaxTokens,
-			tools:    3,
+			expected: common.GetPointer(maximumBoraMaxTokens),
+			tools:    0,
 		},
 		{
-			name: "none keeps forced built-ins",
+			name: "none disables tools",
 			request: &dto.GeneralOpenAIRequest{
 				Messages:   []dto.Message{{Role: "user", Content: "hi"}},
 				Tools:      []dto.ToolCallRequest{{Type: "code_interpreter"}},
 				ToolChoice: "none",
 			},
-			expected: defaultBoraMaxTokens,
-			tools:    3,
+			expected: nil,
+			tools:    0,
 		},
 	}
 
@@ -246,11 +251,8 @@ func TestConvertOpenAIRequestMaxTokensAndToolChoice(t *testing.T) {
 			converted, err := (&Adaptor{}).ConvertOpenAIRequest(nil, testRelayInfo(false), test.request)
 			require.NoError(t, err)
 			payload := converted.(*boraConversationRequest)
-			require.Equal(t, test.expected, *payload.CompletionArgs.MaxTokens)
+			require.Equal(t, test.expected, payload.CompletionArgs.MaxTokens)
 			require.Equal(t, test.tools, len(payload.Tools))
-			require.Equal(t, "code_interpreter", payload.Tools[0].Type)
-			require.Equal(t, "image_generation", payload.Tools[1].Type)
-			require.Equal(t, "web_search_premium", payload.Tools[2].Type)
 		})
 	}
 }
@@ -261,7 +263,7 @@ func TestConvertOpenAIRequestNormalizesReasoningEffort(t *testing.T) {
 		value    string
 		expected string
 	}{
-		{name: "missing defaults high", expected: "high"},
+		{name: "missing is omitted"},
 		{name: "high", value: "high", expected: "high"},
 		{name: "none", value: "none", expected: "none"},
 		{name: "low falls back high", value: "low", expected: "high"},
@@ -279,7 +281,11 @@ func TestConvertOpenAIRequestNormalizesReasoningEffort(t *testing.T) {
 			})
 			require.NoError(t, err)
 			payload := converted.(*boraConversationRequest)
-			require.Equal(t, test.expected, payload.CompletionArgs.ReasoningEffort)
+			if test.expected == "" {
+				require.Nil(t, payload.CompletionArgs.ReasoningEffort)
+			} else {
+				require.Equal(t, test.expected, *payload.CompletionArgs.ReasoningEffort)
+			}
 			require.Equal(t, test.expected, info.ReasoningEffort)
 			require.Empty(t, payload.Instructions)
 		})
@@ -289,8 +295,10 @@ func TestConvertOpenAIRequestNormalizesReasoningEffort(t *testing.T) {
 func TestConvertOpenAIRequestRespectsBuiltInToolSettings(t *testing.T) {
 	disabled := false
 	info := testRelayInfo(false)
+	info.UpstreamModelName = "mistral-medium-latest"
 	info.ChannelOtherSettings = dto.ChannelOtherSettings{
 		MistralConsoleCodeInterpreterEnabled: &disabled,
+		MistralConsoleImageGenerationEnabled: common.GetPointer(true),
 		MistralConsoleWebSearchEnabled:       &disabled,
 	}
 	request := &dto.GeneralOpenAIRequest{
@@ -339,12 +347,12 @@ func TestConvertOpenAIRequestNormalizesBoraValidationEdgeCases(t *testing.T) {
 	payload := converted.(*boraConversationRequest)
 	require.Equal(t, 1.0, *payload.CompletionArgs.Temperature)
 	require.Equal(t, 0.0001, *payload.CompletionArgs.TopP)
-	require.Len(t, payload.Tools, 4)
-	require.Equal(t, "function", payload.Tools[3].Type)
+	require.Len(t, payload.Tools, 1)
+	require.Equal(t, "function", payload.Tools[0].Type)
 	require.Equal(t, map[string]any{
 		"type":       "object",
 		"properties": map[string]any{},
-	}, payload.Tools[3].Function.Parameters)
+	}, payload.Tools[0].Function.Parameters)
 }
 
 func TestConvertOpenAIRequestRejectsUnsupportedContent(t *testing.T) {
@@ -405,6 +413,10 @@ func TestSetupRequestHeaderUsesCookieOnly(t *testing.T) {
 	require.Equal(t, info.ApiKey, headers.Get("Cookie"))
 	require.Equal(t, "text/event-stream", headers.Get("Accept"))
 	require.Equal(t, "application/json", headers.Get("Content-Type"))
+	require.Equal(t, "playground", headers.Get("Internal-Source"))
+	require.JSONEq(t, `{"call_type":"agent_playground"}`, headers.Get("X-Metadata"))
+	require.Equal(t, "https://console.mistral.ai", headers.Get("Origin"))
+	require.Equal(t, "https://console.mistral.ai/playground", headers.Get("Referer"))
 	require.Empty(t, headers.Get("Authorization"))
 	require.NotContains(t, info.ToString(), info.ApiKey)
 }
@@ -445,7 +457,7 @@ func testRelayInfo(stream bool) *relaycommon.RelayInfo {
 	info := relaycommon.GenRelayInfoOpenAI(ctx, request)
 	info.ChannelMeta = &relaycommon.ChannelMeta{
 		ApiKey:            `ory_session_test="session"`,
-		UpstreamModelName: "glm-5-2",
+		UpstreamModelName: "mistral-large-4",
 	}
 	return info
 }

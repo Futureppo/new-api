@@ -237,9 +237,9 @@ const EditChannelModal = (props) => {
     allow_safety_identifier: false,
     allow_include_obfuscation: false,
     remove_gif_images_enabled: true,
-    mistral_console_code_interpreter_enabled: true,
-    mistral_console_image_generation_enabled: true,
-    mistral_console_web_search_enabled: true,
+    mistral_console_code_interpreter_enabled: false,
+    mistral_console_image_generation_enabled: false,
+    mistral_console_web_search_enabled: false,
     opencode_client_headers_enabled: true,
     opencode_auto_sync_free_models_enabled: false,
     conversation_log_enabled: false,
@@ -1058,11 +1058,11 @@ const EditChannelModal = (props) => {
           data.remove_gif_images_enabled =
             parsedSettings.remove_gif_images_enabled !== false;
           data.mistral_console_code_interpreter_enabled =
-            parsedSettings.mistral_console_code_interpreter_enabled !== false;
+            parsedSettings.mistral_console_code_interpreter_enabled === true;
           data.mistral_console_image_generation_enabled =
-            parsedSettings.mistral_console_image_generation_enabled !== false;
+            parsedSettings.mistral_console_image_generation_enabled === true;
           data.mistral_console_web_search_enabled =
-            parsedSettings.mistral_console_web_search_enabled !== false;
+            parsedSettings.mistral_console_web_search_enabled === true;
           data.opencode_client_headers_enabled =
             parsedSettings.opencode_client_headers_enabled !== false;
           data.opencode_auto_sync_free_models_enabled =
@@ -1127,9 +1127,9 @@ const EditChannelModal = (props) => {
           data.allow_safety_identifier = false;
           data.allow_include_obfuscation = false;
           data.remove_gif_images_enabled = true;
-          data.mistral_console_code_interpreter_enabled = true;
-          data.mistral_console_image_generation_enabled = true;
-          data.mistral_console_web_search_enabled = true;
+          data.mistral_console_code_interpreter_enabled = false;
+          data.mistral_console_image_generation_enabled = false;
+          data.mistral_console_web_search_enabled = false;
           data.opencode_client_headers_enabled = true;
           data.opencode_auto_sync_free_models_enabled = false;
           data.conversation_log_enabled = false;
@@ -1162,9 +1162,9 @@ const EditChannelModal = (props) => {
         data.allow_safety_identifier = false;
         data.allow_include_obfuscation = false;
         data.remove_gif_images_enabled = true;
-        data.mistral_console_code_interpreter_enabled = true;
-        data.mistral_console_image_generation_enabled = true;
-        data.mistral_console_web_search_enabled = true;
+        data.mistral_console_code_interpreter_enabled = false;
+        data.mistral_console_image_generation_enabled = false;
+        data.mistral_console_web_search_enabled = false;
         data.opencode_client_headers_enabled = true;
         data.opencode_auto_sync_free_models_enabled = false;
         data.conversation_log_enabled = false;
@@ -2203,11 +2203,11 @@ const EditChannelModal = (props) => {
     }
     if (localInputs.type === MISTRAL_CONSOLE_CHANNEL_TYPE) {
       settings.mistral_console_code_interpreter_enabled =
-        localInputs.mistral_console_code_interpreter_enabled !== false;
+        localInputs.mistral_console_code_interpreter_enabled === true;
       settings.mistral_console_image_generation_enabled =
-        localInputs.mistral_console_image_generation_enabled !== false;
+        localInputs.mistral_console_image_generation_enabled === true;
       settings.mistral_console_web_search_enabled =
-        localInputs.mistral_console_web_search_enabled !== false;
+        localInputs.mistral_console_web_search_enabled === true;
     } else {
       delete settings.mistral_console_code_interpreter_enabled;
       delete settings.mistral_console_image_generation_enabled;
@@ -3308,6 +3308,9 @@ const EditChannelModal = (props) => {
                       <div className='mt-4 mb-2 text-sm font-medium text-gray-700'>
                         {t('内置工具')}
                       </div>
+                      <div className='mb-2 text-xs text-gray-500'>
+                        {t('内置工具仅对支持的模型生效，不支持的模型会自动跳过。')}
+                      </div>
                       <Form.Switch
                         field='mistral_console_code_interpreter_enabled'
                         label={t('启用代码解释器')}
@@ -3320,7 +3323,7 @@ const EditChannelModal = (props) => {
                           )
                         }
                         extraText={t(
-                          '允许模型运行代码进行计算、数据处理和文件分析，默认开启。',
+                          '允许模型运行代码进行计算、数据处理和文件分析，默认关闭。',
                         )}
                       />
                       <Form.Switch
@@ -3335,7 +3338,7 @@ const EditChannelModal = (props) => {
                           )
                         }
                         extraText={t(
-                          '允许模型根据提示词生成图片，默认开启。',
+                          '允许模型根据提示词生成图片，默认关闭。',
                         )}
                       />
                       <Form.Switch
@@ -3350,7 +3353,7 @@ const EditChannelModal = (props) => {
                           )
                         }
                         extraText={t(
-                          '允许模型搜索网页并获取最新信息，默认开启。',
+                          '允许模型搜索网页并获取最新信息，默认关闭。',
                         )}
                       />
                     </>
