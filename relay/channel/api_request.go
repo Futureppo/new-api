@@ -331,13 +331,18 @@ func DoApiRequest(a Adaptor, c *gin.Context, info *common.RelayInfo, requestBody
 	if err != nil {
 		return nil, fmt.Errorf("setup request header failed: %w", err)
 	}
-	// 在 SetupRequestHeader 之后应用 Header Override，确保用户设置优先级最高
-	// 这样可以覆盖默认的 Authorization header 设置
+	// Apply channel overrides after protocol defaults (including authentication).
+	// A provider may then enforce its required client identity before sending.
 	headerOverride, err := processAdaptorHeaderOverride(a, info, c)
 	if err != nil {
 		return nil, err
 	}
 	applyHeaderOverrideToRequest(req, headerOverride)
+	if finalizer, ok := a.(RequestHeaderFinalizer); ok {
+		if err := finalizer.FinalizeRequestHeader(c, &req.Header, info); err != nil {
+			return nil, fmt.Errorf("finalize request header failed: %w", err)
+		}
+	}
 	// Anonymous Kilo requests must remain anonymous even with header overrides.
 	if info.ChannelType == projectconstant.ChannelTypeKilo && info.ChannelOtherSettings.KiloAnonymousEnabled {
 		req.Header.Del("Authorization")

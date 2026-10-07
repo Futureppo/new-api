@@ -97,7 +97,9 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 							"x-opencode-session": "custom-session", "x-opencode-request": "custom-request",
 							"x-opencode-project": "custom-project", "x-opencode-session-id": "custom-session-id",
 							"x-opencode-parent-session-id": "custom-parent", "x-app": "custom-app",
+							"X-Custom-Trace": "keep-this-header",
 						}
+						overrides[protocol.authHeader] = protocol.authValue + "-override"
 						info.HeadersOverride = overrides
 					}
 					if tc.passthrough != "" {
@@ -142,7 +144,12 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					require.Equal(t, responseBody, string(body))
 					got := <-captured
 					require.Equal(t, protocol.path, got.path)
-					require.Equal(t, protocol.authValue, got.header.Get(protocol.authHeader))
+					if tc.override {
+						require.Equal(t, protocol.authValue+"-override", got.header.Get(protocol.authHeader))
+						require.Equal(t, "keep-this-header", got.header.Get("X-Custom-Trace"))
+					} else {
+						require.Equal(t, protocol.authValue, got.header.Get(protocol.authHeader))
+					}
 					require.Equal(t, "application/json", got.header.Get("Content-Type"))
 					require.Empty(t, got.header.Get("Cookie"))
 					enabled := info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders()
@@ -156,7 +163,7 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 					} else {
 						require.Empty(t, got.header.Get("x-parent-session-id"))
 					}
-					if tc.override {
+					if tc.override && !enabled {
 						require.Equal(t, "custom-agent", got.header.Get("User-Agent"))
 						require.Equal(t, "custom-client", got.header.Get("x-opencode-client"))
 						for _, suffix := range []string{"session", "request", "project"} {

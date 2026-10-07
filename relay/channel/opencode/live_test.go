@@ -99,6 +99,9 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			info.ShouldIncludeUsage = true
 			info.RelayFormat = types.RelayFormatOpenAI
 			info.HeadersOverride = map[string]any{"*": ""}
+			if override := os.Getenv("OPENCODE_LIVE_HEADER_OVERRIDE"); override != "" {
+				require.NoError(t, common.UnmarshalJsonStr(override, &info.HeadersOverride))
+			}
 			payload := map[string]any{"model": model, "stream": true}
 			toolTest := os.Getenv("OPENCODE_LIVE_TOOL") == "1"
 			prompt := "Reply only with OK. Do not call any tools."
@@ -154,6 +157,11 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			response := raw.(*http.Response)
 			defer response.Body.Close()
 			result.Status = response.StatusCode
+			if response.StatusCode != http.StatusOK {
+				data, _ := io.ReadAll(io.LimitReader(response.Body, 2000))
+				result.Error = redact(string(data))
+				t.Fatalf("status=%d body=%s", result.Status, result.Error)
+			}
 			result.Headers = make(map[string]string)
 			for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project"} {
 				result.Headers[name] = response.Request.Header.Get(name)
@@ -167,11 +175,6 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, result.Headers["x-opencode-request"])
 			require.Empty(t, response.Request.Header.Get("x-opencode-parent-session-id"))
 			require.Empty(t, response.Request.Header.Get("x-stainless-package-version"))
-			if response.StatusCode != http.StatusOK {
-				data, _ := io.ReadAll(io.LimitReader(response.Body, 2000))
-				result.Error = redact(string(data))
-				t.Fatalf("status=%d body=%s", result.Status, result.Error)
-			}
 			usage, apiErr := adaptor.DoResponse(c, response, info)
 			if apiErr != nil {
 				result.Error = redact(apiErr.Error())

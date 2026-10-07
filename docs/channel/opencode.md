@@ -25,9 +25,9 @@ OpenCode Zen 和 Go 共用“统一使用 OpenCode 客户端标识”开关，�
 | `x-opencode-request` | 覆盖为生成的 OpenCode 格式 `msg_` 标识 |
 | `x-parent-session-id`、`x-opencode-parent-session-id` | 网关生成新的请求会话，不携带调用方的父会话标识 |
 
-生成的标识在同一次入口请求的重试中保持不变，不继承调用方的跨轮会话身份。需要自行管理上游会话时，可关闭此开关或使用显式渠道请求头配置。
+生成的标识在同一次入口请求的重试中保持不变，不继承调用方的跨轮会话身份。需要自行管理上游会话时，关闭此开关后使用显式渠道请求头配置。
 
-关闭开关后仅透传已有标识。开启时，通配符及正则透传不能恢复调用方的 UA、`x-opencode-*`、父会话、`x-session-id`、`x-session-affinity`、`x-stainless-*`、`x-cline-*`、`x-app`、`x-title`；显式渠道／运行时自定义请求头最后应用，优先级最高。协议鉴权头沿用各适配器规则。
+关闭开关后仅透传已有标识，自定义请求头仍生效。开启时，在通配符、正则、显式渠道／运行时请求头覆盖全部应用之后，再统一 UA、`x-opencode-*`、父会话、`x-session-id`、`x-session-affinity`、`x-stainless-*`、`x-cline-*`、`x-app`、`x-title`，确保最终出站身份不被旧配置覆盖。鉴权和其他自定义头仍按原有规则生效。
 
 请求头定义对照 [OpenCode 官方源码 907b3bc 的 request.ts](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/llm/request.ts#L187)，其中新增的 `x-opencode-session-id` 与 `x-opencode-session` 使用相同值。
 
@@ -53,6 +53,14 @@ Zen 的 Chat Completions／Responses 免费模型（`-free` 后缀及 `big-pickl
 MiMo-V2.6-Flash Free 与 Muse Spark 1.3 Contributor Free 的流式工具调用也均返回 HTTP 200，原有 `read` 工具及参数正常返回。最新免费目录的修复前抽测中，9 个对话模型正常，DeepSeek V4 Flash、Fledge Alpha、Ling 3.0 Flash Fin、Ling 3.1 Flash 分别返回上游模型／端点不可用错误（400、502、400、429），未出现 `FreeTierError`；这些服务可用性错误仍原样保留。
 
 官方目录中的模型 ID 是 `mimo-v2.6-flash-free`。如果对外使用 `mimo-v2.6-flash`，应配置模型映射 `{"mimo-v2.6-flash":"mimo-v2.6-flash-free"}`；本次直接请求无后缀 ID 得到的是上游 `ModelError`，而非 `FreeTierError`，不应混为同一故障。
+
+## 最终出站请求头修复：2026-10-07
+
+再次核对官方源码 `ecc4916b5a9608c30e6dd58a67f2137b594407ca`，请求头定义未变化。此前统一身份仅在 `SetupRequestHeader` 中执行，之后显式渠道／运行时请求头仍能覆盖它。将 `User-Agent` 自定义为 `Go-http-client/2.0`，即使身份开关开启、流式及工具兼容已执行，实测 MiMo 返回 HTTP 403 `FreeTierError`。
+
+现在在所有请求头覆盖完成后执行适配器的最终校验，仅统一 OpenCode 身份字段，保留鉴权和其他自定义头。同一配置复测 HTTP 200、`OK`、正常结束。自动测试覆盖 Zen／Go 各协议、开关关闭时的自定义头、普通和后台测试请求。可选实测入口 `OPENCODE_LIVE_CHANNEL_TEST=1 go test ./controller -run '^TestOpenCodeLiveDashboardChannel$' -count=1 -v` 使用隔离内存数据库，验证后台非流式及流式测试、模型别名、透传设置和冲突的身份覆盖；上游生成请求始终为流式。密钥仅从 `OPENCODE_LIVE_API_KEY` 读取，缺省使用 `public`。
+
+这些结果验证了可复现的请求头覆盖缺陷；线上渠道的地址、配置和部署版本尚需分别核对，不能仅凭本地成功判断线上已恢复。
 
 `jev-1.13-free` 属于非流式 SystemOne 原生模型，不属于上述 Chat／Responses 兼容范围。本次不把它映射为普通对话模型。上游的权限、地域、额度及服务故障仍可能导致失败，非 2xx 原始错误会保留。
 

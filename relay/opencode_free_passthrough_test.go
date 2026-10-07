@@ -84,7 +84,9 @@ func TestOpenCodeFreeRelayWithPassThrough(t *testing.T) {
 				common.SetContextKey(c, constant.ContextKeyChannelKey, "upstream-key")
 				common.SetContextKey(c, constant.ContextKeyOriginalModel, "alias")
 				common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{PassThroughBodyEnabled: flags.channel})
-				common.SetContextKey(c, constant.ContextKeyChannelHeaderOverride, map[string]any{"*": ""})
+				common.SetContextKey(c, constant.ContextKeyChannelHeaderOverride, map[string]any{
+					"*": "", "User-Agent": "Go-http-client/2.0", "x-opencode-client": "other-agent",
+				})
 				c.Set("model_mapping", fmt.Sprintf(`{"alias":%q}`, upstreamModel))
 				info := &relaycommon.RelayInfo{Request: request, OriginModelName: "alias", RequestURLPath: path, RelayMode: mode, RelayFormat: format}
 				apiErr := handler(c, info)

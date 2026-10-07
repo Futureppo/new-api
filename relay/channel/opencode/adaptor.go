@@ -131,6 +131,13 @@ func (a *Adaptor) FilterHeaderPassthrough(headers map[string]string, info *relay
 	}
 }
 
+func (a *Adaptor) FinalizeRequestHeader(c *gin.Context, header *http.Header, info *relaycommon.RelayInfo) error {
+	if info.ChannelOtherSettings.ShouldFillOpenCodeClientHeaders() {
+		return fillClientHeaders(c, header)
+	}
+	return nil
+}
+
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointResponses:

@@ -36,11 +36,11 @@ func clientIdentifier(c *gin.Context, prefix string) (string, error) {
 
 func fillClientHeaders(c *gin.Context, header *http.Header) error {
 	// Do not allow a downstream SDK's identity to survive into the OpenCode
-	// request, including through wildcard/regex passthrough. Explicit channel
-	// header overrides are still applied afterwards by DoApiRequest.
+	// request. The finalization hook repeats this after all header overrides;
+	// cached identifiers keep the same identity throughout the request/retries.
 	for name := range *header {
 		if isClientIdentityHeader(name) {
-			header.Del(name)
+			delete(*header, name)
 		}
 	}
 	header.Set("User-Agent", defaultUserAgent)
