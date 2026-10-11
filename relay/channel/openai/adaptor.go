@@ -721,6 +721,8 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 	switch info.RelayMode {
 	case relayconstant.RelayModeRealtime:
 		err, usage = OpenaiRealtimeHandler(c, info)
+	case relayconstant.RelayModeDecisions:
+		usage, err = OpenAIDecisionsHandler(c, resp, info)
 	case relayconstant.RelayModeAudioSpeech:
 		usage = OpenaiTTSHandler(c, resp, info)
 	case relayconstant.RelayModeAudioTranslation:

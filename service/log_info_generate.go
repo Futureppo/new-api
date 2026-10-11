@@ -126,6 +126,9 @@ func appendBillingInfo(relayInfo *relaycommon.RelayInfo, other map[string]interf
 	}
 	// -1 is also a valid fixed credit price; new logs must carry the mode.
 	other["use_price"] = relayInfo.PriceData.UsePrice
+	if billingModel := relayInfo.GetBillingModelName(); billingModel != relayInfo.OriginModelName {
+		other["billing_model_name"] = billingModel
+	}
 	// billing_source: "wallet" or "subscription"
 	if relayInfo.BillingSource != "" {
 		other["billing_source"] = relayInfo.BillingSource

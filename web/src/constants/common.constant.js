@@ -27,6 +27,7 @@ export const API_ENDPOINTS = [
   '/v1/chat/completions',
   '/v1/responses',
   '/v1/responses/compact',
+  '/v1/decisions',
   '/v1/search',
   '/v1/messages',
   '/v1beta/models',

@@ -1,5 +1,9 @@
 {
   "translation": {
+    "用量：输入 {{input}}，输出 {{output}} token": "Sử dụng: {{input}} token đầu vào, {{output}} token đầu ra",
+    "音频响应：{{type}}，{{bytes}} 字节": "Phản hồi âm thanh: {{type}}, {{bytes}} byte",
+    "Decisions 使用独立定价项：模型名后加 -openai-decisions，请先在定价设置中配置。": "Decisions sử dụng giá riêng: thêm -openai-decisions vào tên mô hình và cấu hình trước trong phần cài đặt giá.",
+    "测试使用所选端点；流式开关仅对支持流式测试的端点生效。": "Kiểm thử sử dụng điểm cuối đã chọn. Chế độ truyền luồng chỉ áp dụng cho các điểm cuối hỗ trợ kiểm thử truyền luồng.",
     "清除上游密钥": "Xóa khóa dịch vụ thượng nguồn",
     "保存后删除现有上游密钥；未开启时留空表示保留密钥。": "Xóa khóa hiện có khi lưu. Nếu không bật, để trống sẽ giữ nguyên khóa.",
     "上游 API Key（可选）": "Khóa API thượng nguồn (tùy chọn)",

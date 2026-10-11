@@ -61,6 +61,7 @@ const (
 	RelayModeTypeSafeSystemOne
 	RelayModeImageTaskSubmit
 	RelayModeImageTaskFetchByID
+	RelayModeDecisions
 )
 
 func Path2RelayMode(path string) int {
@@ -87,6 +88,8 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeImagesEdits
 	} else if strings.HasPrefix(path, "/v1/edits") {
 		relayMode = RelayModeEdits
+	} else if path == "/v1/decisions" {
+		relayMode = RelayModeDecisions
 	} else if strings.HasPrefix(path, "/v1/responses/compact") {
 		relayMode = RelayModeResponsesCompact
 	} else if strings.HasPrefix(path, "/v1/responses") {

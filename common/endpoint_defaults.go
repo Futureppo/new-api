@@ -13,6 +13,7 @@ var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
 	constant.EndpointTypeOpenAI:                {Path: "/v1/chat/completions", Method: "POST"},
 	constant.EndpointTypeOpenAIResponse:        {Path: "/v1/responses", Method: "POST"},
 	constant.EndpointTypeOpenAIResponseCompact: {Path: "/v1/responses/compact", Method: "POST"},
+	constant.EndpointTypeOpenAIDecisions:       {Path: "/v1/decisions", Method: "POST"},
 	constant.EndpointTypeAnthropic:             {Path: "/v1/messages", Method: "POST"},
 	constant.EndpointTypeGemini:                {Path: "/v1beta/models/{model}:generateContent", Method: "POST"},
 	constant.EndpointTypeJinaRerank:            {Path: "/v1/rerank", Method: "POST"},
@@ -32,4 +33,21 @@ var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
 func GetDefaultEndpointInfo(et constant.EndpointType) (EndpointInfo, bool) {
 	info, ok := defaultEndpointInfoMap[et]
 	return info, ok
+}
+
+// ChannelTestEndpointSupportsStream describes the channel test request, which
+// may use a non-streaming sample even when a provider also supports streaming.
+func ChannelTestEndpointSupportsStream(et constant.EndpointType) bool {
+	switch et {
+	case constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions,
+		constant.EndpointTypeOpenAIResponseCompact, constant.EndpointTypeModerations,
+		constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings,
+		constant.EndpointTypeImageGeneration, constant.EndpointTypeJinaRerank,
+		constant.EndpointTypeCohereRerank, constant.EndpointTypeOpenAIVideo,
+		constant.EndpointTypeBatchGeneration, constant.EndpointTypeAudioSpeech,
+		constant.EndpointTypeAudioTranscription:
+		return false
+	default:
+		return true
+	}
 }

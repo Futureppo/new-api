@@ -42,6 +42,8 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 	}
 	var err *types.NewAPIError
 	switch info.RelayMode {
+	case relayconstant.RelayModeDecisions:
+		err = relay.DecisionsHelper(c, info)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		err = relay.ImageHelper(c, info)
 	case relayconstant.RelayModeAudioSpeech:
@@ -75,6 +77,12 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI {
+		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
+			Message: "/v1/decisions requires an OpenAI channel", Type: "invalid_request_error",
+		}})
+		return
+	}
 	// Reject unsupported protocols before any WebSocket upgrade or pre-charge.
 	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeTypeSafe && relayFormat != types.RelayFormatTypeSafe {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{

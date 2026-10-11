@@ -33,6 +33,10 @@ import { IconSearch, IconInfoCircle } from '@douyinfe/semi-icons';
 import { Settings } from 'lucide-react';
 import { copy, showError, showInfo, showSuccess } from '../../../../helpers';
 import { MODEL_TABLE_PAGE_SIZE } from '../../../../constants';
+import {
+  getChannelTestEndpoints,
+  channelTestSupportsStream,
+} from '../../../../helpers/channelTestEndpoints';
 
 const ModelTestModal = ({
   showModelTestModal,
@@ -58,30 +62,27 @@ const ModelTestModal = ({
   t,
 }) => {
   const hasChannel = Boolean(currentTestChannel);
-  const isTypeSafeChannel =
-    Number(currentTestChannel?.type ?? currentTestChannel?.channel_type) === 71;
-  const isMiMoChannel =
-    Number(currentTestChannel?.type ?? currentTestChannel?.channel_type) === 72;
-  const isCohereChannel =
-    currentTestChannel?.type === 34 || currentTestChannel?.channel_type === 34;
-  const streamToggleDisabled =
-    isTypeSafeChannel ||
-    [
-      'typesafe-systemone',
-      'embeddings',
-      'cohere-embeddings',
-      'image-generation',
-      'jina-rerank',
-      'cohere-rerank',
-      'openai-response-compact',
-      'openai-video',
-    ].includes(selectedEndpointType);
+  const channelType = Number(
+    currentTestChannel?.type ?? currentTestChannel?.channel_type,
+  );
+  const endpointTypeOptions = getChannelTestEndpoints(channelType, t);
+  const streamToggleDisabled = !channelTestSupportsStream(
+    channelType,
+    selectedEndpointType,
+  );
 
   React.useEffect(() => {
-    if (streamToggleDisabled && isStreamTest) {
-      setIsStreamTest(false);
-    }
+    if (streamToggleDisabled && isStreamTest) setIsStreamTest(false);
   }, [streamToggleDisabled, isStreamTest, setIsStreamTest]);
+
+  React.useEffect(() => {
+    const available = getChannelTestEndpoints(channelType, (key) => key);
+    if (
+      !available.some((endpoint) => endpoint.value === selectedEndpointType)
+    ) {
+      setSelectedEndpointType(channelType === 71 ? 'typesafe-systemone' : '');
+    }
+  }, [channelType, selectedEndpointType, setSelectedEndpointType]);
 
   const filteredModels = hasChannel
     ? currentTestChannel.models
@@ -90,72 +91,6 @@ const ModelTestModal = ({
           model.toLowerCase().includes(modelSearchKeyword.toLowerCase()),
         )
     : [];
-
-  const endpointTypeOptions = isTypeSafeChannel
-    ? [
-        { value: '', label: t('自动检测') },
-        { value: 'typesafe-systemone', label: 'TypeSafe (/v1/systemone)' },
-      ]
-    : [
-        { value: '', label: t('自动检测') },
-        ...(isCohereChannel
-          ? [
-              {
-                value: 'cohere-chat',
-                label: 'Cohere Chat (/v2/chat)',
-              },
-              {
-                value: 'cohere-rerank',
-                label: 'Cohere Rerank (/v2/rerank)',
-              },
-              {
-                value: 'cohere-embeddings',
-                label: 'Cohere Embeddings (/v2/embed)',
-              },
-            ]
-          : []),
-        { value: 'openai', label: 'OpenAI (/v1/chat/completions)' },
-        { value: 'openai-response', label: 'OpenAI Response (/v1/responses)' },
-        {
-          value: 'openai-response-compact',
-          label: 'OpenAI Response Compaction (/v1/responses/compact)',
-        },
-        { value: 'anthropic', label: 'Anthropic (/v1/messages)' },
-        {
-          value: 'gemini',
-          label: 'Gemini (/v1beta/models/{model}:generateContent)',
-        },
-        { value: 'jina-rerank', label: 'Jina Rerank (/v1/rerank)' },
-        {
-          value: 'image-generation',
-          label: t('图像生成') + ' (/v1/images/generations)',
-        },
-        { value: 'openai-video', label: 'OpenAI Video (/v1/videos)' },
-        { value: 'embeddings', label: 'Embeddings (/v1/embeddings)' },
-      ].filter(
-        (option) =>
-          !isMiMoChannel || ['', 'openai', 'anthropic'].includes(option.value),
-      );
-
-  React.useEffect(() => {
-    if (
-      isMiMoChannel &&
-      !['', 'openai', 'anthropic'].includes(selectedEndpointType)
-    ) {
-      setSelectedEndpointType('');
-    }
-  }, [isMiMoChannel, selectedEndpointType, setSelectedEndpointType]);
-
-  React.useEffect(() => {
-    if (
-      isTypeSafeChannel &&
-      selectedEndpointType !== '' &&
-      selectedEndpointType !== 'typesafe-systemone'
-    ) {
-      setSelectedEndpointType('typesafe-systemone');
-    }
-  }, [isTypeSafeChannel, selectedEndpointType, setSelectedEndpointType]);
-
   const handleCopySelected = () => {
     if (selectedModelKeys.length === 0) {
       showError(t('请先选择模型！'));
@@ -287,6 +222,22 @@ const ModelTestModal = ({
             {testResult.success && rateLimitTier && (
               <Typography.Text type='tertiary' size='small'>
                 {t('付费层级: ${tier}').replace('${tier}', rateLimitTier)}
+              </Typography.Text>
+            )}
+            {testResult.success && testResult.usage && (
+              <Typography.Text type='tertiary' size='small'>
+                {t('用量：输入 {{input}}，输出 {{output}} token', {
+                  input: testResult.usage.prompt_tokens,
+                  output: testResult.usage.completion_tokens,
+                })}
+              </Typography.Text>
+            )}
+            {testResult.success && testResult.responseSummary && (
+              <Typography.Text type='tertiary' size='small'>
+                {t('音频响应：{{type}}，{{bytes}} 字节', {
+                  type: testResult.responseSummary.content_type,
+                  bytes: testResult.responseSummary.bytes,
+                })}
               </Typography.Text>
             )}
             {testResult.success && !rateLimitTier && rateLimitSummary && (
@@ -448,9 +399,13 @@ const ModelTestModal = ({
             closeIcon={null}
             icon={<IconInfoCircle />}
             className='!rounded-lg mb-2'
-            description={t(
-              '说明：本页测试为非流式请求；若渠道仅支持流式返回，可能出现测试失败，请以实际使用为准。',
-            )}
+            description={
+              selectedEndpointType === 'openai-decisions'
+                ? t(
+                    'Decisions 使用独立定价项：模型名后加 -openai-decisions，请先在定价设置中配置。',
+                  )
+                : t('测试使用所选端点；流式开关仅对支持流式测试的端点生效。')
+            }
           />
 
           {/* 搜索与操作按钮 */}

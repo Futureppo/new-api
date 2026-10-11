@@ -38,6 +38,7 @@ import { useTableCompactMode } from '../common/useTableCompactMode';
 import { useChannelUpstreamUpdates } from './useChannelUpstreamUpdates';
 import { parseUpstreamUpdateMeta } from './upstreamUpdateUtils';
 import { parseChannelIdRange } from '../../helpers/channelRange';
+import { channelTestSupportsStream } from '../../helpers/channelTestEndpoints';
 import { Modal, Button } from '@douyinfe/semi-ui';
 import { openCodexUsageModal } from '../../components/table/channels/modals/CodexUsageModal';
 
@@ -960,11 +961,17 @@ export const useChannelsData = () => {
     setTestingModels((prev) => new Set([...prev, model]));
 
     try {
-      let url = `/api/channel/test/${record.id}?model=${model}`;
+      let url = `/api/channel/test/${record.id}?model=${encodeURIComponent(model || '')}`;
       if (endpointType) {
         url += `&endpoint_type=${endpointType}`;
       }
-      if (stream) {
+      if (
+        stream &&
+        channelTestSupportsStream(
+          record.type ?? record.channel_type,
+          endpointType,
+        )
+      ) {
         url += `&stream=true`;
       }
       const res = await API.get(url);
@@ -974,8 +981,16 @@ export const useChannelsData = () => {
         return Promise.resolve();
       }
 
-      const { success, message, time, error_code, rate_limit, upstream_model } =
-        res.data;
+      const {
+        success,
+        message,
+        time,
+        error_code,
+        rate_limit,
+        upstream_model,
+        usage,
+        response_summary,
+      } = res.data;
 
       // 更新测试结果
       setModelTestResults((prev) => ({
@@ -988,6 +1003,8 @@ export const useChannelsData = () => {
           errorCode: error_code || null,
           rateLimit: rate_limit || null,
           upstreamModel: upstream_model || '',
+          usage: usage || null,
+          responseSummary: response_summary || null,
         },
       }));
 

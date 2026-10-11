@@ -1,5 +1,9 @@
 {
   "translation": {
+    "用量：输入 {{input}}，输出 {{output}} token": "Usage: {{input}} input, {{output}} output tokens",
+    "音频响应：{{type}}，{{bytes}} 字节": "Audio response: {{type}}, {{bytes}} bytes",
+    "Decisions 使用独立定价项：模型名后加 -openai-decisions，请先在定价设置中配置。": "Decisions uses separate pricing: append -openai-decisions to the model name and configure it in pricing settings first.",
+    "测试使用所选端点；流式开关仅对支持流式测试的端点生效。": "Tests use the selected endpoint. Streaming applies only to endpoints that support streaming tests.",
     "清除上游密钥": "Clear upstream key",
     "保存后删除现有上游密钥；未开启时留空表示保留密钥。": "Deletes the existing upstream key when saved. Otherwise, leaving the key blank keeps it unchanged.",
     "上游 API Key（可选）": "Upstream API key (optional)",

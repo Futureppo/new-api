@@ -12,6 +12,10 @@ import (
 // A valid two-second silent PCM WAV exercises the transcription endpoint without
 // embedding private speech or depending on a third-party sample URL.
 func prepareMistralTranscriptionTest(c *gin.Context, model string) error {
+	return prepareTranscriptionTest(c, model)
+}
+
+func prepareTranscriptionTest(c *gin.Context, model string) error {
 	const sampleBytes = 16000 * 2 * 2
 	wav := make([]byte, 44+sampleBytes)
 	copy(wav, "RIFF")

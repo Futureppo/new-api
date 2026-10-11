@@ -1,5 +1,9 @@
 {
   "translation": {
+    "用量：输入 {{input}}，输出 {{output}} token": "Utilisation : {{input}} tokens en entrée, {{output}} en sortie",
+    "音频响应：{{type}}，{{bytes}} 字节": "Réponse audio : {{type}}, {{bytes}} octets",
+    "Decisions 使用独立定价项：模型名后加 -openai-decisions，请先在定价设置中配置。": "Decisions utilise une tarification distincte : ajoutez -openai-decisions au nom du modèle et configurez-la dans les paramètres de tarification.",
+    "测试使用所选端点；流式开关仅对支持流式测试的端点生效。": "Les tests utilisent le point de terminaison sélectionné. Le streaming ne s’applique qu’aux points de terminaison compatibles.",
     "清除上游密钥": "Effacer la clé du serveur",
     "保存后删除现有上游密钥；未开启时留空表示保留密钥。": "Supprime la clé existante lors de l’enregistrement. Sinon, un champ vide conserve la clé.",
     "上游 API Key（可选）": "Clé API du serveur (facultative)",

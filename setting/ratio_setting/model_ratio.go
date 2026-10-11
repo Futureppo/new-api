@@ -562,6 +562,9 @@ func GetCompletionRatioInfo(name string) CompletionRatioInfo {
 }
 
 func getHardcodedCompletionModelRatio(name string) (float64, bool) {
+	if strings.HasSuffix(name, DecisionsModelSuffix) {
+		return 0, false
+	}
 
 	isReservedModel := strings.HasSuffix(name, "-all") || strings.HasSuffix(name, "-gizmo-*")
 	if isReservedModel {
@@ -776,6 +779,9 @@ func GetCompletionRatioCopy() map[string]float64 {
 
 // 转换模型名，减少渠道必须配置各种带参数模型
 func FormatMatchingModelName(name string) string {
+	if strings.HasSuffix(name, DecisionsModelSuffix) {
+		return name
+	}
 
 	if strings.HasPrefix(name, "gemini-2.5-flash-lite") {
 		name = handleThinkingBudgetModel(name, "gemini-2.5-flash-lite", "gemini-2.5-flash-lite-thinking-*")

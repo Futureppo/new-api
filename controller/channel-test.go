@@ -40,11 +40,18 @@ import (
 )
 
 type testResult struct {
-	context       *gin.Context
-	localErr      error
-	newAPIError   *types.NewAPIError
-	rateLimit     *channelRateLimitInfo
-	upstreamModel string
+	context         *gin.Context
+	localErr        error
+	newAPIError     *types.NewAPIError
+	rateLimit       *channelRateLimitInfo
+	upstreamModel   string
+	usage           *dto.Usage
+	responseSummary *channelTestResponseSummary
+}
+
+type channelTestResponseSummary struct {
+	ContentType string `json:"content_type"`
+	Bytes       int    `json:"bytes"`
 }
 
 type channelRateLimitInfo struct {
@@ -385,8 +392,14 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
-	if endpointType == string(constant.EndpointTypeModerations) {
+	if !common.ChannelTestEndpointSupportsStream(constant.EndpointType(endpointType)) {
 		isStream = false
+	}
+	if endpointType == string(constant.EndpointTypeOpenAIDecisions) && channel.Type != constant.ChannelTypeOpenAI {
+		return testResult{localErr: errors.New("/v1/decisions requires an OpenAI channel")}
+	}
+	if endpointType == string(constant.EndpointTypeBatchGeneration) && channel.Type != constant.ChannelTypeGMICloud {
+		return testResult{localErr: errors.New("batch generation tests require a GMICloud channel")}
 	}
 	if channel.Type == constant.ChannelTypeTypeSafe {
 		if endpointType != string(constant.EndpointTypeTypeSafeSystemOne) {
@@ -489,6 +502,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAI
 		case constant.EndpointTypeOpenAIResponse:
 			relayFormat = types.RelayFormatOpenAIResponses
+		case constant.EndpointTypeOpenAIDecisions:
+			relayFormat = types.RelayFormatOpenAIDecisions
 		case constant.EndpointTypeOpenAIResponseCompact:
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		case constant.EndpointTypeAnthropic:
@@ -619,12 +634,14 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	var convertedAudioReader io.Reader
 	// 根据 RelayMode 选择正确的转换函数
 	switch info.RelayMode {
+	case relayconstant.RelayModeDecisions:
+		convertedRequest = request
 	case relayconstant.RelayModeTypeSafeSystemOne:
 		convertedRequest = request
 	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
 		if audioReq, ok := request.(*dto.AudioRequest); ok {
-			if channel.Type == constant.ChannelTypeMistral && info.RelayMode == relayconstant.RelayModeAudioTranscription {
-				if err = prepareMistralTranscriptionTest(c, audioReq.Model); err != nil {
+			if (channel.Type == constant.ChannelTypeMistral || channel.Type == constant.ChannelTypeOpenAI) && info.RelayMode == relayconstant.RelayModeAudioTranscription {
+				if err = prepareTranscriptionTest(c, audioReq.Model); err != nil {
 					return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed)}
 				}
 			}
@@ -751,7 +768,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//	}
 	//}
 
-	if len(info.ParamOverride) > 0 && !(channel.Type == constant.ChannelTypeMistral && convertedAudioReader != nil) {
+	isMultipart := strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data")
+	if len(info.ParamOverride) > 0 && !isMultipart && info.RelayMode != relayconstant.RelayModeDecisions {
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
 			if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
@@ -769,7 +787,11 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 	if channel.Type == constant.ChannelTypeOpenAI {
-		jsonData, err = prepareOpenAIChannelTestRequest(info, jsonData)
+		if info.RelayMode == relayconstant.RelayModeDecisions {
+			jsonData, err = relaycommon.PrepareDecisionsRequest(info, jsonData)
+		} else {
+			jsonData, err = prepareOpenAIChannelTestRequest(info, jsonData)
+		}
 		if err != nil {
 			return testResult{context: c, localErr: err, newAPIError: types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())}
 		}
@@ -779,6 +801,13 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		if err := common.Unmarshal(jsonData, &effective); err != nil {
 			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeInvalidRequest)}
 		}
+	}
+	// Check the final body: channel overrides must not enable streaming for
+	// synchronous test samples. Multipart samples never apply JSON overrides.
+	if !isMultipart && !common.ChannelTestEndpointSupportsStream(constant.EndpointType(endpointType)) &&
+		(gjson.GetBytes(jsonData, "stream").Bool() || gjson.GetBytes(jsonData, "stream_format").String() == "sse") {
+		err := fmt.Errorf("%s channel tests do not support streaming", endpointType)
+		return testResult{context: c, localErr: err, newAPIError: types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())}
 	}
 
 	reservation, reserveErr := reserveChannelDailySuccess(channel)
@@ -885,14 +914,26 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		Group:            info.UsingGroup,
 		Other:            other,
 	})
-	common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	var responseSummary *channelTestResponseSummary
+	if info.RelayMode == relayconstant.RelayModeAudioSpeech {
+		responseSummary = &channelTestResponseSummary{ContentType: result.Header.Get("Content-Type"), Bytes: len(respBody)}
+		common.SysLog(fmt.Sprintf("testing channel #%d, audio response: %s, %d bytes", channel.Id, responseSummary.ContentType, responseSummary.Bytes))
+	} else {
+		common.SysLog(fmt.Sprintf("testing channel #%d, response: \n%s", channel.Id, string(respBody)))
+	}
+	upstreamModel := extractTestUpstreamModel(responseCapture.Snapshot().UpstreamResponseBody)
+	if upstreamModel == "" && info.RelayMode == relayconstant.RelayModeAudioSpeech {
+		upstreamModel = info.UpstreamModelName
+	}
 	testSucceeded = true
 	return testResult{
-		context:       c,
-		localErr:      nil,
-		newAPIError:   nil,
-		rateLimit:     rateLimit,
-		upstreamModel: extractTestUpstreamModel(responseCapture.Snapshot().UpstreamResponseBody),
+		context:         c,
+		localErr:        nil,
+		newAPIError:     nil,
+		rateLimit:       rateLimit,
+		upstreamModel:   upstreamModel,
+		usage:           usage,
+		responseSummary: responseSummary,
 	}
 }
 
@@ -1358,6 +1399,11 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeOpenAIDecisions:
+			return &dto.OpenAIDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
+				"input":     json.RawMessage(`"Have a nice day."`),
+				"questions": json.RawMessage(`[{"type":"predicate","name":"greeting","instructions":"Does the text contain a friendly greeting?"}]`),
+			}}
 		case constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings:
 			// 返回 EmbeddingRequest
 			return buildTestEmbeddingRequest(model, channel)
@@ -1400,14 +1446,18 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Input: testResponsesInput,
 			}
 		case constant.EndpointTypeAudioSpeech:
+			voice := "alloy"
+			if channel != nil && channel.Type == constant.ChannelTypeGCP {
+				voice = "cmn-CN-Wavenet-A"
+			}
 			return &dto.AudioRequest{
 				Model:          model,
 				Input:          "你好，这是一次渠道测试。",
-				Voice:          dto.AudioVoice{Name: "cmn-CN-Wavenet-A"},
+				Voice:          dto.AudioVoice{Name: voice},
 				ResponseFormat: "mp3",
 			}
 		case constant.EndpointTypeAudioTranscription:
-			if channel != nil && channel.Type == constant.ChannelTypeMistral {
+			if channel != nil && channel.Type != constant.ChannelTypeGCP {
 				return &dto.AudioRequest{Model: model, ResponseFormat: "json"}
 			}
 			return &dto.AudioRequest{
@@ -1592,6 +1642,12 @@ func TestChannel(c *gin.Context) {
 		"message":        "",
 		"time":           consumedTime,
 		"upstream_model": result.upstreamModel,
+	}
+	if result.usage != nil {
+		resp["usage"] = result.usage
+	}
+	if result.responseSummary != nil {
+		resp["response_summary"] = result.responseSummary
 	}
 	if result.rateLimit != nil {
 		resp["rate_limit"] = result.rateLimit

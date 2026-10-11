@@ -127,6 +127,9 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	if channelType != constant.ChannelTypePoe && (IsVideoGenerationModel(modelName) || (channelType == constant.ChannelTypeVolcEngine && IsVolcEngineContentGenerationTaskModel(modelName))) {
 		endpointTypes = prependEndpointType(endpointTypes, constant.EndpointTypeOpenAIVideo)
 	}
+	if channelType == constant.ChannelTypeOpenAI && modelName == "gpt-6-luna" {
+		endpointTypes = append(endpointTypes, constant.EndpointTypeOpenAIDecisions)
+	}
 	return endpointTypes
 }
 
