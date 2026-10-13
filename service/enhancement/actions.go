@@ -651,7 +651,7 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 	if err != nil {
 		return nil, err
 	}
-	rows, err := listIPRiskLogs(query.Start, query.End)
+	rows, err := listIPRiskLogStats(query.Start, query.End)
 	if err != nil {
 		return nil, err
 	}
@@ -667,7 +667,7 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 			}
 		}
 		if user, ok := usersByID[row.UserId]; ok {
-			user.RequestCount++
+			user.RequestCount += row.RequestCount
 			if user.Username == "" {
 				user.Username = row.Username
 			}
@@ -676,7 +676,7 @@ func BanSharedTokenIPUsers(ip string, query IPRiskQuery, operatorId int, operato
 		usersByID[row.UserId] = &IPRiskUserRef{
 			UserId:       row.UserId,
 			Username:     row.Username,
-			RequestCount: 1,
+			RequestCount: row.RequestCount,
 		}
 	}
 

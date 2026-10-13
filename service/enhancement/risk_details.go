@@ -8,17 +8,17 @@ import (
 	"github.com/QuantumNous/new-api/model"
 )
 
-const maxRiskLogRows = 100000
-
-type ipRiskLogRow struct {
-	IP        string `gorm:"column:ip"`
-	TokenId   int    `gorm:"column:token_id"`
-	TokenName string `gorm:"column:token_name"`
-	UserId    int    `gorm:"column:user_id"`
-	Username  string `gorm:"column:username"`
-	Type      int    `gorm:"column:type"`
-	Quota     int    `gorm:"column:quota"`
-	CreatedAt int64  `gorm:"column:created_at"`
+type ipRiskLogStats struct {
+	IP           string `gorm:"column:ip"`
+	TokenId      int    `gorm:"column:token_id"`
+	TokenName    string `gorm:"column:token_name"`
+	UserId       int    `gorm:"column:user_id"`
+	Username     string `gorm:"column:username"`
+	RequestCount int64  `gorm:"column:request_count"`
+	ErrorCount   int64  `gorm:"column:error_count"`
+	Quota        int64  `gorm:"column:quota"`
+	FirstSeenAt  int64  `gorm:"column:first_seen_at"`
+	LastSeenAt   int64  `gorm:"column:last_seen_at"`
 }
 
 type sharedTokenIPBucket struct {
@@ -38,7 +38,7 @@ type tokenMultiIPBucket struct {
 
 func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 	query = normalizeIPRiskQuery(query)
-	rows, err := listIPRiskLogs(query.Start, query.End)
+	rows, err := listIPRiskLogStats(query.Start, query.End)
 	if err != nil {
 		return PageResult[SharedTokenIPRisk]{}, err
 	}
@@ -53,8 +53,8 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 			bucket = &sharedTokenIPBucket{
 				item: SharedTokenIPRisk{
 					IP:          row.IP,
-					FirstSeenAt: row.CreatedAt,
-					LastSeenAt:  row.CreatedAt,
+					FirstSeenAt: row.FirstSeenAt,
+					LastSeenAt:  row.LastSeenAt,
 				},
 				users:    map[int]*IPRiskUserRef{},
 				tokens:   map[int]*IPRiskTokenRef{},
@@ -67,7 +67,7 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 		bucket.userSet[row.UserId] = struct{}{}
 		bucket.tokenSet[row.TokenId] = struct{}{}
 		if user, ok := bucket.users[row.UserId]; ok {
-			user.RequestCount++
+			user.RequestCount += row.RequestCount
 			if user.Username == "" {
 				user.Username = row.Username
 			}
@@ -75,11 +75,11 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 			bucket.users[row.UserId] = &IPRiskUserRef{
 				UserId:       row.UserId,
 				Username:     row.Username,
-				RequestCount: 1,
+				RequestCount: row.RequestCount,
 			}
 		}
 		if token, ok := bucket.tokens[row.TokenId]; ok {
-			token.RequestCount++
+			token.RequestCount += row.RequestCount
 			if token.TokenName == "" {
 				token.TokenName = row.TokenName
 			}
@@ -95,7 +95,7 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 				TokenName:    row.TokenName,
 				UserId:       row.UserId,
 				Username:     row.Username,
-				RequestCount: 1,
+				RequestCount: row.RequestCount,
 			}
 		}
 	}
@@ -129,7 +129,7 @@ func SharedTokenIPs(query IPRiskQuery) (PageResult[SharedTokenIPRisk], error) {
 
 func TokenMultiIPs(query IPRiskQuery) (PageResult[TokenMultiIPRisk], error) {
 	query = normalizeIPRiskQuery(query)
-	rows, err := listIPRiskLogs(query.Start, query.End)
+	rows, err := listIPRiskLogStats(query.Start, query.End)
 	if err != nil {
 		return PageResult[TokenMultiIPRisk]{}, err
 	}
@@ -147,8 +147,8 @@ func TokenMultiIPs(query IPRiskQuery) (PageResult[TokenMultiIPRisk], error) {
 					TokenName:   row.TokenName,
 					UserId:      row.UserId,
 					Username:    row.Username,
-					FirstSeenAt: row.CreatedAt,
-					LastSeenAt:  row.CreatedAt,
+					FirstSeenAt: row.FirstSeenAt,
+					LastSeenAt:  row.LastSeenAt,
 				},
 				ips: map[string]struct{}{},
 			}
@@ -195,7 +195,8 @@ func TokenMultiIPs(query IPRiskQuery) (PageResult[TokenMultiIPRisk], error) {
 func normalizeIPRiskQuery(query IPRiskQuery) IPRiskQuery {
 	query.Page = clampPage(query.Page)
 	query.PageSize = clampLimit(query.PageSize)
-	query.Start, query.End = queryWindow(query.Start, query.End, MaxAdminQueryWindow)
+	// Honor custom risk windows without silently shortening them to 30 days.
+	query.Start, query.End = queryWindow(query.Start, query.End, 0)
 	query.Sort = strings.TrimSpace(query.Sort)
 	query.Order = normalizeSortOrder(query.Order)
 	query.Keyword = strings.TrimSpace(query.Keyword)
@@ -213,28 +214,33 @@ func normalizeIPRiskQuery(query IPRiskQuery) IPRiskQuery {
 	return query
 }
 
-func listIPRiskLogs(start int64, end int64) ([]ipRiskLogRow, error) {
-	var rows []ipRiskLogRow
+func listIPRiskLogStats(start int64, end int64) ([]ipRiskLogStats, error) {
+	var rows []ipRiskLogStats
+	// Aggregate the full window in SQL: limiting raw logs can hide shared IPs
+	// when a busy token pushes another token's requests out of the sample.
 	err := model.LOG_DB.Model(&model.Log{}).
-		Select("ip, token_id, token_name, user_id, username, type, quota, created_at").
-		Where("ip <> '' AND type IN ? AND created_at >= ? AND created_at <= ?", []int{model.LogTypeConsume, model.LogTypeError}, start, end).
-		Order("created_at DESC").
-		Limit(maxRiskLogRows).
+		Select(`ip, token_id, token_name, user_id, username,
+			COUNT(*) AS request_count,
+			SUM(CASE WHEN type = ? THEN 1 ELSE 0 END) AS error_count,
+			SUM(quota) AS quota,
+			MIN(created_at) AS first_seen_at,
+			MAX(created_at) AS last_seen_at`, model.LogTypeError).
+		Where("ip <> '' AND token_id > 0 AND type IN ? AND created_at >= ? AND created_at <= ?", []int{model.LogTypeConsume, model.LogTypeError}, start, end).
+		Group("ip, token_id, token_name, user_id, username").
+		Order("last_seen_at DESC").
 		Find(&rows).Error
 	return rows, err
 }
 
-func addCommonRiskStats(requestCount *int64, errorCount *int64, quota *int64, firstSeenAt *int64, lastSeenAt *int64, row ipRiskLogRow) {
-	*requestCount++
-	if row.Type == model.LogTypeError {
-		*errorCount++
+func addCommonRiskStats(requestCount *int64, errorCount *int64, quota *int64, firstSeenAt *int64, lastSeenAt *int64, row ipRiskLogStats) {
+	*requestCount += row.RequestCount
+	*errorCount += row.ErrorCount
+	*quota += row.Quota
+	if *firstSeenAt == 0 || row.FirstSeenAt < *firstSeenAt {
+		*firstSeenAt = row.FirstSeenAt
 	}
-	*quota += int64(row.Quota)
-	if *firstSeenAt == 0 || row.CreatedAt < *firstSeenAt {
-		*firstSeenAt = row.CreatedAt
-	}
-	if row.CreatedAt > *lastSeenAt {
-		*lastSeenAt = row.CreatedAt
+	if row.LastSeenAt > *lastSeenAt {
+		*lastSeenAt = row.LastSeenAt
 	}
 }
 

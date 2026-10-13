@@ -43,9 +43,11 @@ func queryWindow(start int64, end int64, maxWindow time.Duration) (int64, int64)
 	if start <= 0 {
 		start = end - int64(DefaultQueryWindow.Seconds())
 	}
-	minStart := end - int64(maxWindow.Seconds())
-	if start < minStart {
-		start = minStart
+	if maxWindow > 0 {
+		minStart := end - int64(maxWindow.Seconds())
+		if start < minStart {
+			start = minStart
+		}
 	}
 	if start > end {
 		start = end - int64(time.Hour.Seconds())
