@@ -1,8 +1,12 @@
 package setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 type EnhancementSetting struct {
+	SessionRiskRecordingEnabled           bool     `json:"session_risk_recording_enabled"`
 	PublicEmbedEnabled                    bool     `json:"public_embed_enabled"`
 	SelectedModels                        []string `json:"selected_models"`
 	ModelStatusTimeWindowMins             int      `json:"model_status_time_window_mins"`
@@ -26,6 +30,7 @@ type EnhancementSetting struct {
 }
 
 var enhancementSetting = EnhancementSetting{
+	SessionRiskRecordingEnabled:           false,
 	PublicEmbedEnabled:                    false,
 	SelectedModels:                        []string{},
 	ModelStatusTimeWindowMins:             60,
@@ -51,6 +56,12 @@ func init() {
 
 func GetEnhancementSetting() *EnhancementSetting {
 	return &enhancementSetting
+}
+
+func IsSessionRiskRecordingEnabled() bool {
+	common.OptionMapRWMutex.RLock()
+	defer common.OptionMapRWMutex.RUnlock()
+	return enhancementSetting.SessionRiskRecordingEnabled
 }
 
 func IsRegistrationCodeRequired() bool {

@@ -86,6 +86,9 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 
 	risk := r.Group("/risk")
 	{
+		risk.GET("/session-settings", enhancementSessionRiskSettings)
+		risk.GET("/shared-sessions", enhancementSharedSessions)
+		risk.POST("/shared-sessions/ban-users", enhancementBanSharedSessionUsers)
 		risk.GET("/ip-log-coverage", enhancementIPLogCoverage)
 		risk.POST("/ip-log/enable-all", enhancementEnableAllRecordIPLog)
 		risk.GET("/shared-token-ips", enhancementSharedTokenIPs)
@@ -164,6 +167,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 }
 
 func RegisterEnhancementRootRoutes(r *gin.RouterGroup) {
+	r.PUT("/risk/session-settings", enhancementSaveSessionRiskSettings)
 	r.POST("/users/batch-delete", enhancementBatchDeleteUsers)
 	r.POST("/users/github-age-ban", enhancementGitHubAgeBanUsers)
 	r.DELETE("/users/:user_id", enhancementDeleteUser)

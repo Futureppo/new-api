@@ -97,6 +97,8 @@ import {
   GroupTransferCard,
 } from './components/SiteGroupTools';
 
+import SessionRisk, { SessionRiskSettings } from './components/SessionRisk';
+
 const { Title, Text } = Typography;
 
 const SECTIONS = [
@@ -3255,6 +3257,7 @@ function riskTokenLabel(token) {
 
 function RiskUserBanConfirmContent({
   ip,
+  description,
   users,
   reason,
   onReasonChange,
@@ -3273,9 +3276,11 @@ function RiskUserBanConfirmContent({
 
   return (
     <div className='space-y-3'>
-      <div>
-        {t('将封禁当前时间范围内使用该 IP 的选中用户')}：{ip}
-      </div>
+      {description || (
+        <div>
+          {t('将封禁当前时间范围内使用该 IP 的选中用户')}：{ip}
+        </div>
+      )}
       <div className='flex items-center justify-between gap-3 text-semi-color-text-1'>
         <span>
           {t('已选择')}：{formatNumber(selectedUserIds.length)} /{' '}
@@ -3408,6 +3413,14 @@ function RiskIPSelectionBanConfirmContent({
   );
 }
 
+const sessionRiskTableTools = {
+  enhanceTableColumns,
+  queryFromTableChange,
+  appendObjectTableQueryParams,
+  formatNumber,
+  formatAmount: (value) => formatDisplayAmount(value),
+};
+
 function RiskPanel({ data }) {
   const { t } = useTranslation();
   const currency = getCurrencyConfig();
@@ -3420,6 +3433,10 @@ function RiskPanel({ data }) {
     range: [],
     keyword: '',
   });
+  const [sessionQuery, setSessionQuery] = useState(() => ({
+    ...getRiskWindowRange(filters),
+    keyword: '',
+  }));
   const [sharedSort, setSharedSort] = useState(DEFAULT_TABLE_QUERY);
   const [tokenSort, setTokenSort] = useState(DEFAULT_TABLE_QUERY);
   const [sharedPageSize, setSharedPageSize] = useState(
@@ -3499,6 +3516,10 @@ function RiskPanel({ data }) {
   };
 
   const refreshRiskDetails = async (nextFilters = filters) => {
+    setSessionQuery({
+      ...getRiskWindowRange(nextFilters),
+      keyword: nextFilters.keyword?.trim() || '',
+    });
     await Promise.all([
       loadSharedIPs(1, sharedPageSize, nextFilters),
       loadTokenMultiIPs(1, tokenPageSize, nextFilters),
@@ -3976,6 +3997,7 @@ function RiskPanel({ data }) {
 
   return (
     <div className='space-y-4'>
+      <SessionRiskSettings refreshKey={data} />
       <Card className='!rounded-lg'>
         <div className='flex flex-col xl:flex-row gap-3 xl:items-end'>
           <label className='space-y-1'>
@@ -4031,7 +4053,7 @@ function RiskPanel({ data }) {
             </Text>
             <Input
               value={filters.keyword}
-              placeholder={t('搜索 IP、用户名、用户 ID 或令牌')}
+              placeholder={t('搜索 IP、会话标识、用户名、用户 ID 或令牌')}
               onChange={(value) =>
                 setFilters((prev) => ({ ...prev, keyword: value }))
               }
@@ -4048,6 +4070,13 @@ function RiskPanel({ data }) {
           </Button>
         </div>
       </Card>
+
+      <SessionRisk
+        query={sessionQuery}
+        refreshKey={data}
+        tableTools={sessionRiskTableTools}
+        BanConfirmContent={RiskUserBanConfirmContent}
+      />
 
       <Card title={t('多令牌共用 IP')} className='!rounded-lg'>
         <Table

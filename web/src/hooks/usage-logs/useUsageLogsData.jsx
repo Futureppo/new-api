@@ -18,6 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '@douyinfe/semi-ui';
 import {
@@ -48,6 +49,8 @@ export const useLogsData = ({
   fixedLogType = null,
 } = {}) => {
   const { t } = useTranslation();
+  const location = useLocation();
+  const initialSearch = new URLSearchParams(location.search);
 
   const normalizeLogType = (value, fallback = 0) => {
     const parsed = Number(value);
@@ -76,6 +79,7 @@ export const useLogsData = ({
     RETRY: 'retry',
     IP: 'ip',
     USER_AGENT: 'user_agent',
+    SESSION_ID: 'session_id',
     DETAILS: 'details',
   };
 
@@ -120,11 +124,19 @@ export const useLogsData = ({
     channel: '',
     group: '',
     request_id: '',
+    session_id: initialSearch.get('session_id') || '',
+    cache_key: initialSearch.get('cache_key') || '',
     ip: '',
     user_agent: '',
     dateRange: [
-      timestamp2string(getTodayStartTimestamp()),
-      timestamp2string(now.getTime() / 1000 + 3600),
+      timestamp2string(
+        Number(initialSearch.get('start_timestamp')) ||
+          getTodayStartTimestamp(),
+      ),
+      timestamp2string(
+        Number(initialSearch.get('end_timestamp')) ||
+          now.getTime() / 1000 + 3600,
+      ),
     ],
     logType: String(effectiveDefaultLogType),
   };
@@ -146,6 +158,7 @@ export const useLogsData = ({
       [COLUMN_KEYS.RETRY]: isAdminUser,
       [COLUMN_KEYS.IP]: true,
       [COLUMN_KEYS.USER_AGENT]: true,
+      [COLUMN_KEYS.SESSION_ID]: true,
       [COLUMN_KEYS.DETAILS]: true,
     };
   };
@@ -259,7 +272,7 @@ export const useLogsData = ({
 
   // 获取表单值的辅助函数，确保所有值都是字符串
   const getFormValues = () => {
-    const formValues = formApi ? formApi.getValues() : {};
+    const formValues = formApi ? formApi.getValues() : formInitValues;
 
     let start_timestamp = timestamp2string(getTodayStartTimestamp());
     let end_timestamp = timestamp2string(now.getTime() / 1000 + 3600);
@@ -282,6 +295,8 @@ export const useLogsData = ({
       channel: formValues.channel || '',
       group: formValues.group || '',
       request_id: formValues.request_id || '',
+      session_id: formValues.session_id || '',
+      cache_key: formValues.cache_key || '',
       ip: formValues.ip || '',
       user_agent: formValues.user_agent || '',
       logType:
@@ -302,6 +317,8 @@ export const useLogsData = ({
       group,
       ip,
       user_agent,
+      session_id,
+      cache_key,
       logType: formLogType,
     } = getFormValues();
     const currentLogType =
@@ -311,6 +328,7 @@ export const useLogsData = ({
     let url = `/api/log/self/stat?type=${currentLogType}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
     url += `&user_agent=${encodeURIComponent(user_agent)}`;
+    url += `&session_id=${encodeURIComponent(session_id)}&cache_key=${encodeURIComponent(cache_key)}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -331,6 +349,8 @@ export const useLogsData = ({
       group,
       ip,
       user_agent,
+      session_id,
+      cache_key,
       logType: formLogType,
     } = getFormValues();
     const currentLogType =
@@ -340,6 +360,7 @@ export const useLogsData = ({
     let url = `/api/log/stat?type=${currentLogType}&username=${username}&token_name=${token_name}&model_name=${model_name}&start_timestamp=${localStartTimestamp}&end_timestamp=${localEndTimestamp}&channel=${channel}&group=${group}&ip=${ip}`;
     url = encodeURI(url);
     url += `&user_agent=${encodeURIComponent(user_agent)}`;
+    url += `&session_id=${encodeURIComponent(session_id)}&cache_key=${encodeURIComponent(cache_key)}`;
     let res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {
@@ -501,6 +522,25 @@ export const useLogsData = ({
         expandDataLocal.push({
           key: t('Request ID'),
           value: logs[i].request_id,
+        });
+      }
+      if (logs[i].type === 2 || logs[i].type === 5) {
+        const missing = logs[i].session_recorded ? t('未提供') : t('未采集');
+        expandDataLocal.push({
+          key: t('会话 ID'),
+          value: logs[i].session_id || missing,
+        });
+        expandDataLocal.push({
+          key: t('标识来源'),
+          value: logs[i].session_source || '-',
+        });
+        expandDataLocal.push({
+          key: t('缓存关联 ID'),
+          value: logs[i].cache_key || missing,
+        });
+        expandDataLocal.push({
+          key: t('缓存标识来源'),
+          value: logs[i].cache_source || '-',
         });
       }
       if (logs[i].type === 7) {
@@ -907,6 +947,8 @@ export const useLogsData = ({
       channel,
       group,
       request_id,
+      session_id,
+      cache_key,
       ip,
       user_agent,
       logType: formLogType,
@@ -930,6 +972,7 @@ export const useLogsData = ({
     }
     url = encodeURI(url);
     url += `&user_agent=${encodeURIComponent(user_agent)}`;
+    url += `&session_id=${encodeURIComponent(session_id)}&cache_key=${encodeURIComponent(cache_key)}`;
     const res = await API.get(url);
     const { success, message, data } = res.data;
     if (success) {

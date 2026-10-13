@@ -111,6 +111,27 @@ const LogsFilters = ({
             size='small'
           />
 
+          {!isEmailLogType && (
+            <>
+              <Form.Input
+                field='session_id'
+                prefix={<IconSearch />}
+                placeholder={t('会话 ID')}
+                showClear
+                pure
+                size='small'
+              />
+              <Form.Input
+                field='cache_key'
+                prefix={<IconSearch />}
+                placeholder={t('缓存关联 ID')}
+                showClear
+                pure
+                size='small'
+              />
+            </>
+          )}
+
           <Form.Input
             field='ip'
             prefix={<IconSearch />}

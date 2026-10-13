@@ -918,6 +918,36 @@ export const getLogsColumns = ({
       },
     },
     {
+      key: COLUMN_KEYS.SESSION_ID,
+      title: t('会话 ID'),
+      dataIndex: 'session_id',
+      width: 200,
+      render: (value, record) =>
+        value ? (
+          <Tooltip content={value}>
+            <Typography.Text
+              style={{
+                display: 'inline-block',
+                maxWidth: 190,
+                cursor: 'pointer',
+              }}
+              ellipsis
+              onClick={(event) => copyText(event, value)}
+            >
+              {value}
+            </Typography.Text>
+          </Tooltip>
+        ) : [2, 5].includes(record.type) ? (
+          record.session_recorded ? (
+            t('未提供')
+          ) : (
+            t('未采集')
+          )
+        ) : (
+          '-'
+        ),
+    },
+    {
       key: COLUMN_KEYS.USER_AGENT,
       title: t('User-Agent'),
       dataIndex: 'user_agent',

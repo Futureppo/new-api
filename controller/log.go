@@ -30,7 +30,7 @@ func GetAllLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	ip := c.Query("ip")
 	userAgent := c.Query("user_agent")
-	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, ip, userAgent)
+	logs, total, err := model.GetAllLogs(logType, startTimestamp, endTimestamp, modelName, username, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), channel, group, requestId, ip, userAgent, model.LogSessionFilter{SessionID: c.Query("session_id"), CacheKey: c.Query("cache_key")})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -54,7 +54,7 @@ func GetUserLogs(c *gin.Context) {
 	requestId := c.Query("request_id")
 	ip := c.Query("ip")
 	userAgent := c.Query("user_agent")
-	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, ip, userAgent)
+	logs, total, err := model.GetUserLogs(userId, logType, startTimestamp, endTimestamp, modelName, tokenName, pageInfo.GetStartIdx(), pageInfo.GetPageSize(), group, requestId, ip, userAgent, model.LogSessionFilter{SessionID: c.Query("session_id"), CacheKey: c.Query("cache_key")})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -116,7 +116,7 @@ func GetLogsStat(c *gin.Context) {
 	group := c.Query("group")
 	ip := c.Query("ip")
 	userAgent := c.Query("user_agent")
-	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, userAgent)
+	stat, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, userAgent, model.LogSessionFilter{SessionID: c.Query("session_id"), CacheKey: c.Query("cache_key")})
 	if err != nil {
 		common.ApiError(c, err)
 		return
@@ -147,7 +147,7 @@ func GetLogsSelfStat(c *gin.Context) {
 	group := c.Query("group")
 	ip := c.Query("ip")
 	userAgent := c.Query("user_agent")
-	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, userAgent)
+	quotaNum, err := model.SumUsedQuota(logType, startTimestamp, endTimestamp, modelName, username, tokenName, channel, group, ip, userAgent, model.LogSessionFilter{SessionID: c.Query("session_id"), CacheKey: c.Query("cache_key")})
 	if err != nil {
 		common.ApiError(c, err)
 		return
