@@ -48,32 +48,35 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 	adaptor.Init(info)
 
-	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo) {
+	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeOpenRouter && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo) {
 		defaultMaxTokens := uint(model_setting.GetClaudeSettings().GetDefaultMaxTokens(request.Model))
 		request.MaxTokens = &defaultMaxTokens
 	}
 
+	explicitOpenRouterThinking := info.ChannelType == constant.ChannelTypeOpenRouter && (request.Thinking != nil || len(request.OutputConfig) > 0)
 	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
 		(strings.HasPrefix(request.Model, "claude-opus-4-6") || strings.HasPrefix(request.Model, "claude-opus-4-7")) {
 		request.Model = baseModel
-		request.Thinking = &dto.Thinking{
-			Type: "adaptive",
-		}
-		request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
-		if strings.HasPrefix(request.Model, "claude-opus-4-7") {
-			// Opus 4.7 rejects non-default temperature/top_p/top_k with 400
-			// and defaults display to "omitted"; restore the 4.6 visible summary.
-			request.Thinking.Display = "summarized"
-			request.Temperature = nil
-			request.TopP = nil
-			request.TopK = nil
-		} else {
-			request.Temperature = common.GetPointer[float64](1.0)
+		if !explicitOpenRouterThinking {
+			request.Thinking = &dto.Thinking{
+				Type: "adaptive",
+			}
+			request.OutputConfig = json.RawMessage(fmt.Sprintf(`{"effort":"%s"}`, effortLevel))
+			if strings.HasPrefix(request.Model, "claude-opus-4-7") {
+				// Opus 4.7 rejects non-default temperature/top_p/top_k with 400
+				// and defaults display to "omitted"; restore the 4.6 visible summary.
+				request.Thinking.Display = "summarized"
+				request.Temperature = nil
+				request.TopP = nil
+				request.TopK = nil
+			} else {
+				request.Temperature = common.GetPointer[float64](1.0)
+			}
 		}
 		info.UpstreamModelName = request.Model
 	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(request.Model, "-thinking") {
-		if request.Thinking == nil {
+		if request.Thinking == nil && !explicitOpenRouterThinking {
 			baseModel := strings.TrimSuffix(request.Model, "-thinking")
 			if strings.HasPrefix(baseModel, "claude-opus-4-7") {
 				// Opus 4.7 rejects thinking.type="enabled"; use adaptive at high effort.

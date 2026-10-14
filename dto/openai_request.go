@@ -28,6 +28,23 @@ type FormatJsonSchema struct {
 // GeneralOpenAIRequest represents a general request structure for OpenAI-compatible APIs.
 // 参数增加规范：无引用的参数必须使用json.RawMessage类型，并添加omitempty标签
 type GeneralOpenAIRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider            json.RawMessage `json:"provider,omitempty"`
+	SessionID           json.RawMessage `json:"session_id,omitempty"`
+	Trace               json.RawMessage `json:"trace,omitempty"`
+	Models              json.RawMessage `json:"models,omitempty"`
+	Plugins             json.RawMessage `json:"plugins,omitempty"`
+	Route               json.RawMessage `json:"route,omitempty"`
+	DeferredTools       json.RawMessage `json:"deferred_tools,omitempty"`
+	StopServerToolsWhen json.RawMessage `json:"stop_server_tools_when,omitempty"`
+	CacheControl        json.RawMessage `json:"cache_control,omitempty"`
+	ImageConfig         json.RawMessage `json:"image_config,omitempty"`
+	MinP                *float64        `json:"min_p,omitempty"`
+	TopA                *float64        `json:"top_a,omitempty"`
+	RepetitionPenalty   *float64        `json:"repetition_penalty,omitempty"`
+	Debug               json.RawMessage `json:"debug,omitempty"`
+	MaxToolCalls        *uint           `json:"max_tool_calls,omitempty"`
+
 	Model               string            `json:"model,omitempty"`
 	Messages            []Message         `json:"messages,omitempty"`
 	Prompt              any               `json:"prompt,omitempty"`
@@ -224,24 +241,28 @@ func (r *GeneralOpenAIRequest) GetSystemRoleName() string {
 const CustomType = "custom"
 
 type ToolCallRequest struct {
-	ID       string          `json:"id,omitempty"`
-	Type     string          `json:"type"`
-	Function FunctionRequest `json:"function,omitempty"`
-	Custom   json.RawMessage `json:"custom,omitempty"`
+	CacheControl json.RawMessage `json:"cache_control,omitempty"`
+	DeferLoading *bool           `json:"defer_loading,omitempty"`
+	Parameters   json.RawMessage `json:"parameters,omitempty"`
+	ID           string          `json:"id,omitempty"`
+	Type         string          `json:"type"`
+	Function     FunctionRequest `json:"function,omitempty"`
+	Custom       json.RawMessage `json:"custom,omitempty"`
 }
 
 type FunctionRequest struct {
-	Description string `json:"description,omitempty"`
-	Name        string `json:"name"`
-	Parameters  any    `json:"parameters,omitempty"`
-	Arguments   string `json:"arguments,omitempty"`
-	Strict      *bool  `json:"strict,omitempty"`
+	DeferLoading *bool  `json:"defer_loading,omitempty"`
+	Description  string `json:"description,omitempty"`
+	Name         string `json:"name"`
+	Parameters   any    `json:"parameters,omitempty"`
+	Arguments    string `json:"arguments,omitempty"`
+	Strict       *bool  `json:"strict,omitempty"`
 }
 
 func (t ToolCallRequest) MarshalJSON() ([]byte, error) {
 	type alias ToolCallRequest
 	body, err := common.Marshal(alias(t))
-	if err != nil || t.Type != CustomType {
+	if err != nil || t.Type == "function" || t.Type == "" {
 		return body, err
 	}
 	var fields map[string]json.RawMessage
@@ -290,6 +311,8 @@ func (r *GeneralOpenAIRequest) ParseInput() []string {
 }
 
 type Message struct {
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
+
 	Audio            json.RawMessage `json:"audio,omitempty"`
 	Refusal          *string         `json:"refusal,omitempty"`
 	FunctionCall     json.RawMessage `json:"function_call,omitempty"`
@@ -858,6 +881,24 @@ type WebSearchOptions struct {
 
 // https://platform.openai.com/docs/api-reference/responses/create
 type OpenAIResponsesRequest struct {
+	previousResponseIDPresent bool
+	// OpenRouter routing and observability extensions.
+	Provider            json.RawMessage `json:"provider,omitempty"`
+	SessionID           json.RawMessage `json:"session_id,omitempty"`
+	Trace               json.RawMessage `json:"trace,omitempty"`
+	Models              json.RawMessage `json:"models,omitempty"`
+	Plugins             json.RawMessage `json:"plugins,omitempty"`
+	Route               json.RawMessage `json:"route,omitempty"`
+	DeferredTools       json.RawMessage `json:"deferred_tools,omitempty"`
+	StopServerToolsWhen json.RawMessage `json:"stop_server_tools_when,omitempty"`
+	CacheControl        json.RawMessage `json:"cache_control,omitempty"`
+	ImageConfig         json.RawMessage `json:"image_config,omitempty"`
+	Modalities          json.RawMessage `json:"modalities,omitempty"`
+	TopK                *int            `json:"top_k,omitempty"`
+	FrequencyPenalty    *float64        `json:"frequency_penalty,omitempty"`
+	PresencePenalty     *float64        `json:"presence_penalty,omitempty"`
+	Debug               json.RawMessage `json:"debug,omitempty"`
+
 	Model   string          `json:"model"`
 	Input   json.RawMessage `json:"input,omitempty"`
 	Include json.RawMessage `json:"include,omitempty"`
@@ -982,6 +1023,10 @@ func (r *OpenAIResponsesRequest) GetToolsMap() []map[string]any {
 }
 
 type Reasoning struct {
+	Enabled   *bool `json:"enabled,omitempty"`
+	Exclude   *bool `json:"exclude,omitempty"`
+	MaxTokens *int  `json:"max_tokens,omitempty"`
+
 	Context         *string `json:"context,omitempty"`
 	Mode            *string `json:"mode,omitempty"`
 	GenerateSummary *string `json:"generate_summary,omitempty"`

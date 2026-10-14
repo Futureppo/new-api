@@ -58,7 +58,7 @@ func AudioHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
-		if info.ChannelType == constant.ChannelTypeOpenAI {
+		if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeOpenRouter {
 			info.IsStream = strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		}
 		if httpResp.StatusCode != http.StatusOK {

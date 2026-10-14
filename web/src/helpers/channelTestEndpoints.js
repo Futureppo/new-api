@@ -98,6 +98,18 @@ export function getChannelTestEndpoints(channelType, t) {
   const type = Number(channelType);
   return CHANNEL_TEST_ENDPOINTS.filter((endpoint) => {
     if (endpoint.channels && !endpoint.channels.includes(type)) return false;
+    if (type === 20)
+      return [
+        '',
+        'openai',
+        'anthropic',
+        'openai-response',
+        'embeddings',
+        'jina-rerank',
+        'image-generation',
+        'audio-speech',
+        'audio-transcription',
+      ].includes(endpoint.value);
     if (type === 71) return ['', 'typesafe-systemone'].includes(endpoint.value);
     if (type === 72)
       return ['', 'openai', 'anthropic'].includes(endpoint.value);

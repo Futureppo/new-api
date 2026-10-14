@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
@@ -526,7 +527,7 @@ func fetchOpenRouterManagedFreeAndAlphaModelIDs(
 ) ([]string, error) {
 	fetchURL := strings.TrimSpace(customModelListURL)
 	if fetchURL == "" {
-		fetchURL = fmt.Sprintf("%s/v1/models/user", strings.TrimRight(strings.TrimSpace(baseURL), "/"))
+		fetchURL = openrouter.NormalizeBaseURL(baseURL) + "/v1/models/user"
 	}
 	models, err := fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 	if err != nil {

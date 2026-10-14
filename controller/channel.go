@@ -28,6 +28,7 @@ import (
 	mistralconsole "github.com/QuantumNous/new-api/relay/channel/mistral_console"
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
+	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/relay/channel/selfhost"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
@@ -239,6 +240,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeOpenRouter:
+		return openrouter.NormalizeBaseURL(baseURL) + "/v1/models?output_modalities=text,image,embeddings,audio,rerank,speech,transcription"
 	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:
 		return selfhost.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeCline:

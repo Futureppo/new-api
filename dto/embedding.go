@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"strings"
 
 	"github.com/QuantumNous/new-api/types"
@@ -20,6 +21,11 @@ type EmbeddingOptions struct {
 }
 
 type EmbeddingRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider  json.RawMessage `json:"provider,omitempty"`
+	SessionID json.RawMessage `json:"session_id,omitempty"`
+	Trace     json.RawMessage `json:"trace,omitempty"`
+
 	Model            string   `json:"model"`
 	Input            any      `json:"input"`
 	EncodingFormat   string   `json:"encoding_format,omitempty"`

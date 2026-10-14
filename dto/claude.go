@@ -204,6 +204,19 @@ type ClaudeToolChoice struct {
 }
 
 type ClaudeRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider            json.RawMessage `json:"provider,omitempty"`
+	SessionID           json.RawMessage `json:"session_id,omitempty"`
+	Trace               json.RawMessage `json:"trace,omitempty"`
+	Models              json.RawMessage `json:"models,omitempty"`
+	Plugins             json.RawMessage `json:"plugins,omitempty"`
+	Route               json.RawMessage `json:"route,omitempty"`
+	DeferredTools       json.RawMessage `json:"deferred_tools,omitempty"`
+	StopServerToolsWhen json.RawMessage `json:"stop_server_tools_when,omitempty"`
+	Fallbacks           json.RawMessage `json:"fallbacks,omitempty"`
+	Safeguards          json.RawMessage `json:"safeguards,omitempty"`
+	User                json.RawMessage `json:"user,omitempty"`
+
 	Model        string          `json:"model"`
 	Prompt       string          `json:"prompt,omitempty"`
 	System       any             `json:"system,omitempty"`

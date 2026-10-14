@@ -196,7 +196,7 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 	legacyClaudeDerived := isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage)
 	isOpenRouterClaudeBilling := relayInfo.ChannelMeta != nil &&
 		relayInfo.ChannelType == constant.ChannelTypeOpenRouter &&
-		summary.IsClaudeUsageSemantic
+		summary.IsClaudeUsageSemantic && usage.UsageSource != "openrouter_native_messages"
 
 	if isOpenRouterClaudeBilling {
 		summary.PromptTokens -= summary.CacheTokens
@@ -316,11 +316,23 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 && !mistralNativeCallPrice(relayInfo) {
+	if summary.TotalTokens == 0 && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
 		summary.Quota = 0
 	}
 
 	return summary
+}
+
+// Native Messages cache tokens and completed fixed-price images remain billable
+// even when their normal text token counts are explicitly zero.
+func openRouterBillableResult(ctx *gin.Context, info *relaycommon.RelayInfo, usage *dto.Usage) bool {
+	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeOpenRouter {
+		return false
+	}
+	if usage != nil && usage.UsageSource == "openrouter_native_messages" && (usage.PromptTokensDetails.CachedTokens > 0 || usage.PromptTokensDetails.GetCacheCreationTokens() > 0) {
+		return true
+	}
+	return info.PriceData.UsePrice && ctx != nil && ctx.GetInt("openrouter_completed_images") > 0
 }
 
 func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) string {
@@ -382,7 +394,7 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
-	if summary.TotalTokens == 0 && !mistralNativeCallPrice(relayInfo) {
+	if summary.TotalTokens == 0 && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {
@@ -421,6 +433,9 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		other["usage_semantic"] = "anthropic"
 	} else {
 		other = GenerateTextOtherInfo(ctx, relayInfo, summary.ModelRatio, summary.GroupRatio, summary.CompletionRatio, summary.CacheTokens, summary.CacheRatio, summary.ModelPrice, relayInfo.PriceData.GroupRatioInfo.GroupSpecialRatio)
+	}
+	if usage != nil && usage.UsageSource != "" {
+		other["usage_source"] = usage.UsageSource
 	}
 	if adminRejectReason != "" {
 		other["reject_reason"] = relaycommon.SanitizeModelText(relayInfo, adminRejectReason)

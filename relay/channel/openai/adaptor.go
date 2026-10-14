@@ -2,7 +2,6 @@ package openai
 
 import (
 	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -35,7 +34,6 @@ import (
 	"github.com/QuantumNous/new-api/relay/common_handler"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
-	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
@@ -58,6 +56,10 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if isOpenRouterNative(info) {
+		info.FinalRequestRelayFormat = types.RelayFormatClaude
+		return request, nil
+	}
 	//if !strings.Contains(request.Model, "claude") {
 	//	return nil, fmt.Errorf("you are using openai channel type with path /v1/messages, only claude model supported convert, but got %s", request.Model)
 	//}
@@ -103,6 +105,9 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelType == constant.ChannelTypeOpenRouter {
+		return openRouterRequestURL(info)
+	}
 	if info.ChannelType == constant.ChannelTypeCline {
 		if info.RelayMode != relayconstant.RelayModeChatCompletions {
 			return "", errors.New("Cline channel supports chat completions only")
@@ -276,6 +281,21 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 		}
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
+		if isOpenRouterNative(info) {
+			header.Set("Content-Type", "application/json")
+			if info.GetFinalRequestRelayFormat() == types.RelayFormatClaude {
+				version := c.GetHeader("anthropic-version")
+				if version == "" {
+					version = "2023-06-01"
+				}
+				if header.Get("anthropic-version") == "" {
+					header.Set("anthropic-version", version)
+				}
+				if beta := c.GetHeader("anthropic-beta"); beta != "" && header.Get("anthropic-beta") == "" {
+					header.Set("anthropic-beta", beta)
+				}
+			}
+		}
 		if header.Get("HTTP-Referer") == "" {
 			header.Set("HTTP-Referer", "https://www.newapi.ai")
 		}
@@ -314,82 +334,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return request, nil
 	}
 	if info.ChannelType == constant.ChannelTypeOpenRouter {
-		if len(request.Usage) == 0 {
-			request.Usage = json.RawMessage(`{"include":true}`)
-		}
-		// 适配 OpenRouter 的 thinking 后缀
-		if !model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) &&
-			strings.HasSuffix(info.UpstreamModelName, "-thinking") {
-			info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-thinking")
-			request.Model = info.UpstreamModelName
-			if len(request.Reasoning) == 0 {
-				reasoning := map[string]any{
-					"enabled": true,
-				}
-				if request.ReasoningEffort != "" && request.ReasoningEffort != "none" {
-					reasoning["effort"] = request.ReasoningEffort
-				}
-				marshal, err := common.Marshal(reasoning)
-				if err != nil {
-					return nil, fmt.Errorf("error marshalling reasoning: %w", err)
-				}
-				request.Reasoning = marshal
-			}
-			// 清空多余的ReasoningEffort
-			request.ReasoningEffort = ""
-		} else {
-			if len(request.Reasoning) == 0 {
-				// 适配 OpenAI 的 ReasoningEffort 格式
-				if request.ReasoningEffort != "" {
-					reasoning := map[string]any{
-						"enabled": true,
-					}
-					if request.ReasoningEffort != "none" {
-						reasoning["effort"] = request.ReasoningEffort
-						marshal, err := common.Marshal(reasoning)
-						if err != nil {
-							return nil, fmt.Errorf("error marshalling reasoning: %w", err)
-						}
-						request.Reasoning = marshal
-					}
-				}
-			}
-			request.ReasoningEffort = ""
-		}
-
-		// https://docs.anthropic.com/en/api/openai-sdk#extended-thinking-support
-		// 没有做排除3.5Haiku等，要出问题再加吧，最佳兼容性（不是
-		if request.THINKING != nil && strings.HasPrefix(info.UpstreamModelName, "anthropic") {
-			var thinking dto.Thinking // Claude标准Thinking格式
-			if err := json.Unmarshal(request.THINKING, &thinking); err != nil {
-				return nil, fmt.Errorf("error Unmarshal thinking: %w", err)
-			}
-
-			// 只有当 thinking.Type 是 "enabled" 时才处理
-			if thinking.Type == "enabled" {
-				// 检查 BudgetTokens 是否为 nil
-				if thinking.BudgetTokens == nil {
-					return nil, fmt.Errorf("BudgetTokens is nil when thinking is enabled")
-				}
-
-				reasoning := openrouter.RequestReasoning{
-					Enabled:   true,
-					MaxTokens: *thinking.BudgetTokens,
-				}
-
-				marshal, err := common.Marshal(reasoning)
-				if err != nil {
-					return nil, fmt.Errorf("error marshalling reasoning: %w", err)
-				}
-
-				request.Reasoning = marshal
-			}
-
-			// 清空 THINKING
-			request.THINKING = nil
-		}
-
+		return convertOpenRouterChat(info, request)
 	}
+
 	baseModel, effort, capabilities, known := openaimodel.Resolve(info.UpstreamModelName)
 	if known && (info.ChannelType == constant.ChannelTypeOpenAI || capabilities.LegacyO || capabilities.LegacyGPT5) {
 		if effort != "" {
@@ -443,6 +390,9 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
+	if isOpenRouterNative(info) {
+		return convertOpenRouterAudio(c, info, request)
+	}
 	if info.ChannelType != constant.ChannelTypeOpenAI && request.Voice.ID != "" {
 		return nil, errors.New("custom voice objects are only supported by the official OpenAI channel")
 	}
@@ -513,6 +463,9 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	if isOpenRouterNative(info) {
+		return convertOpenRouterImage(c, info, request)
+	}
 	switch info.RelayMode {
 	case relayconstant.RelayModeImagesEdits:
 		if info.ChannelType == constant.ChannelTypeOpenAI && strings.HasPrefix(c.GetHeader("Content-Type"), "application/json") {
@@ -664,6 +617,9 @@ func detectImageMimeType(filename string) string {
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	if isOpenRouterNative(info) {
+		return request, nil
+	}
 	//  转换模型推理力度后缀
 	effort, originModel := reasoning.ParseOpenAIReasoningEffortFromModelSuffix(request.Model)
 	if effort != "" {
@@ -683,6 +639,9 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if isOpenRouterNative(info) {
+		return a.doOpenRouterRequest(c, info, requestBody)
+	}
 	if info.ChannelType == constant.ChannelTypeCline {
 		body, err := cline.ForceStreamRequest(requestBody)
 		if err != nil {
@@ -712,6 +671,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if isOpenRouterNative(info) {
+		return openRouterResponse(c, resp, info)
+	}
 	if info.ChannelType == constant.ChannelTypeCline && !info.IsStream {
 		if resp != nil && strings.HasPrefix(resp.Header.Get("Content-Type"), "text/event-stream") {
 			return clineStreamToJSON(c, info, resp)

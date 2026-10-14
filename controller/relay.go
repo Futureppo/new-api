@@ -124,6 +124,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 	defer func() {
 		if newAPIError != nil {
 			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
+				return
+			}
 			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
 				return
 			}
@@ -453,6 +456,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 }
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
+	if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
+		return false
+	}
 	if openaiErr == nil {
 		return false
 	}

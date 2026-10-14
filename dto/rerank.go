@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,12 @@ import (
 )
 
 type RerankRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider  json.RawMessage `json:"provider,omitempty"`
+	SessionID json.RawMessage `json:"session_id,omitempty"`
+	Trace     json.RawMessage `json:"trace,omitempty"`
+	User      json.RawMessage `json:"user,omitempty"`
+
 	Documents       []any  `json:"documents"`
 	Query           string `json:"query"`
 	Model           string `json:"model"`

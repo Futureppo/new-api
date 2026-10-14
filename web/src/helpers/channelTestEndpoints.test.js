@@ -73,3 +73,32 @@ describe('channel test endpoints', () => {
     ).toEqual(backend.sort());
   });
 });
+
+describe('OpenRouter channel test endpoints', () => {
+  test('exposes supported inference endpoints and stream choices', () => {
+    expect(options(20)).toEqual([
+      '',
+      'openai',
+      'openai-response',
+      'anthropic',
+      'jina-rerank',
+      'image-generation',
+      'embeddings',
+      'audio-speech',
+      'audio-transcription',
+    ]);
+    expect(channelTestSupportsStream(20, 'openai')).toBe(true);
+    expect(channelTestSupportsStream(20, 'anthropic')).toBe(true);
+    expect(channelTestSupportsStream(20, 'openai-response')).toBe(true);
+    for (const endpoint of [
+      'audio-speech',
+      'audio-transcription',
+      'embeddings',
+      'jina-rerank',
+      'openai-response-compact',
+      'openai-video',
+    ]) {
+      expect(channelTestSupportsStream(20, endpoint)).toBe(false);
+    }
+  });
+});

@@ -125,6 +125,8 @@ func SetRelayRouter(router *gin.Engine) {
 			controller.Relay(c, types.RelayFormatOpenAILocalSearch)
 		})
 
+		httpRouter.POST("/images", controller.RelayOpenRouterImages)
+
 		// image related routes
 		httpRouter.POST("/edits", func(c *gin.Context) {
 			controller.Relay(c, types.RelayFormatOpenAIImage)

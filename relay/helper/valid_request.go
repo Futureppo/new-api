@@ -94,6 +94,9 @@ func GetAndValidAudioRequest(c *gin.Context, relayMode int) (*dto.AudioRequest, 
 	if err != nil {
 		return nil, err
 	}
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenRouter && len(audioRequest.InputTurns) > 0 {
+		return nil, errors.New("multi-speaker input requires an OpenRouter channel")
+	}
 	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && audioRequest.Voice.ID != "" {
 		return nil, errors.New("custom voice objects are only supported by the official OpenAI channel")
 	}
@@ -190,7 +193,7 @@ func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIRespon
 
 func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageRequest, error) {
 	imageRequest := &dto.ImageRequest{}
-	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenAI {
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenAI || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
 		if err := unmarshalOpenAIMediaRequest(c, imageRequest); err != nil {
 			return nil, err
 		}
@@ -298,6 +301,54 @@ func unmarshalOpenAIMediaRequest(c *gin.Context, request any) error {
 	defer form.RemoveAll()
 	fields := make(map[string]any)
 	for key, values := range form.Value {
+		if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
+			normalized := strings.TrimSuffix(key, "[]")
+			if normalized == "timestamp_granularities" || normalized == "keyterms" {
+				if len(values) == 1 && strings.HasPrefix(strings.TrimSpace(values[0]), "[") {
+					var parsed []string
+					if err := common.UnmarshalJsonStr(values[0], &parsed); err != nil {
+						return fmt.Errorf("%s must be an array of strings", key)
+					}
+					fields[normalized] = parsed
+				} else {
+					fields[normalized] = values
+				}
+				continue
+			}
+			if len(values) == 1 {
+				value := values[0]
+				switch normalized {
+				case "diarize":
+					parsed, err := strconv.ParseBool(value)
+					if err != nil {
+						return fmt.Errorf("%s must be a boolean", key)
+					}
+					fields[normalized] = parsed
+					continue
+				case "temperature":
+					parsed, err := strconv.ParseFloat(value, 64)
+					if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
+						return fmt.Errorf("%s must be a number", key)
+					}
+					fields[normalized] = parsed
+					continue
+				case "seed":
+					parsed, err := strconv.ParseInt(value, 10, 64)
+					if err != nil {
+						return fmt.Errorf("seed must be an integer")
+					}
+					fields[normalized] = parsed
+					continue
+				case "provider", "trace", "input_references", "input_audio":
+					var parsed any
+					if err := common.UnmarshalJsonStr(value, &parsed); err != nil {
+						return fmt.Errorf("%s must be valid JSON", key)
+					}
+					fields[normalized] = parsed
+					continue
+				}
+			}
+		}
 		if len(values) != 1 {
 			fields[key] = values
 			continue
@@ -316,7 +367,7 @@ func unmarshalOpenAIMediaRequest(c *gin.Context, request any) error {
 				return fmt.Errorf("%s must be a non-negative integer", key)
 			}
 			fields[key] = parsed
-		case "speed":
+		case "speed", "temperature":
 			parsed, err := strconv.ParseFloat(value, 64)
 			if err != nil {
 				return fmt.Errorf("%s must be a number", key)

@@ -12,6 +12,20 @@ import (
 )
 
 type AudioRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider               json.RawMessage `json:"provider,omitempty"`
+	SessionID              json.RawMessage `json:"session_id,omitempty"`
+	Trace                  json.RawMessage `json:"trace,omitempty"`
+	InputTurns             []SpeechTurn    `json:"-"`
+	InputAudio             json.RawMessage `json:"input_audio,omitempty"`
+	InputReferences        json.RawMessage `json:"input_references,omitempty"`
+	SourceURL              *string         `json:"source_url,omitempty"`
+	Temperature            *float64        `json:"temperature,omitempty"`
+	TimestampGranularities []string        `json:"timestamp_granularities,omitempty"`
+	Diarize                *bool           `json:"diarize,omitempty"`
+	Keyterms               []string        `json:"keyterms,omitempty"`
+	User                   json.RawMessage `json:"user,omitempty"`
+
 	Model          string          `json:"model"`
 	Input          string          `json:"input"`
 	Voice          AudioVoice      `json:"voice"`
@@ -113,4 +127,63 @@ type Segment struct {
 	AvgLogprob       float64 `json:"avg_logprob"`
 	CompressionRatio float64 `json:"compression_ratio"`
 	NoSpeechProb     float64 `json:"no_speech_prob"`
+}
+
+// SpeechTurn is an OpenRouter multi-speaker input turn.
+type SpeechTurn struct {
+	Text         string  `json:"text"`
+	Voice        *string `json:"voice,omitempty"`
+	Instructions *string `json:"instructions,omitempty"`
+}
+
+// Keep Input available to existing providers and token estimation while retaining
+// the original turns on the wire. Only the OpenRouter channel accepts turns.
+func (r *AudioRequest) UnmarshalJSON(data []byte) error {
+	type alias AudioRequest
+	var fields map[string]json.RawMessage
+	if err := common.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	input := fields["input"]
+	delete(fields, "input")
+	rest, err := common.Marshal(fields)
+	if err != nil {
+		return err
+	}
+	var a alias
+	if err = common.Unmarshal(rest, &a); err != nil {
+		return err
+	}
+	*r = AudioRequest(a)
+	if len(input) == 0 || string(input) == "null" {
+		return nil
+	}
+	if common.GetJsonType(input) == "string" {
+		return common.Unmarshal(input, &r.Input)
+	}
+	if err = common.Unmarshal(input, &r.InputTurns); err != nil {
+		return fmt.Errorf("input must be a string or speech turns: %w", err)
+	}
+	if len(r.InputTurns) == 0 {
+		return fmt.Errorf("input turns must not be empty")
+	}
+	var texts []string
+	for _, turn := range r.InputTurns {
+		if strings.TrimSpace(turn.Text) == "" {
+			return fmt.Errorf("speech turn text is required")
+		}
+		texts = append(texts, turn.Text)
+	}
+	r.Input = strings.Join(texts, "\n")
+	return nil
+}
+func (r AudioRequest) MarshalJSON() ([]byte, error) {
+	type alias AudioRequest
+	if len(r.InputTurns) == 0 {
+		return common.Marshal(alias(r))
+	}
+	return common.Marshal(struct {
+		alias
+		Input []SpeechTurn `json:"input"`
+	}{alias(r), r.InputTurns})
 }

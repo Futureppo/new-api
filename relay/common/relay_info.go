@@ -316,6 +316,7 @@ func (info *RelayInfo) ToString() string {
 
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
+	constant.ChannelTypeOpenRouter:  true, // Accepted; OpenRouter always reports stream usage.
 	constant.ChannelTypeVLLM:        true,
 	constant.ChannelTypeLiteLLM:     true,
 	constant.ChannelTypeXunfeiMaas:  true, // Documented for vision; the adaptor strips it for unverified text models.

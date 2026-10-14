@@ -55,6 +55,12 @@ func OaiResponsesToChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 
+	if isOpenRouterNative(info) {
+		if apiErr := responsesResp.GetOpenAIError(); apiErr != nil {
+			return nil, types.WithOpenAIError(*apiErr, http.StatusBadGateway)
+		}
+	}
+
 	if oaiError := responsesResp.GetOpenAIError(); oaiError != nil && oaiError.Type != "" {
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
 	}
@@ -101,6 +107,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 
 	defer service.CloseResponseBodyGracefully(resp)
 
+	if isOpenRouterNative(info) {
+		c.Set("openrouter_response_committed", true)
+	}
+	var openRouterTerminal bool
 	responseId := helper.GetResponseID(c)
 	createAt := time.Now().Unix()
 	model := info.UpstreamModelName
@@ -320,6 +330,19 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 			return
 		}
 
+		if isOpenRouterNative(info) {
+			switch streamResp.Type {
+			case "response.completed", "response.incomplete":
+				openRouterTerminal = true
+				if streamResp.Type == "response.incomplete" {
+					streamResp.Type = "response.completed"
+				}
+			case "error":
+				streamErr = types.NewOpenAIError(fmt.Errorf("OpenRouter Responses stream error"), types.ErrorCodeBadResponse, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+				sr.Stop(streamErr)
+				return
+			}
+		}
 		switch streamResp.Type {
 		case "response.created":
 			if streamResp.Response != nil {
@@ -506,6 +529,10 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 				sentStop = true
 			}
 
+			if isOpenRouterNative(info) {
+				sr.Done()
+			}
+
 		case "response.error", "response.failed":
 			if streamResp.Response != nil {
 				if oaiErr := streamResp.Response.GetOpenAIError(); oaiErr != nil && oaiErr.Type != "" {
@@ -521,6 +548,13 @@ func OaiResponsesToChatStreamHandler(c *gin.Context, info *relaycommon.RelayInfo
 		default:
 		}
 	})
+
+	if isOpenRouterNative(info) && (streamErr != nil || !openRouterTerminal || (info.StreamStatus != nil && info.StreamStatus.HasErrors())) {
+		if info.StreamStatus != nil && !info.StreamStatus.HasErrors() {
+			info.StreamStatus.RecordError("OpenRouter Responses conversion ended without a successful terminal event")
+		}
+		return nil, types.NewOpenAIError(fmt.Errorf("OpenRouter Responses conversion failed or disconnected"), types.ErrorCodeBadResponseBody, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
+	}
 
 	if streamErr != nil {
 		return nil, streamErr

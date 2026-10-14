@@ -27,7 +27,7 @@ import (
 // relayMediaSSE forwards complete frames (including event/id fields and multi-line
 // data), normalizing line endings to LF. Only the observer parses JSON.
 // After headers are committed, failures are recorded instead of returned for retry.
-func relayMediaSSE(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, observe func(string, []byte) (bool, error)) {
+func relayMediaSSE(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo, observe func(string, []byte) (bool, error), emit ...func(string, []byte) error) {
 	if info.StreamStatus == nil {
 		info.StreamStatus = relaycommon.NewStreamStatus()
 	}
@@ -81,8 +81,14 @@ func relayMediaSSE(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 		if len(data) > 0 {
 			terminal, observeErr = observe(event, []byte(strings.Join(data, "\n")))
 		}
-		if _, err := c.Writer.Write([]byte(frame.String())); err != nil {
-			fail(err)
+		var writeErr error
+		if len(emit) > 0 && emit[0] != nil && observeErr == nil && len(data) > 0 {
+			writeErr = emit[0](frame.String(), []byte(strings.Join(data, "\n")))
+		} else {
+			_, writeErr = c.Writer.Write([]byte(frame.String()))
+		}
+		if writeErr != nil {
+			fail(writeErr)
 			return
 		}
 		c.Writer.Flush()

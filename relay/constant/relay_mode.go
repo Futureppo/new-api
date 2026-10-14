@@ -82,7 +82,7 @@ func Path2RelayMode(path string) int {
 		relayMode = RelayModeImageTaskSubmit
 	} else if strings.HasPrefix(path, "/v1/images/tasks/") {
 		relayMode = RelayModeImageTaskFetchByID
-	} else if strings.HasPrefix(path, "/v1/images/generations") {
+	} else if path == "/v1/images" || strings.HasPrefix(path, "/v1/images/generations") {
 		relayMode = RelayModeImagesGenerations
 	} else if strings.HasPrefix(path, "/v1/images/edits") {
 		relayMode = RelayModeImagesEdits

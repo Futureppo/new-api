@@ -267,6 +267,12 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeOpenRouter {
+		endpoints := common.GetEndpointTypesByChannelType(channel.Type, modelName)
+		if len(endpoints) > 0 {
+			return string(endpoints[0])
+		}
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
 		return string(constant.EndpointTypeTypeSafeSystemOne)
 	}
@@ -640,7 +646,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		convertedRequest = request
 	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
 		if audioReq, ok := request.(*dto.AudioRequest); ok {
-			if (channel.Type == constant.ChannelTypeMistral || channel.Type == constant.ChannelTypeOpenAI) && info.RelayMode == relayconstant.RelayModeAudioTranscription {
+			if (channel.Type == constant.ChannelTypeMistral || channel.Type == constant.ChannelTypeOpenAI || channel.Type == constant.ChannelTypeOpenRouter) && info.RelayMode == relayconstant.RelayModeAudioTranscription {
 				if err = prepareTranscriptionTest(c, audioReq.Model); err != nil {
 					return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed)}
 				}

@@ -26,6 +26,9 @@ import (
 
 func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types.NewAPIError) {
 	info.InitChannelMeta(c)
+	if c.Request.URL.Path == "/v1/images" && info.ChannelType != constant.ChannelTypeOpenRouter {
+		return types.NewErrorWithStatusCode(fmt.Errorf("/v1/images requires an OpenRouter channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	}
 
 	imageReq, ok := info.Request.(*dto.ImageRequest)
 	if !ok {
@@ -118,6 +121,12 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 			}
 
 			// apply param override
+			if info.ChannelType == constant.ChannelTypeOpenRouter {
+				jsonData, err = relaycommon.RemoveDisabledFields(jsonData, info.ChannelOtherSettings, info.ChannelSetting.PassThroughBodyEnabled)
+				if err != nil {
+					return types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+				}
+			}
 			if len(info.ParamOverride) > 0 {
 				jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 				if err != nil {
@@ -144,7 +153,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if resp != nil {
 		httpResp = resp.(*http.Response)
 		info.IsStream = info.IsStream || strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
-		if info.ChannelType == constant.ChannelTypeOpenAI {
+		if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeOpenRouter {
 			info.IsStream = strings.HasPrefix(httpResp.Header.Get("Content-Type"), "text/event-stream")
 		}
 		if httpResp.StatusCode != http.StatusOK {
@@ -171,6 +180,9 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	if request.N != nil && info.ChannelType != constant.ChannelTypeVyceAI {
 		imageN = *request.N
 	}
+	if info.ChannelType == constant.ChannelTypeOpenRouter && c.GetInt("openrouter_completed_images") > 0 {
+		imageN = uint(c.GetInt("openrouter_completed_images"))
+	}
 
 	// n is handled via OtherRatio so it is applied exactly once in quota
 	// calculation (both price-based and ratio-based paths).
@@ -182,7 +194,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
-	if info.ChannelType != constant.ChannelTypeOpenAI || !c.GetBool("openai_media_usage_reported") {
+	if !(info.ChannelType == constant.ChannelTypeOpenAI && c.GetBool("openai_media_usage_reported")) && !(info.ChannelType == constant.ChannelTypeOpenRouter && c.GetBool("openrouter_media_usage_reported")) {
 		if usage.(*dto.Usage).TotalTokens == 0 {
 			usage.(*dto.Usage).TotalTokens = 1
 		}
@@ -311,6 +323,10 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
 	if info != nil && info.ChannelMeta != nil {
 		switch info.ChannelType {
+		case constant.ChannelTypeOpenRouter:
+			if !info.ChannelOtherSettings.IsOpenRouterEnterprise() {
+				return false
+			}
 		case constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas:
 			return false
 		}

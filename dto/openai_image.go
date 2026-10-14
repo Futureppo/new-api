@@ -12,6 +12,15 @@ import (
 )
 
 type ImageRequest struct {
+	// OpenRouter routing and observability extensions.
+	Provider        json.RawMessage `json:"provider,omitempty"`
+	SessionID       json.RawMessage `json:"session_id,omitempty"`
+	Trace           json.RawMessage `json:"trace,omitempty"`
+	InputReferences json.RawMessage `json:"input_references,omitempty"`
+	Resolution      *string         `json:"resolution,omitempty"`
+	AspectRatio     *string         `json:"aspect_ratio,omitempty"`
+	Seed            *int64          `json:"seed,omitempty"`
+
 	Model             string          `json:"model"`
 	Prompt            string          `json:"prompt" binding:"required"`
 	N                 *uint           `json:"n,omitempty"`
@@ -62,6 +71,14 @@ func (i *ImageRequest) UnmarshalJSON(data []byte) error {
 	for k, v := range rawMap {
 		if _, ok := knownFields[k]; !ok {
 			i.Extra[k] = v
+		}
+	}
+	// These fields were historically provider extensions. Keep their original
+	// values available to older adapters while typed fields survive deep copies.
+	// Extra is never merged into the serialized upstream body here.
+	for _, name := range []string{"seed", "aspect_ratio", "resolution", "negative_prompt"} {
+		if value, exists := rawMap[name]; exists {
+			i.Extra[name] = value
 		}
 	}
 	return nil
