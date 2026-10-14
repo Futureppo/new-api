@@ -201,8 +201,16 @@ func RefundTaskQuota(ctx context.Context, task *model.Task, reason string) {
 // actualQuota 是任务完成后的实际应扣额度，与预扣额度 (task.Quota) 做差额结算。
 // reason 用于日志记录（例如 "token重算" 或 "adaptor调整"）。
 func RecalculateTaskQuota(ctx context.Context, task *model.Task, actualQuota int, reason string) {
-	if actualQuota <= 0 {
+	if actualQuota < 0 {
 		return
+	}
+	if actualQuota == 0 {
+		// Other adaptors use zero as "no adjustment". Qianwen can report
+		// valid duration usage whose configured price rounds to zero.
+		quota, valid := qianwenVideoQuota(task)
+		if !valid || quota != 0 {
+			return
+		}
 	}
 	preConsumedQuota := task.Quota
 	quotaDelta := actualQuota - preConsumedQuota

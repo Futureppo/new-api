@@ -128,7 +128,10 @@ func GetAndValidateRerankRequest(c *gin.Context) (*dto.RerankRequest, error) {
 		return nil, types.NewError(err, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 
-	if rerankRequest.Query == "" {
+	if len(rerankRequest.QueryObject) > 0 && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeQianwenAI {
+		return nil, types.NewError(fmt.Errorf("query objects require a QianwenAI multimodal rerank model"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	if rerankRequest.Query == "" && len(rerankRequest.QueryObject) == 0 {
 		return nil, types.NewError(fmt.Errorf("query is empty"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
 	}
 	if len(rerankRequest.Documents) == 0 {
@@ -197,6 +200,15 @@ func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIRespon
 
 func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageRequest, error) {
 	imageRequest := &dto.ImageRequest{}
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeQianwenAI {
+		if err := unmarshalOpenAIMediaRequest(c, imageRequest); err != nil {
+			return nil, err
+		}
+		if imageRequest.Model == "" {
+			return nil, errors.New("model is required")
+		}
+		return imageRequest, nil
+	}
 	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenAI || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi {
 		if err := unmarshalOpenAIMediaRequest(c, imageRequest); err != nil {
 			return nil, err
@@ -369,7 +381,7 @@ func unmarshalOpenAIMediaRequest(c *gin.Context, request any) error {
 			} else {
 				fields[key] = value
 			}
-		case "stream", "watermark":
+		case "stream", "watermark", "prompt_extend", "enable_thinking":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
 				return fmt.Errorf("%s must be a boolean", key)

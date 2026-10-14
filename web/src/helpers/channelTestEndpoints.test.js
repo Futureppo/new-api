@@ -49,6 +49,37 @@ describe('channel test endpoints', () => {
     expect(options(71)).toEqual(['', 'typesafe-systemone']);
     expect(channelTestSupportsStream(71, '')).toBe(false);
     expect(options(72)).toEqual(['', 'openai', 'anthropic']);
+    expect(options(77)).toEqual([
+      '',
+      'openai',
+      'openai-response',
+      'anthropic',
+      'jina-rerank',
+      'image-generation',
+      'openai-video',
+      'embeddings',
+      'audio-speech',
+    ]);
+    for (const endpoint of [
+      '',
+      'openai',
+      'openai-response',
+      'anthropic',
+      'audio-speech',
+    ]) {
+      expect(channelTestSupportsStream(77, endpoint)).toBe(true);
+    }
+    for (const endpoint of [
+      'jina-rerank',
+      'image-generation',
+      'openai-video',
+      'embeddings',
+    ]) {
+      expect(channelTestSupportsStream(77, endpoint)).toBe(false);
+    }
+    expect(channelTestSupportsStream(77, 'openai-response-compact')).toBe(
+      false,
+    );
     expect(options('34')).toContain('cohere-chat');
     expect(options(1)).not.toContain('cohere-chat');
     expect(options(67)).toContain('batch-generation');

@@ -114,6 +114,10 @@ type GeneralOpenAIRequest struct {
 	// Ali Qwen Params
 	VlHighResolutionImages json.RawMessage `json:"vl_high_resolution_images,omitempty"`
 	EnableThinking         json.RawMessage `json:"enable_thinking,omitempty"`
+	PreserveThinking       *bool           `json:"preserve_thinking,omitempty"`
+	ThinkingBudget         *int            `json:"thinking_budget,omitempty"`
+	ToolStream             *bool           `json:"tool_stream,omitempty"`
+	SearchOptions          json.RawMessage `json:"search_options,omitempty"`
 	ChatTemplateKwargs     json.RawMessage `json:"chat_template_kwargs,omitempty"`
 	EnableSearch           json.RawMessage `json:"enable_search,omitempty"`
 	// ollama Params

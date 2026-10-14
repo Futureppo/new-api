@@ -185,7 +185,7 @@ func OaiStreamHandlerWithDataTransformer(c *gin.Context, info *relaycommon.Relay
 
 			lastStreamData = data
 			streamItems = append(streamItems, data)
-			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline || info.ChannelType == constant.ChannelTypeOpenRouter || constant.IsSelfHostedChannel(info.ChannelType) {
+			if info.ChannelType == constant.ChannelTypeDeepSeek || info.ChannelType == constant.ChannelTypeKilo || info.ChannelType == constant.ChannelTypeCline || info.ChannelType == constant.ChannelTypeOpenRouter || info.ChannelType == constant.ChannelTypeQianwenAI || constant.IsSelfHostedChannel(info.ChannelType) {
 				var envelope dto.SimpleResponse
 				if err := common.UnmarshalJsonStr(data, &envelope); err != nil {
 					upstreamStreamError = true
@@ -198,7 +198,7 @@ func OaiStreamHandlerWithDataTransformer(c *gin.Context, info *relaycommon.Relay
 		}
 	})
 
-	if (constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeOpenRouter) && info.StreamStatus != nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonDone {
+	if (constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeQianwenAI || info.ChannelType == constant.ChannelTypeOpenRouter) && info.StreamStatus != nil && info.StreamStatus.EndReason != relaycommon.StreamEndReasonDone {
 		upstreamStreamError = true
 		if !info.StreamStatus.HasErrors() && info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
 			info.StreamStatus.RecordError("upstream Chat Completions stream ended without [DONE]")

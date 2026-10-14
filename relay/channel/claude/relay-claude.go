@@ -943,14 +943,32 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		Usage:        &dto.Usage{},
 	}
 	var err *types.NewAPIError
+	var terminal bool
 	helper.StreamScannerHandler(c, resp, info, func(data string, sr *helper.StreamResult) {
+		if info.ChannelType == constant.ChannelTypeQianwenAI {
+			var event dto.ClaudeResponse
+			if common.UnmarshalJsonStr(data, &event) == nil {
+				if event.Type == "error" {
+					terminal = true
+					helper.ClaudeChunkData(c, event, data)
+					sr.Stop(fmt.Errorf("upstream Messages error: %v", event.Error))
+					return
+				}
+				terminal = event.Type == "message_stop"
+			}
+		}
 		err = HandleStreamResponseData(c, info, claudeInfo, data)
 		if err != nil {
 			sr.Stop(err)
+		} else if terminal {
+			sr.Done()
 		}
 	})
 	if err != nil {
 		return nil, err
+	}
+	if info.ChannelType == constant.ChannelTypeQianwenAI && !terminal && !info.StreamStatus.HasErrors() && info.StreamStatus.EndReason != relaycommon.StreamEndReasonClientGone {
+		info.StreamStatus.RecordError("upstream Messages stream ended without message_stop")
 	}
 
 	HandleStreamFinalResponse(c, info, claudeInfo)

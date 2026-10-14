@@ -406,6 +406,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	key := ch.Key
 
 	privateData := task.PrivateData
+	if ch.Type == constant.ChannelTypeQianwenAI {
+		baseURL = privateData.QianwenBaseURL
+	}
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
@@ -431,6 +434,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("empty task response")
 	}
 	defer resp.Body.Close()
+	if ch.Type == constant.ChannelTypeQianwenAI && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("QianwenAI task retrieval returned HTTP %d", resp.StatusCode)
+	}
 	if ch.Type == constant.ChannelTypeAgnesAI && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Agnes task retrieval returned HTTP %d", resp.StatusCode)
 	}
@@ -673,6 +679,10 @@ func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor
 		if actual := adaptor.AdjustBillingOnComplete(task, taskResult); actual > 0 {
 			RecalculateTaskQuota(ctx, task, actual, "Vertex actual result count")
 		}
+		return
+	}
+	if actualQuota, ok := qianwenVideoQuota(task); ok && actualQuota >= 0 {
+		RecalculateTaskQuota(ctx, task, actualQuota, "QianwenAI video duration")
 		return
 	}
 	// 0. 按次计费的任务不做差额结算

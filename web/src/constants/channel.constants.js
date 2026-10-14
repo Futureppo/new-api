@@ -89,6 +89,7 @@ export const CHANNEL_OPTIONS = [
     color: 'orange',
     label: '阿里通义千问',
   },
+  { value: 77, color: 'purple', label: '千问AI平台' },
   {
     value: 18,
     color: 'blue',

@@ -29,6 +29,7 @@ import (
 	modalchannel "github.com/QuantumNous/new-api/relay/channel/modal"
 	"github.com/QuantumNous/new-api/relay/channel/ollama"
 	"github.com/QuantumNous/new-api/relay/channel/openrouter"
+	"github.com/QuantumNous/new-api/relay/channel/qianwen"
 	"github.com/QuantumNous/new-api/relay/channel/selfhost"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
@@ -248,6 +249,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 		return cline.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeMiMo:
 		return mimo.NormalizeBaseURL(baseURL) + "/v1/models"
+	case constant.ChannelTypeQianwenAI:
+		return qianwen.NormalizeBaseURL(baseURL) + "/compatible-mode/v1/models"
 	case constant.ChannelTypeTypeSafe:
 		return typesafe.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeKilo:
@@ -795,6 +798,17 @@ func validateTwoFactorAuth(twoFA *model.TwoFA, code string) bool {
 func validateChannel(channel *model.Channel, isAdd bool) error {
 	if channel == nil {
 		return fmt.Errorf("channel cannot be empty")
+	}
+	if channel.Type == constant.ChannelTypeQianwenAI {
+		if isAdd || channel.BaseURL != nil {
+			if err := qianwen.ValidateBaseURL(channel.GetBaseURL()); err != nil {
+				return err
+			}
+			channel.BaseURL = common.GetPointer(qianwen.NormalizeBaseURL(channel.GetBaseURL()))
+		}
+		if isAdd && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
+			channel.TestModel = common.GetPointer(qianwen.DefaultTestModel)
+		}
 	}
 	if channel.Type == constant.ChannelTypeXunfeiMaas && (isAdd || channel.BaseURL != nil) {
 		channel.BaseURL = common.GetPointer(xfyun_maas.NormalizeBaseURL(channel.GetBaseURL()))

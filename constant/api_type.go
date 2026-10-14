@@ -49,5 +49,6 @@ const (
 	APITypeXunfeiMaas
 	APITypeVLLM
 	APITypeLiteLLM
+	APITypeQianwenAI
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

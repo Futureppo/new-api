@@ -139,6 +139,8 @@ const CLINE_CHANNEL_TYPE = 73;
 const XFYUN_MAAS_CHANNEL_TYPE = 74;
 const isSelfHostedChannel = (type) => [75, 76].includes(Number(type));
 const MIMO_TEST_MODEL = 'mimo-v2.6-pro-ultraspeed';
+const QIANWEN_CHANNEL_TYPE = 77;
+const QIANWEN_TEST_MODEL = 'qwen3.7-plus';
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -715,6 +717,24 @@ const EditChannelModal = (props) => {
               test_model: testModel,
             }));
             formApiRef.current?.setValue('base_url', 'https://api.xiaomimimo.com');
+            formApiRef.current?.setValue('models', localModels);
+            formApiRef.current?.setValue('test_model', testModel);
+          }
+          break;
+        case QIANWEN_CHANNEL_TYPE:
+          localModels = getChannelModels(value);
+          if (!isEdit) {
+            const testModel = inputs.test_model || QIANWEN_TEST_MODEL;
+            setInputs((prev) => ({
+              ...prev,
+              base_url: 'https://maas.qianwenaiapi.com',
+              models: localModels,
+              test_model: testModel,
+            }));
+            formApiRef.current?.setValue(
+              'base_url',
+              'https://maas.qianwenaiapi.com',
+            );
             formApiRef.current?.setValue('models', localModels);
             formApiRef.current?.setValue('test_model', testModel);
           }
@@ -4321,6 +4341,32 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === QIANWEN_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={
+                            <>
+                              {t(
+                                '千问AI平台支持对话、图片、音频、视频、向量和重排序，以及已存储 Responses 的查询和删除；暂不支持 compact。填写按量付费 API Key，模型可获取或手动配置。非 Token 模型需配置单位价格：图片按张、视频及音频生成按秒、字符计费 TTS 按字符。',
+                              )}{' '}
+                              <a
+                                href='https://platform.qianwenai.com/docs/developer-guides/getting-started/introduction'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                              >
+                                {t('接入文档')}
+                              </a>
+                              <div>
+                                {t(
+                                  '意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。',
+                                )}
+                              </div>
+                            </>
+                          }
+                          className='!rounded-lg'
+                        />
+                      )}
+
                       {inputs.type === KILO_CHANNEL_TYPE && (
                         <Banner
                           type='info'
@@ -4392,6 +4438,8 @@ const EditChannelModal = (props) => {
                                   ? 'https://api.cline.bot/api'
                                   : inputs.type === MIMO_CHANNEL_TYPE
                                   ? 'https://api.xiaomimimo.com'
+                                  : inputs.type === QIANWEN_CHANNEL_TYPE
+                                  ? 'https://maas.qianwenaiapi.com'
                                   : inputs.type === KILO_CHANNEL_TYPE
                                   ? 'https://api.kilo.ai/api/gateway'
                                   : inputs.type === MODAL_CHANNEL_TYPE

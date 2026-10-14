@@ -15,6 +15,24 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	}
 	var endpointTypes []constant.EndpointType
 	switch channelType {
+	case constant.ChannelTypeQianwenAI:
+		if constant.IsQianwenIntentModel(modelName) {
+			return []constant.EndpointType{constant.EndpointTypeOpenAI}
+		}
+		name := strings.ToLower(modelName)
+		switch {
+		case strings.Contains(name, "embedding"):
+			return []constant.EndpointType{constant.EndpointTypeEmbeddings}
+		case strings.Contains(name, "rerank"):
+			return []constant.EndpointType{constant.EndpointTypeJinaRerank}
+		case strings.Contains(name, "tts") || strings.HasPrefix(name, "cosyvoice") || strings.HasPrefix(name, "fun-music-"):
+			return []constant.EndpointType{constant.EndpointTypeAudioSpeech}
+		case strings.HasPrefix(name, "wan3.") || strings.Contains(name, "-t2v") || strings.Contains(name, "-i2v") || strings.Contains(name, "-r2v"):
+			return []constant.EndpointType{constant.EndpointTypeOpenAIVideo}
+		case strings.HasPrefix(name, "qwen-image") || strings.Contains(name, "wan2.7-image") || strings.Contains(name, "wan2.6-image") || name == "z-image-turbo":
+			return []constant.EndpointType{constant.EndpointTypeImageGeneration}
+		}
+		return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAIResponse}
 	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:
 		return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
 	case constant.ChannelTypeXunfeiMaas:

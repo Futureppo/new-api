@@ -275,6 +275,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 			return string(endpoints[0])
 		}
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeQianwenAI {
+		return string(common.GetEndpointTypesByChannelType(channel.Type, modelName)[0])
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
 		return string(constant.EndpointTypeTypeSafeSystemOne)
 	}
@@ -609,6 +612,21 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	testModel = info.UpstreamModelName
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
+	if channel.Type == constant.ChannelTypeQianwenAI && constant.IsQianwenIntentModel(testModel) {
+		if chat, ok := request.(*dto.GeneralOpenAIRequest); ok && info.RelayMode == relayconstant.RelayModeChatCompletions {
+			// Apply after mapping so aliases get the same intent classification test.
+			chat.Messages = []dto.Message{
+				{Role: "system", Content: "You are Qwen, created by Alibaba Cloud. You are a helpful assistant.\nYou should choose one tag from the tag list:\n{\"greeting\":\"问候\",\"weather\":\"查询天气\"}\nJust reply with the chosen tag."},
+				{Role: "user", Content: "你好"},
+			}
+			// Keep billing inspection aligned with this sample and the client alias.
+			billingRequest := *chat
+			billingRequest.Model = info.OriginModelName
+			if err := attachTestBillingRequestInput(info, &billingRequest); err != nil {
+				return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
+			}
+		}
+	}
 
 	apiType, _ := common.ChannelType2APIType(channel.Type)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact &&
@@ -1480,6 +1498,21 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				Input: testResponsesInput,
 			}
 		case constant.EndpointTypeAudioSpeech:
+			if channel != nil && channel.Type == constant.ChannelTypeQianwenAI {
+				voice := "longanhuan_v3.6"
+				if strings.HasPrefix(model, "qwen3-tts-") || strings.HasPrefix(model, "qwen-tts") {
+					voice = "Cherry"
+				}
+				if model == "qwen-audio-3.1-tts-next" || strings.HasPrefix(model, "fun-music-") {
+					voice = ""
+				}
+				request := &dto.AudioRequest{Model: model, Input: "你好，这是一次渠道测试。", Voice: dto.AudioVoice{Name: voice}}
+				if isStream {
+					request.StreamFormat = "sse"
+					request.Stream = lo.ToPtr(true)
+				}
+				return request
+			}
 			voice := "alloy"
 			if channel != nil && channel.Type == constant.ChannelTypeGCP {
 				voice = "cmn-CN-Wavenet-A"

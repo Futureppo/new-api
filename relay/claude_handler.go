@@ -48,7 +48,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 	adaptor.Init(info)
 
-	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeOpenRouter && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo) {
+	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeOpenRouter && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo && info.ChannelType != constant.ChannelTypeQianwenAI) {
 		defaultMaxTokens := uint(model_setting.GetClaudeSettings().GetDefaultMaxTokens(request.Model))
 		request.MaxTokens = &defaultMaxTokens
 	}

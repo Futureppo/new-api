@@ -25,6 +25,9 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	info.InitChannelMeta(c)
 	service.StartConversationCapture(c, info)
 	if info.RelayMode == relayconstant.RelayModeResponsesCompact {
+		if info.ChannelType == appconstant.ChannelTypeQianwenAI {
+			return types.NewErrorWithStatusCode(fmt.Errorf("QianwenAI does not document a Responses compact endpoint"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 		if !supportsResponsesCompact(c, info) {
 			return types.NewErrorWithStatusCode(
 				fmt.Errorf("unsupported endpoint %q for api type %d", "/v1/responses/compact", info.ApiType),

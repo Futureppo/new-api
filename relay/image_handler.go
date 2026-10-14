@@ -41,7 +41,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 	}
 	// ImageRequest deliberately omits Extra when marshaling. Preserve these
 	// channels' documented extension fields through the deep-copy boundary.
-	if (info.ChannelType == constant.ChannelTypeAgnesAI || info.ChannelType == constant.ChannelTypeXunfeiMaas) && imageReq.Extra != nil {
+	if (info.ChannelType == constant.ChannelTypeAgnesAI || info.ChannelType == constant.ChannelTypeXunfeiMaas || info.ChannelType == constant.ChannelTypeQianwenAI) && imageReq.Extra != nil {
 		extra, copyErr := common.DeepCopy(&imageReq.Extra)
 		if copyErr != nil {
 			return types.NewError(copyErr, types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
@@ -198,7 +198,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
-	if info.ChannelType != constant.ChannelTypeVertexAi && !(info.ChannelType == constant.ChannelTypeOpenAI && c.GetBool("openai_media_usage_reported")) && !(info.ChannelType == constant.ChannelTypeOpenRouter && c.GetBool("openrouter_media_usage_reported")) {
+	if info.ChannelType != constant.ChannelTypeVertexAi && info.ChannelType != constant.ChannelTypeQianwenAI && !(info.ChannelType == constant.ChannelTypeOpenAI && c.GetBool("openai_media_usage_reported")) && !(info.ChannelType == constant.ChannelTypeOpenRouter && c.GetBool("openrouter_media_usage_reported")) {
 		if usage.(*dto.Usage).TotalTokens == 0 {
 			usage.(*dto.Usage).TotalTokens = 1
 		}
@@ -331,7 +331,7 @@ func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
 			if !info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 				return false
 			}
-		case constant.ChannelTypeVertexAi, constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas:
+		case constant.ChannelTypeVertexAi, constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas, constant.ChannelTypeQianwenAI:
 			return false
 		}
 	}

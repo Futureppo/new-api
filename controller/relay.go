@@ -145,6 +145,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
 				return
 			}
+			if c.GetBool("qianwen_audio_committed") && c.Writer.Written() {
+				return // Do not append JSON to an audio binary stream or an SSE error.
+			}
 			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
 				return
 			}
@@ -846,7 +849,7 @@ func RelayTask(c *gin.Context) {
 			ModelRatio:         relayInfo.PriceData.ModelRatio,
 			OtherRatios:        relayInfo.PriceData.OtherRatios,
 			OriginModelName:    relayInfo.OriginModelName,
-			PerCallBilling:     common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+			PerCallBilling:     relayInfo.ChannelType != constant.ChannelTypeQianwenAI && (common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice),
 		}
 		task.Quota = result.Quota
 		if deferred {

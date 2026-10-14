@@ -31,8 +31,8 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || constant.IsSelfHostedChannel(info.ChannelType)) {
-		if constant.IsSelfHostedChannel(info.ChannelType) && resp.StatusCode == http.StatusOK {
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeQianwenAI) {
+		if (constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeQianwenAI) && resp.StatusCode == http.StatusOK {
 			return nil, types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		}
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)
@@ -45,10 +45,13 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	}
 
 	// 写入新的 response body
+	if err := service.RecordQianwenResponse(c, info, responsesResponse.ID); err != nil {
+		return nil, types.NewError(err, types.ErrorCodeBadResponseBody, types.ErrOptionWithSkipRetry())
+	}
 	service.IOCopyBytesGracefully(c, resp, responseBody)
 
 	// compute usage
-	usage := normalizeResponsesUsage(responsesResponse.Usage)
+	usage := normalizeResponsesUsageForChannel(responsesResponse.Usage, info)
 	if responsesResponse.Usage == nil && info != nil {
 		var text strings.Builder
 		for _, item := range responsesResponse.Output {
@@ -88,6 +91,12 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 			sr.Stop(err)
 			return
 		}
+		if streamResponse.Response != nil && streamResponse.Response.ID != "" {
+			if err := service.RecordQianwenResponse(c, info, streamResponse.Response.ID); err != nil {
+				sr.Stop(err)
+				return
+			}
+		}
 		sendResponsesStreamData(c, streamResponse, data)
 		switch streamResponse.Type {
 		case "response.completed", "response.incomplete", "response.failed":
@@ -97,7 +106,7 @@ func OaiResponsesStreamHandler(c *gin.Context, info *relaycommon.RelayInfo, resp
 					record(item)
 				}
 				if streamResponse.Response.Usage != nil {
-					*usage = normalizeResponsesUsage(streamResponse.Response.Usage)
+					*usage = normalizeResponsesUsageForChannel(streamResponse.Response.Usage, info)
 					hasUsage = true
 				}
 				if streamResponse.Response.HasImageGenerationCall() {

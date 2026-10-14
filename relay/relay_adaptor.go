@@ -33,6 +33,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/opencode"
 	"github.com/QuantumNous/new-api/relay/channel/palm"
 	"github.com/QuantumNous/new-api/relay/channel/perplexity"
+	"github.com/QuantumNous/new-api/relay/channel/qianwen"
 	"github.com/QuantumNous/new-api/relay/channel/replicate"
 	"github.com/QuantumNous/new-api/relay/channel/selfhost"
 	"github.com/QuantumNous/new-api/relay/channel/siliconflow"
@@ -66,6 +67,8 @@ import (
 
 func GetAdaptor(apiType int) channel.Adaptor {
 	switch apiType {
+	case constant.APITypeQianwenAI:
+		return &qianwen.Adaptor{}
 	case constant.APITypeVLLM:
 		return &selfhost.VLLMAdaptor{}
 	case constant.APITypeLiteLLM:
@@ -183,6 +186,8 @@ func GetTaskAdaptor(platform constant.TaskPlatform) channel.TaskAdaptor {
 		switch channelType {
 		case constant.ChannelTypeAli:
 			return &taskali.TaskAdaptor{}
+		case constant.ChannelTypeQianwenAI:
+			return &qianwen.TaskAdaptor{}
 		case constant.ChannelTypeKling:
 			return &kling.TaskAdaptor{}
 		case constant.ChannelTypeJimeng:

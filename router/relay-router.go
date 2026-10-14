@@ -71,6 +71,10 @@ func SetRelayRouter(router *gin.Engine) {
 	relayV1Router.Use(middleware.SystemPerformanceCheck())
 	relayV1Router.Use(middleware.TokenAuth())
 	relayV1Router.Use(middleware.ModelRequestRateLimit())
+	// Stored resources require their original channel and creator binding.
+	relayV1Router.GET("/responses/:response_id", controller.QianwenResponseResource)
+	relayV1Router.DELETE("/responses/:response_id", controller.QianwenResponseResource)
+	relayV1Router.GET("/responses/:response_id/input_items", controller.QianwenResponseResource)
 	{
 		// WebSocket 路由（统一到 Relay）
 		wsRouter := relayV1Router.Group("")

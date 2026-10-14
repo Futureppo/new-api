@@ -266,6 +266,8 @@ type Usage struct {
 
 	// OpenRouter Params
 	Cost any `json:"cost,omitempty"`
+	// Qianwen Responses provides additional cache accounting in x_details.
+	XDetails json.RawMessage `json:"x_details,omitempty"`
 }
 
 type OpenAIVideoResponse struct {
@@ -279,12 +281,13 @@ type OpenAIVideoResponse struct {
 }
 
 type InputTokenDetails struct {
-	CacheWriteTokens     *int `json:"cache_write_tokens,omitempty"`
-	CachedTokens         int  `json:"cached_tokens"`
-	CachedCreationTokens int  `json:"cached_creation_tokens,omitempty"`
-	TextTokens           int  `json:"text_tokens"`
-	AudioTokens          int  `json:"audio_tokens"`
-	ImageTokens          int  `json:"image_tokens"`
+	CacheWriteTokens         *int `json:"cache_write_tokens,omitempty"`
+	CacheCreationInputTokens *int `json:"cache_creation_input_tokens,omitempty"`
+	CachedTokens             int  `json:"cached_tokens"`
+	CachedCreationTokens     int  `json:"cached_creation_tokens,omitempty"`
+	TextTokens               int  `json:"text_tokens"`
+	AudioTokens              int  `json:"audio_tokens"`
+	ImageTokens              int  `json:"image_tokens"`
 }
 
 // GetCacheCreationTokens treats the official and legacy spellings as aliases,
@@ -292,6 +295,9 @@ type InputTokenDetails struct {
 func (d InputTokenDetails) GetCacheCreationTokens() int {
 	if d.CacheWriteTokens != nil {
 		return *d.CacheWriteTokens
+	}
+	if d.CacheCreationInputTokens != nil {
+		return *d.CacheCreationInputTokens
 	}
 	return d.CachedCreationTokens
 }

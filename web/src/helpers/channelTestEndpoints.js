@@ -133,9 +133,23 @@ export function getChannelTestEndpoints(channelType, t) {
     if (type === 71) return ['', 'typesafe-systemone'].includes(endpoint.value);
     if (type === 72)
       return ['', 'openai', 'anthropic'].includes(endpoint.value);
+    if (type === 77)
+      return [
+        '',
+        'openai',
+        'anthropic',
+        'openai-response',
+        'image-generation',
+        'openai-video',
+        'audio-speech',
+        'embeddings',
+        'jina-rerank',
+      ].includes(endpoint.value);
     return true;
   }).map((endpoint) => ({
     ...endpoint,
+    stream:
+      type === 77 && endpoint.value === 'audio-speech' ? true : endpoint.stream,
     label:
       endpoint.value === ''
         ? t('自动检测')

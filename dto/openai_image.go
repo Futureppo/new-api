@@ -12,7 +12,10 @@ import (
 )
 
 type ImageRequest struct {
-	NegativePrompt string `json:"negative_prompt,omitempty"`
+	PromptExtend     *bool  `json:"prompt_extend,omitempty"`
+	PromptExtendMode string `json:"prompt_extend_mode,omitempty"`
+	EnableThinking   *bool  `json:"enable_thinking,omitempty"`
+	NegativePrompt   string `json:"negative_prompt,omitempty"`
 	// OpenRouter routing and observability extensions.
 	Provider        json.RawMessage `json:"provider,omitempty"`
 	SessionID       json.RawMessage `json:"session_id,omitempty"`

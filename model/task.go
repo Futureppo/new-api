@@ -98,6 +98,7 @@ func (m Properties) Value() (driver.Value, error) {
 }
 
 type TaskPrivateData struct {
+	QianwenBaseURL string `json:"qianwen_base_url,omitempty"`
 	// A durable, not-yet-submitted HY request. NOT_START is claimable; SUBMITTED
 	// means a worker owns the POST and it must never be replayed automatically.
 	GMICloudImageRequest string `json:"gmicloud_image_request,omitempty"`
@@ -190,6 +191,9 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 	group := ""
 	channelId := 0
 	if relayInfo != nil && relayInfo.ChannelMeta != nil {
+		if relayInfo.ChannelType == constant.ChannelTypeQianwenAI {
+			privateData.QianwenBaseURL = relayInfo.ChannelBaseUrl
+		}
 		if shouldPersistTaskPollingKey(relayInfo.ChannelMeta) {
 			privateData.Key = relayInfo.ChannelMeta.ApiKey
 		}
@@ -237,6 +241,7 @@ func shouldPersistTaskPollingKey(meta *commonRelay.ChannelMeta) bool {
 		return false
 	}
 	return meta.ChannelIsMultiKey ||
+		meta.ChannelType == constant.ChannelTypeQianwenAI ||
 		meta.ChannelType == constant.ChannelTypeGemini ||
 		meta.ChannelType == constant.ChannelTypeVertexAi
 }

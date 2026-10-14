@@ -1,5 +1,8 @@
 {
   "translation": {
+    "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "The tongyi-intent-detect-v3 model uses Chat Completions. Select intent classification or tool calling through the system message.",
+    "千问AI平台": "Qianwen AI Platform",
+    "千问AI平台支持对话、图片、音频、视频、向量和重排序，以及已存储 Responses 的查询和删除；暂不支持 compact。填写按量付费 API Key，模型可获取或手动配置。非 Token 模型需配置单位价格：图片按张、视频及音频生成按秒、字符计费 TTS 按字符。": "Qianwen AI Platform supports chat, images, audio, video, embeddings, reranking, and retrieval/deletion of stored Responses. Compact is not supported. Enter a pay-as-you-go API key; fetch models or configure them manually. Configure unit prices for non-token models: per image, per second for video/audio generation, and per character for character-billed TTS.",
     "会话 ID": "Session ID",
     "会话 ID 风控": "Session ID risk checks",
     "共用会话 ID": "Shared session IDs",

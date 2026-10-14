@@ -52,6 +52,9 @@ func deferredTaskQuota(task *model.Task, result *relaycommon.TaskInfo) int {
 	if task.Status != model.TaskStatusSuccess {
 		return 0
 	}
+	if quota, ok := qianwenVideoQuota(task); ok {
+		return quota
+	}
 	if bc.PerCallBilling || result == nil || result.TotalTokens <= 0 {
 		return bc.EstimatedQuota
 	}
