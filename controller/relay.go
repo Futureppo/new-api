@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	"github.com/QuantumNous/new-api/relay/channel/typesafe"
@@ -34,6 +35,9 @@ import (
 )
 
 func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if _, ok := info.Request.(*dto.VertexRequest); ok {
+		return relay.VertexNativeHelper(c, info)
+	}
 	if info.RelayFormat == types.RelayFormatTypeSafe {
 		return relay.TypeSafeHelper(c, info)
 	}
@@ -67,6 +71,9 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 }
 
 func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if _, ok := info.Request.(*dto.VertexRequest); ok {
+		return relay.VertexNativeHelper(c, info)
+	}
 	var err *types.NewAPIError
 	if strings.Contains(c.Request.URL.Path, "embed") {
 		err = relay.GeminiEmbeddingHandler(c, info)
@@ -77,6 +84,17 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi {
+		switch vertexmodel.NativeAction(c.Request.URL.Path) {
+		case "predictLongRunning":
+			c.Set("vertex_native_video", true)
+			RelayTask(c)
+			return
+		case "fetchPredictOperation":
+			VertexOperationFetch(c)
+			return
+		}
+	}
 	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
 			Message: "/v1/decisions requires an OpenAI channel", Type: "invalid_request_error",
@@ -130,7 +148,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
 				return
 			}
-			if (relayFormat == types.RelayFormatMistralNative || relayFormat == types.RelayFormatMistralRealtime) && c.Writer.Written() {
+			if (relayFormat == types.RelayFormatMistralNative || relayFormat == types.RelayFormatMistralRealtime || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi) && c.Writer.Written() {
 				return // Native HTTP/SSE/WS errors have already been relayed verbatim.
 			}
 			if !isChannelDailySuccessLimitError(newAPIError) && !service.IsChannelRPMLimitError(newAPIError) {
@@ -186,6 +204,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			newAPIError = types.NewError(err, types.ErrorCodeSensitiveWordsDetected)
 			return
 		}
+	}
+
+	if request, ok := request.(*dto.VertexRequest); ok && vertexmodel.IsTokenTool(request.Action) {
+		newAPIError = relay.VertexNativeHelper(c, relayInfo)
+		return
 	}
 
 	tokens, err := service.EstimateRequestToken(c, meta, relayInfo)
@@ -457,6 +480,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
+		return false
+	}
+	if c.GetBool("vertex_batch_started") || (common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi && c.Writer.Written()) {
 		return false
 	}
 	if openaiErr == nil {
@@ -832,6 +858,10 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			if c.GetBool("vertex_native_video") {
+				videoProxyError(c, http.StatusInternalServerError, "task_persist_failed", "Unable to persist Vertex operation")
+				return
+			}
 			if deferred || result.PendingImageRequest != "" {
 				service.RefundBilling(c, relayInfo)
 			}
@@ -839,6 +869,8 @@ func RelayTask(c *gin.Context) {
 				respondGMICloudImageError(c, http.StatusInternalServerError, "image_task_persist_failed", "Unable to persist image task; no upstream generation was submitted", "")
 				return
 			}
+		} else if c.GetBool("vertex_native_video") {
+			c.JSON(http.StatusOK, gin.H{"name": "operations/" + task.TaskID, "done": false})
 		} else if isGMICloudImageTask(relayInfo) {
 			if !deferred {
 				if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {

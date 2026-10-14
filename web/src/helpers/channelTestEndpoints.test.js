@@ -102,3 +102,16 @@ describe('OpenRouter channel test endpoints', () => {
     }
   });
 });
+
+describe('Vertex inference endpoints', () => {
+  test('offers native inference and only supported compatibility protocols', () => {
+    expect(options(41)[0]).toBe('');
+    expect(options(41)).toContain('vertex-native');
+    expect(options(41)).toContain('embeddings');
+    expect(options(41)).toContain('audio-speech');
+    expect(options(41)).not.toContain('openai-response-compact');
+    expect(options(41)).not.toContain('jina-rerank');
+    expect(options(1)).not.toContain('vertex-native');
+    expect(channelTestSupportsStream(41, 'vertex-native')).toBe(false);
+  });
+});

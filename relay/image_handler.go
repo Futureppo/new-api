@@ -184,6 +184,10 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		imageN = uint(c.GetInt("openrouter_completed_images"))
 	}
 
+	if info.ChannelType == constant.ChannelTypeVertexAi && c.GetInt("vertex_completed_images") > 0 {
+		imageN = uint(c.GetInt("vertex_completed_images"))
+	}
+
 	// n is handled via OtherRatio so it is applied exactly once in quota
 	// calculation (both price-based and ratio-based paths).
 	// Adaptors may have already set a more accurate count from the
@@ -194,7 +198,7 @@ func ImageHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *type
 		}
 	}
 
-	if !(info.ChannelType == constant.ChannelTypeOpenAI && c.GetBool("openai_media_usage_reported")) && !(info.ChannelType == constant.ChannelTypeOpenRouter && c.GetBool("openrouter_media_usage_reported")) {
+	if info.ChannelType != constant.ChannelTypeVertexAi && !(info.ChannelType == constant.ChannelTypeOpenAI && c.GetBool("openai_media_usage_reported")) && !(info.ChannelType == constant.ChannelTypeOpenRouter && c.GetBool("openrouter_media_usage_reported")) {
 		if usage.(*dto.Usage).TotalTokens == 0 {
 			usage.(*dto.Usage).TotalTokens = 1
 		}
@@ -327,7 +331,7 @@ func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
 			if !info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 				return false
 			}
-		case constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas:
+		case constant.ChannelTypeVertexAi, constant.ChannelTypeAgnesAI, constant.ChannelTypeVyceAI, constant.ChannelTypeXunfeiMaas:
 			return false
 		}
 	}

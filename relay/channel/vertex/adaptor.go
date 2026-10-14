@@ -1,6 +1,7 @@
 package vertex
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
@@ -48,8 +50,17 @@ var claudeModelMap = map[string]string{
 const anthropicVersion = "vertex-2023-10-16"
 
 type Adaptor struct {
-	RequestMode        int
-	AccountCredentials Credentials
+	RequestMode           int
+	AccountCredentials    Credentials
+	capability            vertexmodel.Capability
+	initErr               error
+	action                string
+	native                bool
+	responseKind          string
+	embeddingFormat       string
+	embeddingNativeAction string
+	audioFormat           string
+	imageFormat           string
 }
 
 func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeminiChatRequest) (any, error) {
@@ -91,6 +102,13 @@ func removeFunctionResponseID(request *dto.GeminiChatRequest) {
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if a.initErr != nil {
+		return nil, a.initErr
+	}
+	if a.capability.Family != vertexmodel.Claude {
+		return nil, errors.New("Vertex messages requires a Claude model")
+	}
+	request.Model = a.capability.Model
 	if v, ok := claudeModelMap[info.UpstreamModelName]; ok {
 		c.Set("request_model", v)
 	} else {
@@ -101,103 +119,118 @@ func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.AudioRequest) (io.Reader, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	return a.convertAudio(c, info, request)
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
-	geminiAdaptor := gemini.Adaptor{}
-	return geminiAdaptor.ConvertImageRequest(c, info, request)
+	return a.convertImage(c, info, request)
 }
 
 func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
-	if strings.HasPrefix(info.UpstreamModelName, "claude") {
+	a.capability, a.initErr = vertexmodel.Resolve(info.UpstreamModelName)
+	a.RequestMode = RequestModeGemini
+	switch a.capability.Family {
+	case vertexmodel.Claude:
 		a.RequestMode = RequestModeClaude
-	} else if strings.Contains(info.UpstreamModelName, "llama") ||
-		// open source models
-		strings.Contains(info.UpstreamModelName, "-maas") {
+	case vertexmodel.OpenAPI, vertexmodel.Grok, vertexmodel.PartnerChat, vertexmodel.FIM, vertexmodel.OCR:
 		a.RequestMode = RequestModeOpenSource
-	} else {
-		a.RequestMode = RequestModeGemini
 	}
 }
 
-func (a *Adaptor) getRequestUrl(info *relaycommon.RelayInfo, modelName, suffix string) (string, error) {
+func (a *Adaptor) getRequestUrl(info *relaycommon.RelayInfo, modelName, action string) (string, error) {
+	if a.initErr != nil {
+		return "", a.initErr
+	}
+	cap := a.capability
 	region, err := ResolveModelRegion(info.ApiVersion, info.OriginModelName)
 	if err != nil {
 		return "", err
 	}
+	if cap.Family == vertexmodel.Grok {
+		region = "global"
+	}
+	project := ""
 	if info.ChannelOtherSettings.VertexKeyType != dto.VertexKeyTypeAPIKey {
-		adc, err := ParseCredentials(info.ApiKey)
+		creds, err := ParseCredentials(info.ApiKey)
 		if err != nil {
 			return "", err
 		}
-		a.AccountCredentials = adc
-
-		if a.RequestMode == RequestModeGemini {
-			return BuildGoogleModelURL(info.ChannelBaseUrl, DefaultAPIVersion, adc.ProjectID, region, modelName, suffix), nil
-		} else if a.RequestMode == RequestModeClaude {
-			return BuildAnthropicModelURL(info.ChannelBaseUrl, DefaultAPIVersion, adc.ProjectID, region, modelName, suffix), nil
-		} else if a.RequestMode == RequestModeOpenSource {
-			return BuildOpenSourceChatCompletionsURL(info.ChannelBaseUrl, adc.ProjectID, region), nil
-		}
+		a.AccountCredentials = creds
+		project = creds.ProjectID
 	} else {
-		if a.RequestMode != RequestModeGemini {
+		if cap.Publisher != "google" {
 			return "", errors.New("Vertex API key mode only supports Google publisher models")
 		}
-		requestURL := BuildGoogleModelURL(info.ChannelBaseUrl, DefaultAPIVersion, "", region, modelName, suffix)
-		return AppendAPIKey(requestURL, info.ApiKey)
+		if action != "generateContent" && action != "streamGenerateContent" && action != "countTokens" {
+			return "", errors.New("this Vertex method requires service-account JSON credentials")
+		}
+		region = "global"
 	}
-	return "", errors.New("unsupported request mode")
+	if action == "chat/completions" || action == "responses" {
+		if action == "chat/completions" && cap.Family == vertexmodel.OpenAPI {
+			return BuildOpenSourceChatCompletionsURL(info.ChannelBaseUrl, project, region), nil
+		}
+		return buildPublisherAPIBaseURL(info.ChannelBaseUrl, "v1", project, region) + "/endpoints/openapi/" + action, nil
+	}
+	if cap.Family == vertexmodel.Claude {
+		if mapped, ok := claudeModelMap[modelName]; ok {
+			modelName = mapped
+		}
+	}
+	suffix := action
+	if action == "streamGenerateContent" {
+		suffix += "?alt=sse"
+	}
+	result := BuildPublisherModelURL(info.ChannelBaseUrl, cap.Version, project, region, cap.Publisher, modelName, suffix)
+	if project == "" {
+		return AppendAPIKey(result, info.ApiKey)
+	}
+	return result, nil
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	suffix := ""
-	if a.RequestMode == RequestModeGemini {
-		if model_setting.GetGeminiSettings().ThinkingAdapterEnabled &&
-			!model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
-			// 新增逻辑：处理 -thinking-<budget> 格式
-			if strings.Contains(info.UpstreamModelName, "-thinking-") {
-				parts := strings.Split(info.UpstreamModelName, "-thinking-")
-				info.UpstreamModelName = parts[0]
-			} else if strings.HasSuffix(info.UpstreamModelName, "-thinking") { // 旧的适配
-				info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-thinking")
-			} else if strings.HasSuffix(info.UpstreamModelName, "-nothinking") {
-				info.UpstreamModelName = strings.TrimSuffix(info.UpstreamModelName, "-nothinking")
-			} else if baseModel, level, ok := reasoning.TrimEffortSuffix(info.UpstreamModelName); ok && level != "" {
-				info.UpstreamModelName = baseModel
+	if a.initErr != nil {
+		return "", a.initErr
+	}
+	if (info.RelayMode == constant.RelayModeResponses && a.capability.Family != vertexmodel.Grok) || info.RelayMode == constant.RelayModeResponsesCompact {
+		return "", errors.New("Vertex only supports stateless Grok Responses; compact is unsupported")
+	}
+	modelName := a.capability.Model
+	if a.RequestMode == RequestModeGemini && a.capability.Action == "generateContent" && model_setting.GetGeminiSettings().ThinkingAdapterEnabled && !model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
+		if strings.Contains(modelName, "-thinking-") {
+			modelName = strings.SplitN(modelName, "-thinking-", 2)[0]
+		} else if strings.HasSuffix(modelName, "-thinking") {
+			modelName = strings.TrimSuffix(modelName, "-thinking")
+		} else if strings.HasSuffix(modelName, "-nothinking") {
+			modelName = strings.TrimSuffix(modelName, "-nothinking")
+		} else if base, level, ok := reasoning.TrimEffortSuffix(modelName); ok && level != "" {
+			modelName = base
+		}
+	}
+	action := a.action
+	if action == "" {
+		action = a.capability.Action
+		switch info.RelayMode {
+		case constant.RelayModeResponses:
+			action = "responses"
+		case constant.RelayModeResponsesCompact:
+			return "", errors.New("Vertex does not support Responses compact")
+		}
+		if info.IsStream {
+			if action == "generateContent" {
+				action = "streamGenerateContent"
+			}
+			if action == "rawPredict" {
+				action = "streamRawPredict"
 			}
 		}
-
-		if info.IsStream {
-			suffix = "streamGenerateContent?alt=sse"
-		} else {
-			suffix = "generateContent"
-		}
-
-		if strings.HasPrefix(info.UpstreamModelName, "imagen") {
-			suffix = "predict"
-		}
-		return a.getRequestUrl(info, info.UpstreamModelName, suffix)
-	} else if a.RequestMode == RequestModeClaude {
-		if info.IsStream {
-			suffix = "streamRawPredict?alt=sse"
-		} else {
-			suffix = "rawPredict"
-		}
-		model := info.UpstreamModelName
-		if v, ok := claudeModelMap[info.UpstreamModelName]; ok {
-			model = v
-		}
-		return a.getRequestUrl(info, model, suffix)
-	} else if a.RequestMode == RequestModeOpenSource {
-		return a.getRequestUrl(info, "", "")
 	}
-	return "", errors.New("unsupported request mode")
+	return a.getRequestUrl(info, modelName, action)
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
+	req.Set("Content-Type", "application/json")
 	if info.ChannelOtherSettings.VertexKeyType != dto.VertexKeyTypeAPIKey {
 		if strings.TrimSpace(a.AccountCredentials.ClientEmail) == "" {
 			creds, err := ParseCredentials(info.ApiKey)
@@ -221,6 +254,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *rel
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
+	}
+	if a.initErr != nil {
+		return nil, a.initErr
 	}
 	if a.RequestMode == RequestModeGemini && strings.HasPrefix(info.UpstreamModelName, "imagen") {
 		prompt := ""
@@ -277,6 +313,7 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		return a.ConvertImageRequest(c, info, imgReq)
 	}
 	if a.RequestMode == RequestModeClaude {
+		request.Model = a.capability.Model
 		claudeReq, err := claude.RequestOpenAI2ClaudeMessage(c, *request)
 		if err != nil {
 			return nil, err
@@ -286,6 +323,10 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		info.UpstreamModelName = claudeReq.Model
 		return vertexClaudeReq, nil
 	} else if a.RequestMode == RequestModeGemini {
+		if a.capability.Action != "generateContent" {
+			return nil, errors.New("this Vertex model requires its native or dedicated compatibility endpoint")
+		}
+		request.Model = a.capability.Model
 		geminiRequest, err := gemini.CovertOpenAI2Gemini(c, *request, info)
 		if err != nil {
 			return nil, err
@@ -293,30 +334,76 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 		c.Set("request_model", request.Model)
 		return geminiRequest, nil
 	} else if a.RequestMode == RequestModeOpenSource {
+		if a.capability.Family == vertexmodel.OCR {
+			return nil, errors.New("use /v1/ocr for Vertex Mistral OCR")
+		}
+		if a.capability.Family == vertexmodel.FIM {
+			return nil, errors.New("use /v1/fim/completions for Vertex Codestral")
+		}
+		if a.capability.Family == vertexmodel.OpenAPI || a.capability.Family == vertexmodel.Grok {
+			request.Model = a.capability.OpenAIModel()
+		} else {
+			request.Model = a.capability.Model
+			request.StreamOptions = nil
+		}
 		return request, nil
 	}
 	return nil, errors.New("unsupported request mode")
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
-	return nil, nil
+	return nil, errors.New("Vertex model channels do not support the Vertex AI Search rerank API")
 }
 
 func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
-	//TODO implement me
-	return nil, errors.New("not implemented")
+	return a.convertEmbedding(c, info, request)
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// TODO implement me
-	return nil, errors.New("not implemented")
+	return a.convertResponses(c, info, request)
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, requestBody io.Reader) (any, error) {
+	if info.RelayMode == constant.RelayModeResponses {
+		// Revalidate after channel parameter overrides and passthrough handling.
+		var request dto.OpenAIResponsesRequest
+		if err := common.DecodeJson(requestBody, &request); err != nil {
+			return nil, err
+		}
+		converted, err := a.convertResponses(c, info, request)
+		if err != nil {
+			return nil, err
+		}
+		data, err := common.Marshal(converted)
+		if err != nil {
+			return nil, err
+		}
+		requestBody = bytes.NewReader(data)
+	}
+	if a.responseKind == "embedding" {
+		return a.doEmbeddings(c, info, requestBody)
+	}
 	return channel.DoApiRequest(a, c, info, requestBody)
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if a.native {
+		return a.nativeResponse(c, resp, info)
+	}
+	switch a.responseKind {
+	case "embedding":
+		return a.embeddingResponse(c, resp, info)
+	case "image":
+		return a.imageResponse(c, resp, info)
+	case "speech", "transcribe":
+		return a.audioResponse(c, resp, info)
+	}
+	if info.RelayMode == constant.RelayModeResponses {
+		if info.IsStream {
+			return openai.OaiResponsesStreamHandler(c, info, resp)
+		}
+		return openai.OaiResponsesHandler(c, info, resp)
+	}
 	claudeAdaptor := claude.Adaptor{}
 	if info.IsStream {
 		switch a.RequestMode {
@@ -352,10 +439,16 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 }
 
 func (a *Adaptor) GetModelList() []string {
-	modelList := make([]string, 0, len(ModelList)+len(claude.ModelList)+len(gemini.ModelList))
-	modelList = append(modelList, ModelList...)
-	modelList = append(modelList, claude.ModelList...)
-	modelList = append(modelList, gemini.ModelList...)
+	modelList := make([]string, 0, len(vertexmodel.Catalog)+len(claude.ModelList))
+	seen := map[string]bool{}
+	for _, list := range [][]string{ModelList, vertexmodel.Catalog, claude.ModelList} {
+		for _, name := range list {
+			if _, err := vertexmodel.Resolve(name); err == nil && !seen[name] {
+				seen[name] = true
+				modelList = append(modelList, name)
+			}
+		}
+	}
 	return modelList
 }
 

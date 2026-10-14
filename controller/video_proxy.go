@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 
@@ -100,7 +102,20 @@ func VideoProxy(c *gin.Context) {
 		}
 		req.Header.Set("x-goog-api-key", apiKey)
 	case constant.ChannelTypeVertexAi:
-		videoURL, err = getVertexVideoURL(channel, task)
+		index, parseErr := strconv.Atoi(c.DefaultQuery("index", "0"))
+		if parseErr != nil || index < 0 {
+			videoProxyError(c, http.StatusBadRequest, "invalid_request_error", "index must be a non-negative integer")
+			return
+		}
+		if index == 0 {
+			videoURL, err = getVertexVideoURL(channel, task)
+		} else {
+			videoURL = extractVertexVideoAtIndex(task.Data, index)
+			if videoURL == "" {
+				videoProxyError(c, http.StatusNotFound, "not_found", "Video result index not found")
+				return
+			}
+		}
 		if err != nil {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to resolve Vertex video URL for task %s: %s", taskID, err.Error()))
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
@@ -126,6 +141,22 @@ func VideoProxy(c *gin.Context) {
 			logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to decode video data URL for task %s: %s", taskID, err.Error()))
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to fetch video content")
 		}
+		return
+	}
+	if channel.Type == constant.ChannelTypeVertexAi && strings.HasPrefix(videoURL, "gs://") {
+		resp, err := vertex.FetchStorageObject(ctx, videoURL, getVertexTaskKey(channel, task), proxy)
+		if err != nil {
+			videoProxyError(c, http.StatusBadGateway, "upstream_error", "Unable to download Vertex GCS result")
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			videoProxyError(c, http.StatusBadGateway, "upstream_error", "Google Storage did not return video content")
+			return
+		}
+		c.Header("Content-Type", resp.Header.Get("Content-Type"))
+		c.Header("Cache-Control", "private, no-store")
+		_, _ = io.Copy(c.Writer, resp.Body)
 		return
 	}
 

@@ -348,7 +348,8 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 // A successful native OCR/speech response can contain pages or audio but no
 // tokens. Honor explicit per-request pricing without fabricating token usage.
 func mistralNativeCallPrice(info *relaycommon.RelayInfo) bool {
-	return info != nil && info.RelayFormat == types.RelayFormatMistralNative && info.PriceData.UsePrice
+	return info != nil && info.PriceData.UsePrice && (info.RelayFormat == types.RelayFormatMistralNative ||
+		(info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeVertexAi && info.NonTokenUsage))
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {

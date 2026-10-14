@@ -12,6 +12,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/samber/lo"
@@ -21,6 +22,9 @@ import (
 
 func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dto.Request, err error) {
 	relayMode := relayconstant.Path2RelayMode(c.Request.URL.Path)
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi && vertexmodel.NativeAction(c.Request.URL.Path) != "" {
+		return dto.ParseVertexRequest(c)
+	}
 
 	switch format {
 	case types.RelayFormatOpenAIDecisions:
@@ -193,7 +197,7 @@ func GetAndValidateResponsesCompactionRequest(c *gin.Context) (*dto.OpenAIRespon
 
 func GetAndValidOpenAIImageRequest(c *gin.Context, relayMode int) (*dto.ImageRequest, error) {
 	imageRequest := &dto.ImageRequest{}
-	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenAI || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenAI || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi {
 		if err := unmarshalOpenAIMediaRequest(c, imageRequest); err != nil {
 			return nil, err
 		}
@@ -355,10 +359,26 @@ func unmarshalOpenAIMediaRequest(c *gin.Context, request any) error {
 		}
 		value := values[0]
 		switch key {
+		case "extra_fields":
+			if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi {
+				var extra any
+				if err := common.UnmarshalJsonStr(value, &extra); err != nil {
+					return err
+				}
+				fields[key] = extra
+			} else {
+				fields[key] = value
+			}
 		case "stream", "watermark":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
 				return fmt.Errorf("%s must be a boolean", key)
+			}
+			fields[key] = parsed
+		case "seed":
+			parsed, err := strconv.ParseInt(value, 10, 64)
+			if err != nil {
+				return fmt.Errorf("seed must be an integer")
 			}
 			fields[key] = parsed
 		case "n", "partial_images", "output_compression":

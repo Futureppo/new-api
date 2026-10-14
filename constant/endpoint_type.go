@@ -3,6 +3,7 @@ package constant
 type EndpointType string
 
 const (
+	EndpointTypeVertexNative          EndpointType = "vertex-native"
 	EndpointTypeTypeSafeSystemOne     EndpointType = "typesafe-systemone"
 	EndpointTypeOpenAI                EndpointType = "openai"
 	EndpointTypeOpenAIResponse        EndpointType = "openai-response"

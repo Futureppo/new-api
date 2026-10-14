@@ -9,6 +9,7 @@ type EndpointInfo struct {
 }
 
 var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
+	constant.EndpointTypeVertexNative:          {Path: "/v1/models/{model}:{action}", Method: "POST"},
 	constant.EndpointTypeTypeSafeSystemOne:     {Path: "/v1/systemone", Method: "POST"},
 	constant.EndpointTypeOpenAI:                {Path: "/v1/chat/completions", Method: "POST"},
 	constant.EndpointTypeOpenAIResponse:        {Path: "/v1/responses", Method: "POST"},
@@ -39,6 +40,8 @@ func GetDefaultEndpointInfo(et constant.EndpointType) (EndpointInfo, bool) {
 // may use a non-streaming sample even when a provider also supports streaming.
 func ChannelTestEndpointSupportsStream(et constant.EndpointType) bool {
 	switch et {
+	case constant.EndpointTypeVertexNative:
+		return false
 	case constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions,
 		constant.EndpointTypeOpenAIResponseCompact, constant.EndpointTypeModerations,
 		constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings,

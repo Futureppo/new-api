@@ -158,6 +158,8 @@ type RelayInfo struct {
 	ConversationCapture                   *ConversationCapture
 
 	PriceData types.PriceData
+	// Set only after a successful upstream media response reports billable units.
+	NonTokenUsage bool
 
 	// TieredBillingSnapshot is a frozen snapshot of tiered billing rules
 	// captured at pre-consume time. Non-nil only when billing mode is "tiered_expr".

@@ -21,6 +21,12 @@ For commercial licensing, please contact support@quantumnous.com
 export const CHANNEL_TEST_ENDPOINTS = [
   { value: '', label: '', stream: true },
   {
+    value: 'vertex-native',
+    label: 'Vertex Native (/v1/models/{model}:{action})',
+    stream: false,
+    channels: [41],
+  },
+  {
     value: 'typesafe-systemone',
     label: 'TypeSafe (/v1/systemone)',
     stream: false,
@@ -98,6 +104,20 @@ export function getChannelTestEndpoints(channelType, t) {
   const type = Number(channelType);
   return CHANNEL_TEST_ENDPOINTS.filter((endpoint) => {
     if (endpoint.channels && !endpoint.channels.includes(type)) return false;
+    if (type === 41)
+      return [
+        '',
+        'openai',
+        'anthropic',
+        'openai-response',
+        'gemini',
+        'vertex-native',
+        'embeddings',
+        'image-generation',
+        'audio-speech',
+        'audio-transcription',
+        'openai-video',
+      ].includes(endpoint.value);
     if (type === 20)
       return [
         '',

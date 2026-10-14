@@ -231,6 +231,30 @@ func extractVertexVideoURLFromTaskData(task *model.Task) string {
 	return extractVertexVideoURLFromPayload(task.Data)
 }
 
+func extractVertexVideoAtIndex(body []byte, index int) string {
+	var payload struct {
+		Response struct {
+			Videos []struct {
+				Bytes    string `json:"bytesBase64Encoded"`
+				GCS      string `json:"gcsUri"`
+				MIME     string `json:"mimeType"`
+				Encoding string `json:"encoding"`
+			} `json:"videos"`
+		} `json:"response"`
+	}
+	if common.Unmarshal(body, &payload) != nil || index < 0 || index >= len(payload.Response.Videos) {
+		return ""
+	}
+	v := payload.Response.Videos[index]
+	if strings.HasPrefix(v.GCS, "gs://") {
+		return v.GCS
+	}
+	if v.Bytes != "" {
+		return buildVideoDataURL(v.MIME, v.Encoding, v.Bytes)
+	}
+	return ""
+}
+
 func extractVertexVideoURLFromPayload(body []byte) string {
 	var payload map[string]any
 	if err := common.Unmarshal(body, &payload); err != nil {
@@ -243,6 +267,9 @@ func extractVertexVideoURLFromPayload(body []byte) string {
 
 	if videos, ok := resp["videos"].([]any); ok && len(videos) > 0 {
 		if video, ok := videos[0].(map[string]any); ok && video != nil {
+			if uri, _ := video["gcsUri"].(string); strings.HasPrefix(uri, "gs://") {
+				return uri
+			}
 			if b64, _ := video["bytesBase64Encoded"].(string); strings.TrimSpace(b64) != "" {
 				mime, _ := video["mimeType"].(string)
 				enc, _ := video["encoding"].(string)

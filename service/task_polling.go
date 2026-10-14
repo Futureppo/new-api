@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -408,12 +409,21 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if privateData.Key != "" {
 		key = privateData.Key
 	}
-	resp, err := adaptor.FetchTask(baseURL, key, map[string]any{
+	fetchBody := map[string]any{
 		"task_id":    task.GetUpstreamTaskID(),
 		"action":     task.Action,
 		"video_id":   task.PrivateData.UpstreamVideoID,
 		"model_name": task.Properties.UpstreamModelName,
-	}, proxy)
+	}
+	var resp *http.Response
+	var err error
+	if contextual, ok := adaptor.(interface {
+		FetchTaskContext(context.Context, string, string, map[string]any, string) (*http.Response, error)
+	}); ok {
+		resp, err = contextual.FetchTaskContext(ctx, baseURL, key, fetchBody, proxy)
+	} else {
+		resp, err = adaptor.FetchTask(baseURL, key, fetchBody, proxy)
+	}
 	if err != nil {
 		return fmt.Errorf("fetchTask failed for task %s: %w", taskId, err)
 	}
@@ -424,8 +434,8 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if ch.Type == constant.ChannelTypeAgnesAI && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Agnes task retrieval returned HTTP %d", resp.StatusCode)
 	}
-	if ch.Type == constant.ChannelTypeGMICloud && resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("GMICLOUD task retrieval returned HTTP %d", resp.StatusCode)
+	if (ch.Type == constant.ChannelTypeGMICloud || ch.Type == constant.ChannelTypeVertexAi) && resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("video task retrieval returned HTTP %d", resp.StatusCode)
 	}
 	responseBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -465,6 +475,11 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)
+	if ch.Type == constant.ChannelTypeVertexAi {
+		// Native operations retain every result, including base64 media, for
+		// authenticated retrieval after the upstream operation expires.
+		task.Data = responseBody
+	}
 
 	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
 
@@ -517,7 +532,7 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 		if task.FinishTime == 0 {
 			task.FinishTime = now
 		}
-		if strings.HasPrefix(taskResult.Url, "data:") {
+		if strings.HasPrefix(taskResult.Url, "data:") || (ch.Type == constant.ChannelTypeVertexAi && strings.HasPrefix(taskResult.Url, "gs://")) {
 			// data: URI (e.g. Vertex base64 encoded video) — keep in Data, not in ResultURL
 			task.PrivateData.ResultURL = taskcommon.BuildProxyURL(task.TaskID)
 		} else if taskResult.Url != "" {
@@ -654,6 +669,12 @@ func truncateBase64(s string) string {
 //  2. taskResult.TotalTokens > 0 → 按 token 重算
 //  3. 都不满足 → 保持预扣额度不变
 func settleTaskBillingOnComplete(ctx context.Context, adaptor TaskPollingAdaptor, task *model.Task, taskResult *relaycommon.TaskInfo) {
+	if task.Platform == constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeVertexAi)) {
+		if actual := adaptor.AdjustBillingOnComplete(task, taskResult); actual > 0 {
+			RecalculateTaskQuota(ctx, task, actual, "Vertex actual result count")
+		}
+		return
+	}
 	// 0. 按次计费的任务不做差额结算
 	if bc := task.PrivateData.BillingContext; bc != nil && bc.PerCallBilling {
 		logger.LogInfo(ctx, fmt.Sprintf("任务 %s 按次计费，跳过差额结算", task.TaskID))

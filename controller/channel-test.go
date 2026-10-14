@@ -21,9 +21,11 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
+	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
+	vertexchannel "github.com/QuantumNous/new-api/relay/channel/vertex"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
@@ -267,7 +269,7 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
-	if channel != nil && channel.Type == constant.ChannelTypeOpenRouter {
+	if channel != nil && (channel.Type == constant.ChannelTypeOpenRouter || channel.Type == constant.ChannelTypeVertexAi) {
 		endpoints := common.GetEndpointTypesByChannelType(channel.Type, modelName)
 		if len(endpoints) > 0 {
 			return string(endpoints[0])
@@ -464,6 +466,13 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 
+	if channel.Type == constant.ChannelTypeVertexAi && endpointType == string(constant.EndpointTypeVertexNative) {
+		cap, err := vertexmodel.Resolve(testModel)
+		if err != nil {
+			return testResult{localErr: err}
+		}
+		requestPath = "/v1/models/" + testModel + ":" + cap.Action
+	}
 	c.Request = &http.Request{
 		Method: "POST",
 		URL:    &url.URL{Path: requestPath}, // 使用动态路径
@@ -514,7 +523,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		case constant.EndpointTypeAnthropic:
 			relayFormat = types.RelayFormatClaude
-		case constant.EndpointTypeGemini:
+		case constant.EndpointTypeGemini, constant.EndpointTypeVertexNative:
 			relayFormat = types.RelayFormatGemini
 		case constant.EndpointTypeJinaRerank, constant.EndpointTypeCohereRerank:
 			relayFormat = types.RelayFormatRerank
@@ -646,7 +655,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		convertedRequest = request
 	case relayconstant.RelayModeAudioSpeech, relayconstant.RelayModeAudioTranscription, relayconstant.RelayModeAudioTranslation:
 		if audioReq, ok := request.(*dto.AudioRequest); ok {
-			if (channel.Type == constant.ChannelTypeMistral || channel.Type == constant.ChannelTypeOpenAI || channel.Type == constant.ChannelTypeOpenRouter) && info.RelayMode == relayconstant.RelayModeAudioTranscription {
+			if (channel.Type == constant.ChannelTypeMistral || channel.Type == constant.ChannelTypeOpenAI || channel.Type == constant.ChannelTypeOpenRouter || channel.Type == constant.ChannelTypeVertexAi) && info.RelayMode == relayconstant.RelayModeAudioTranscription {
 				if err = prepareTranscriptionTest(c, audioReq.Model); err != nil {
 					return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed)}
 				}
@@ -723,6 +732,17 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	default:
+		if native, ok := request.(*dto.VertexRequest); ok {
+			a, ok := adaptor.(*vertexchannel.Adaptor)
+			if !ok {
+				return testResult{localErr: errors.New("Vertex native tests require a Vertex channel")}
+			}
+			if a.RequiresCallPrice() && !info.PriceData.UsePrice {
+				return testResult{localErr: errors.New("configure per-request pricing for this Vertex model")}
+			}
+			convertedAudioReader, err = a.ConvertNativeRequest(c, info, native)
+			break
+		}
 		// Chat/Completion 等其他请求类型
 		if claudeReq, ok := request.(*dto.ClaudeRequest); ok && channel.Type == constant.ChannelTypeXunfeiMaas {
 			convertedRequest, err = adaptor.ConvertClaudeRequest(c, info, claudeReq)
@@ -1387,6 +1407,14 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if channel != nil && channel.Type == constant.ChannelTypeVertexAi {
+		if endpointType == string(constant.EndpointTypeVertexNative) {
+			return buildVertexNativeTestRequest(model)
+		}
+		if endpointType == string(constant.EndpointTypeAudioSpeech) {
+			return &dto.AudioRequest{Model: model, Input: "Hello", Voice: dto.AudioVoice{Name: "Kore"}, ResponseFormat: "wav"}
+		}
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeXunfeiMaas && constant.EndpointType(endpointType) == constant.EndpointTypeAnthropic {
 		return &dto.ClaudeRequest{
 			Model: model, MaxTokens: lo.ToPtr(uint(16)), Stream: lo.ToPtr(isStream),

@@ -2,6 +2,8 @@ package vertex
 
 import (
 	"bytes"
+	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,12 +13,11 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/gin-gonic/gin"
 
-	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
-	geminitask "github.com/QuantumNous/new-api/relay/channel/task/gemini"
 	taskcommon "github.com/QuantumNous/new-api/relay/channel/task/taskcommon"
 	vertexcore "github.com/QuantumNous/new-api/relay/channel/vertex"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -39,6 +40,7 @@ type operationVideo struct {
 	MimeType           string `json:"mimeType"`
 	BytesBase64Encoded string `json:"bytesBase64Encoded"`
 	Encoding           string `json:"encoding"`
+	GCSURI             string `json:"gcsUri"`
 }
 
 type operationResponse struct {
@@ -76,8 +78,7 @@ func (a *TaskAdaptor) Init(info *relaycommon.RelayInfo) {
 
 // ValidateRequestAndSetAction parses body, validates fields and sets default action.
 func (a *TaskAdaptor) ValidateRequestAndSetAction(c *gin.Context, info *relaycommon.RelayInfo) (taskErr *dto.TaskError) {
-	// Use the standard validation method for TaskSubmitReq
-	return relaycommon.ValidateBasicTaskRequest(c, info, constant.TaskActionTextGenerate)
+	return a.validateVideoRequest(c, info)
 }
 
 // BuildRequestURL constructs the upstream URL.
@@ -91,7 +92,12 @@ func (a *TaskAdaptor) BuildRequestURL(info *relaycommon.RelayInfo) (string, erro
 		modelName = "veo-3.0-generate-001"
 	}
 
-	region, err := vertexcore.ResolveModelRegion(info.ApiVersion, modelName)
+	cap, err := vertexmodel.Resolve(modelName)
+	if err != nil {
+		return "", err
+	}
+	modelName = cap.Model
+	region, err := vertexcore.ResolveModelRegion(info.ApiVersion, info.OriginModelName)
 	if err != nil {
 		return "", err
 	}
@@ -129,66 +135,12 @@ func (a *TaskAdaptor) BuildRequestHeader(c *gin.Context, req *http.Request, info
 
 // EstimateBilling returns OtherRatios based on durationSeconds and resolution.
 func (a *TaskAdaptor) EstimateBilling(c *gin.Context, info *relaycommon.RelayInfo) map[string]float64 {
-	v, ok := c.Get("task_request")
-	if !ok {
-		return nil
-	}
-	req := v.(relaycommon.TaskSubmitReq)
-
-	seconds := geminitask.ResolveVeoDuration(req.Metadata, req.Duration, req.Seconds)
-	resolution := geminitask.ResolveVeoResolution(req.Metadata, req.Size)
-	resRatio := geminitask.VeoResolutionRatio(info.UpstreamModelName, resolution)
-
-	return map[string]float64{
-		"seconds":    float64(seconds),
-		"resolution": resRatio,
-	}
+	return a.videoBilling(c, info)
 }
 
 // BuildRequestBody converts request into Vertex specific format.
 func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayInfo) (io.Reader, error) {
-	v, ok := c.Get("task_request")
-	if !ok {
-		return nil, fmt.Errorf("request not found in context")
-	}
-	req := v.(relaycommon.TaskSubmitReq)
-
-	instance := geminitask.VeoInstance{Prompt: req.Prompt}
-	if img := geminitask.ExtractMultipartImage(c, info); img != nil {
-		instance.Image = img
-	} else if len(req.Images) > 0 {
-		if parsed := geminitask.ParseImageInput(req.Images[0]); parsed != nil {
-			instance.Image = parsed
-			info.Action = constant.TaskActionGenerate
-		}
-	}
-
-	params := &geminitask.VeoParameters{}
-	if err := taskcommon.UnmarshalMetadata(req.Metadata, params); err != nil {
-		return nil, fmt.Errorf("unmarshal metadata failed: %w", err)
-	}
-	if params.DurationSeconds == 0 && req.Duration > 0 {
-		params.DurationSeconds = req.Duration
-	}
-	if params.Resolution == "" && req.Size != "" {
-		params.Resolution = geminitask.SizeToVeoResolution(req.Size)
-	}
-	if params.AspectRatio == "" && req.Size != "" {
-		params.AspectRatio = geminitask.SizeToVeoAspectRatio(req.Size)
-	}
-	params.Resolution = strings.ToLower(params.Resolution)
-	params.SampleCount = 1
-
-	body := geminitask.VeoRequestPayload{
-		Instances:  []geminitask.VeoInstance{instance},
-		Parameters: params,
-	}
-
-	data, err := common.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	return bytes.NewReader(data), nil
+	return a.videoBody(c, info)
 }
 
 // DoRequest delegates to common helper.
@@ -217,7 +169,9 @@ func (a *TaskAdaptor) DoResponse(c *gin.Context, resp *http.Response, info *rela
 	ov.TaskID = info.PublicTaskID
 	ov.CreatedAt = time.Now().Unix()
 	ov.Model = info.OriginModelName
-	c.JSON(http.StatusOK, ov)
+	if !c.GetBool("vertex_native_video") {
+		c.JSON(http.StatusOK, ov)
+	}
 	return localID, responseBody, nil
 }
 
@@ -233,6 +187,10 @@ func (a *TaskAdaptor) GetChannelName() string { return "vertex" }
 
 // FetchTask fetch task status
 func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
+	return a.FetchTaskContext(context.Background(), baseUrl, key, body, proxy)
+}
+
+func (a *TaskAdaptor) FetchTaskContext(ctx context.Context, baseUrl, key string, body map[string]any, proxy string) (*http.Response, error) {
 	taskID, ok := body["task_id"].(string)
 	if !ok {
 		return nil, fmt.Errorf("invalid task_id")
@@ -260,11 +218,11 @@ func (a *TaskAdaptor) FetchTask(baseUrl, key string, body map[string]any, proxy 
 	if err != nil {
 		return nil, err
 	}
-	token, err := vertexcore.AcquireAccessToken(adc, proxy)
+	token, err := vertexcore.AcquireAccessTokenContext(ctx, adc, proxy)
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire access token: %w", err)
 	}
-	req, err := http.NewRequest(http.MethodPost, requestURL, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -297,9 +255,15 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 	}
 	ti.Status = model.TaskStatusSuccess
 	ti.Progress = "100%"
-	if len(op.Response.Videos) > 0 {
-		v0 := op.Response.Videos[0]
-		if v0.BytesBase64Encoded != "" {
+	for _, v0 := range op.Response.Videos {
+		if v0.GCSURI != "" {
+			if _, err := vertexcore.StorageObjectURL(v0.GCSURI); err != nil {
+				continue
+			}
+			ti.Url = v0.GCSURI
+			return ti, nil
+		}
+		if validVideoBase64(v0.BytesBase64Encoded) {
 			mime := strings.TrimSpace(v0.MimeType)
 			if mime == "" {
 				enc := strings.TrimSpace(v0.Encoding)
@@ -316,7 +280,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 			return ti, nil
 		}
 	}
-	if op.Response.BytesBase64Encoded != "" {
+	if validVideoBase64(op.Response.BytesBase64Encoded) {
 		enc := strings.TrimSpace(op.Response.Encoding)
 		if enc == "" {
 			enc = "mp4"
@@ -328,7 +292,7 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		ti.Url = "data:" + mime + ";base64," + op.Response.BytesBase64Encoded
 		return ti, nil
 	}
-	if op.Response.Video != "" { // some variants use `video` as base64
+	if validVideoBase64(op.Response.Video) { // some variants use `video` as base64
 		enc := strings.TrimSpace(op.Response.Encoding)
 		if enc == "" {
 			enc = "mp4"
@@ -340,7 +304,41 @@ func (a *TaskAdaptor) ParseTaskResult(respBody []byte) (*relaycommon.TaskInfo, e
 		ti.Url = "data:" + mime + ";base64," + op.Response.Video
 		return ti, nil
 	}
+	ti.Status = model.TaskStatusFailure
+	ti.Reason = "Vertex returned no usable videos (empty or safety-filtered result)"
 	return ti, nil
+}
+
+func validVideoBase64(value string) bool {
+	if value == "" {
+		return false
+	}
+	n, err := io.Copy(io.Discard, base64.NewDecoder(base64.StdEncoding, strings.NewReader(value)))
+	return err == nil && n > 0
+}
+
+// Submission reserves all requested samples. Partial safety filtering charges
+// only the successful samples; the poller's status CAS makes this run once.
+func (a *TaskAdaptor) AdjustBillingOnComplete(task *model.Task, _ *relaycommon.TaskInfo) int {
+	bc := task.PrivateData.BillingContext
+	if bc == nil || bc.OtherRatios["n"] <= 1 {
+		return 0
+	}
+	var op operationResponse
+	if common.Unmarshal(task.Data, &op) != nil {
+		return 0
+	}
+	count := 0
+	for _, video := range op.Response.Videos {
+		_, gcsErr := vertexcore.StorageObjectURL(video.GCSURI)
+		if validVideoBase64(video.BytesBase64Encoded) || gcsErr == nil {
+			count++
+		}
+	}
+	if count == 0 || float64(count) >= bc.OtherRatios["n"] {
+		return 0
+	}
+	return max(1, int(float64(task.Quota)*float64(count)/bc.OtherRatios["n"]))
 }
 
 func (a *TaskAdaptor) ConvertToOpenAIVideo(task *model.Task) ([]byte, error) {
