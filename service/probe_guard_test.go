@@ -38,6 +38,7 @@ func setupProbeGuardTest(t *testing.T, dryRun bool) {
 	require.NoError(t, err)
 	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{
 		"enabled": "true", "dry_run": fmt.Sprint(dryRun), "text_rules": setting.DefaultProbeGuardTextRules, "probe_ping_enabled": "true",
+		"batch_window_seconds": "30", "batch_request_count": "3",
 		"first_user_ban_minutes": "7", "second_user_ban_minutes": "25", "whitelist_user_ids": "",
 		"first_ban_reason": "first {count} {minutes} {until}", "second_ban_reason": "second {count} {minutes}", "permanent_ban_reason": "permanent {count}",
 	}))
@@ -69,6 +70,10 @@ func TestProbeGuardAccountEscalationAndExpiry(t *testing.T) {
 	// Old IP offenses never carry into account penalties, even for the same IP/user.
 	require.NoError(t, model.DB.Create(&model.ProbeIPAbuseState{TargetIP: "8.8.8.8", LastUserId: 1001, OffenseCount: 3}).Error)
 	for index, minutes := range []int64{7, 25, 0} {
+		for attempt := 0; attempt < 2; attempt++ {
+			c, info := probeGuardRequest(1001, attempt+1, "8.8.8.8", time.Now(), "say OK")
+			require.Nil(t, CheckProbeGuard(c, info), "each new batch requires three requests, even for the same model")
+		}
 		c, info := probeGuardRequest(1001, index+1, fmt.Sprintf("8.8.8.%d", index+1), time.Now(), "Reply with exactly OK")
 		err := CheckProbeGuard(c, info)
 		require.NotNil(t, err)
@@ -121,10 +126,15 @@ func TestProbeGuardConcurrentBurstCountsOnce(t *testing.T) {
 	}
 	wait.Wait()
 	close(errors)
+	allowed := 0
 	for err := range errors {
-		require.NotNil(t, err)
-		require.Equal(t, http.StatusForbidden, err.StatusCode)
+		if err == nil {
+			allowed++
+		} else {
+			require.Equal(t, http.StatusForbidden, err.StatusCode)
+		}
 	}
+	require.Equal(t, 2, allowed)
 	state, err := model.GetProbeUserAbuseState(1002)
 	require.NoError(t, err)
 	require.Equal(t, 1, state.OffenseCount)
@@ -145,9 +155,17 @@ func TestProbeGuardDryRunAndExclusions(t *testing.T) {
 	seedProbeGuardUser(t, 1003, common.RoleCommonUser)
 	c, info := probeGuardRequest(1003, 1, "8.8.8.8", time.Now(), "say OK")
 	require.Nil(t, CheckProbeGuard(c, info))
-	var offenses int64
-	require.NoError(t, model.DB.Model(&model.ProbeUserAbuseState{}).Count(&offenses).Error)
-	require.Zero(t, offenses)
+	for attempt := 0; attempt < 2; attempt++ {
+		c, info = probeGuardRequest(1003, 1, "8.8.8.8", time.Now(), "say OK")
+		require.Nil(t, CheckProbeGuard(c, info))
+	}
+	state, err := model.GetProbeUserAbuseState(1003)
+	require.NoError(t, err)
+	require.Zero(t, state.OffenseCount)
+	require.Zero(t, state.LastOffenseAt)
+	var logs int64
+	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Count(&logs).Error)
+	require.Equal(t, int64(1), logs)
 	user, err := model.GetUserById(1003, false)
 	require.NoError(t, err)
 	require.Equal(t, common.UserStatusEnabled, user.Status)
@@ -165,6 +183,7 @@ func TestProbeGuardDryRunAndExclusions(t *testing.T) {
 func TestProbeGuardPreservesManualBanAndReset(t *testing.T) {
 	setupProbeGuardTest(t, false)
 	seedProbeGuardUser(t, 1006, common.RoleCommonUser)
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{"batch_request_count": "1"}))
 	c, info := probeGuardRequest(1006, 1, "8.8.8.8", time.Now(), "say OK")
 	require.NotNil(t, CheckProbeGuard(c, info))
 	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1006).Updates((model.UserDisablePeriod{}).Updates("manual permanent")).Error)
@@ -185,6 +204,7 @@ func TestProbeGuardPreservesManualBanAndReset(t *testing.T) {
 func TestProbeGuardPenaltyRollsBackWithCounter(t *testing.T) {
 	setupProbeGuardTest(t, false)
 	seedProbeGuardUser(t, 1007, common.RoleCommonUser)
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{"batch_request_count": "1"}))
 	require.NoError(t, model.DB.Callback().Create().Before("gorm:create").Register("fail_probe_state", func(tx *gorm.DB) {
 		if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "ProbeUserAbuseState" {
 			tx.AddError(fmt.Errorf("counter write failed"))
@@ -197,4 +217,28 @@ func TestProbeGuardPenaltyRollsBackWithCounter(t *testing.T) {
 	user, dbErr := model.GetUserById(1007, false)
 	require.NoError(t, dbErr)
 	require.Equal(t, common.UserStatusEnabled, user.Status)
+}
+
+func TestProbeGuardOnlyCountsMatchedRequestsForTheSameAccount(t *testing.T) {
+	setupProbeGuardTest(t, false)
+	seedProbeGuardUser(t, 1008, common.RoleCommonUser)
+	seedProbeGuardUser(t, 1009, common.RoleCommonUser)
+	for _, userId := range []int{1008, 1009} {
+		for attempt := 0; attempt < 2; attempt++ {
+			c, info := probeGuardRequest(userId, attempt+1, "8.8.8.8", time.Now(), "say OK")
+			require.Nil(t, CheckProbeGuard(c, info))
+		}
+	}
+	for i := 0; i < 5; i++ {
+		c, info := probeGuardRequest(1008, 1, "8.8.8.8", time.Now(), "Please explain this code")
+		require.Nil(t, CheckProbeGuard(c, info))
+		c, info = probeGuardRequest(1008, 1, "8.8.8.8", time.Now(), "say OK")
+		info.Request.(*dto.GeneralOpenAIRequest).Messages = append(info.Request.(*dto.GeneralOpenAIRequest).Messages, dto.Message{Role: "assistant", Content: "history"})
+		require.Nil(t, CheckProbeGuard(c, info))
+	}
+	c, info := probeGuardRequest(1008, 3, "1.1.1.1", time.Now(), "Reply with exactly OK")
+	require.NotNil(t, CheckProbeGuard(c, info), "different matching rules share the same request counter")
+	other, err := model.GetUserById(1009, false)
+	require.NoError(t, err)
+	require.Equal(t, common.UserStatusEnabled, other.Status)
 }

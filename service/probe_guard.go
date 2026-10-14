@@ -24,18 +24,12 @@ func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.Ne
 	if match == nil || (c != nil && c.GetInt("role") >= common.RoleAdminUser) {
 		return nil
 	}
-	if cfg.DryRun {
-		if model.IsAdmin(relayInfo.UserId) {
-			return nil
-		}
-		recordProbeAccountLog(c, relayInfo, match, 0, true)
-		return nil
-	}
 	requestID := ""
 	if c != nil {
 		requestID = c.GetString(common.RequestIdKey)
 	}
-	result, err := model.ApplyProbeUserPenalty(relayInfo.UserId, relayInfo.StartTime, match.RuleID, requestID,
+	result, err := model.RecordProbeUserMatch(relayInfo.UserId, relayInfo.StartTime, match.RuleID, requestID,
+		model.ProbeUserBatchPolicy{WindowSeconds: cfg.BatchWindowSeconds, RequestCount: cfg.BatchRequestCount, DryRun: cfg.DryRun},
 		int64(cfg.FirstUserBanMinutes), int64(cfg.SecondUserBanMinutes), func(count int, period model.UserDisablePeriod) string {
 			template := cfg.PermanentBanReason
 			if count == 1 {
@@ -53,7 +47,12 @@ func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.Ne
 	}
 	if result.Applied {
 		model.InvalidateUserAuthCaches(relayInfo.UserId)
-		recordProbeAccountLog(c, relayInfo, match, result.State.OffenseCount, false)
+	}
+	if result.ThresholdReached {
+		recordProbeAccountLog(c, relayInfo, match, result.State.OffenseCount, result.MatchedRequests, cfg)
+	}
+	if cfg.DryRun || (!result.Ignored && result.User.Status == common.UserStatusEnabled && !result.Applied) {
+		return nil
 	}
 	message := "测活请求已拦截，本次未追加账号处罚"
 	if result.User.Status == common.UserStatusDisabled {
@@ -63,12 +62,12 @@ func CheckProbeGuard(c *gin.Context, relayInfo *relaycommon.RelayInfo) *types.Ne
 		types.ErrOptionWithSkipRetry(), types.ErrOptionWithNoRecordErrorLog())
 }
 
-func recordProbeAccountLog(c *gin.Context, info *relaycommon.RelayInfo, match *ProbeGuardMatch, count int, dryRun bool) {
+func recordProbeAccountLog(c *gin.Context, info *relaycommon.RelayInfo, match *ProbeGuardMatch, count, matchedRequests int, cfg setting.ProbeGuardSetting) {
 	requestID := ""
 	if c != nil {
 		requestID = c.GetString(common.RequestIdKey)
 	}
 	model.RecordLogWithContext(c, info.UserId, model.LogTypeManage, fmt.Sprintf(
-		"单轮测活防护: version=1 rule=%s token_id=%d request_id=%s model=%s offense=%d dry_run=%t",
-		match.RuleID, info.TokenId, requestID, info.OriginModelName, count, dryRun))
+		"单轮测活防护: version=2 rule=%s token_id=%d request_id=%s model=%s matched_requests=%d threshold=%d window_seconds=%d offense=%d dry_run=%t",
+		match.RuleID, info.TokenId, requestID, info.OriginModelName, matchedRequests, cfg.BatchRequestCount, cfg.BatchWindowSeconds, count, cfg.DryRun))
 }

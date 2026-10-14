@@ -50,7 +50,7 @@ func TestProbeGuardRelayBlocksBeforePricingAndUpstream(t *testing.T) {
 			oldValues, err := config.ConfigToMap(&oldCfg)
 			require.NoError(t, err)
 			require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{
-				"enabled": "true", "dry_run": "false", "text_rules": "say OK", "whitelist_user_ids": "", "first_ban_reason": "relay test {count}",
+				"enabled": "true", "dry_run": "false", "text_rules": "say OK", "whitelist_user_ids": "", "first_ban_reason": "relay test {count}", "batch_request_count": "1", "batch_window_seconds": "30",
 			}))
 			t.Cleanup(func() {
 				require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), oldValues))

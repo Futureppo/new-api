@@ -17,6 +17,18 @@ import (
 	"gorm.io/gorm/schema"
 )
 
+// The deployed schema before request-window counters were introduced.
+type legacyProbeUserAbuseState struct {
+	Id            int
+	UserId        int    `gorm:"uniqueIndex;not null"`
+	OffenseCount  int    `gorm:"not null;default:0"`
+	LastOffenseAt int64  `gorm:"bigint;not null;default:0"`
+	LastEventAt   int64  `gorm:"bigint;not null;default:0"`
+	LastRuleID    string `gorm:"type:varchar(96)"`
+	LastRequestID string `gorm:"type:varchar(128)"`
+	LastBanReason string `gorm:"type:varchar(255)"`
+}
+
 func TestProbeUserGuardDatabaseCompatibility(t *testing.T) {
 	for _, dialect := range []string{"sqlite", "mysql", "postgres"} {
 		t.Run(dialect, func(t *testing.T) {
@@ -53,7 +65,14 @@ func TestProbeUserGuardDatabaseCompatibility(t *testing.T) {
 			require.NoError(t, db.AutoMigrate(&User{}))
 			user := User{Username: "probe", AffCode: "probe", Role: common.RoleCommonUser, Status: common.UserStatusEnabled}
 			require.NoError(t, db.Create(&user).Error)
+			stateTable := db.NamingStrategy.TableName("ProbeUserAbuseState")
+			require.NoError(t, db.Table(stateTable).AutoMigrate(&legacyProbeUserAbuseState{}))
+			require.NoError(t, db.Table(stateTable).Create(&legacyProbeUserAbuseState{UserId: user.Id, LastBanReason: "existing evidence"}).Error)
 			require.NoError(t, db.AutoMigrate(&ProbeUserAbuseState{}))
+			upgraded, err := GetProbeUserAbuseState(user.Id)
+			require.NoError(t, err)
+			require.Empty(t, upgraded.PendingBatch)
+			require.Equal(t, "existing evidence", upgraded.LastBanReason)
 			reason := func(count int, period UserDisablePeriod) string {
 				return fmt.Sprintf("offense %d minutes %d", count, period.Minutes)
 			}
@@ -66,7 +85,7 @@ func TestProbeUserGuardDatabaseCompatibility(t *testing.T) {
 					wait.Add(1)
 					go func() {
 						defer wait.Done()
-						result, err := ApplyProbeUserPenalty(user.Id, start, "tool:probe_ping", "request", 2, 9, reason)
+						result, err := RecordProbeUserMatch(user.Id, start, "tool:probe_ping", "request", ProbeUserBatchPolicy{WindowSeconds: 30, RequestCount: 3}, 2, 9, reason)
 						results <- result
 						errs <- err
 					}()
@@ -77,16 +96,21 @@ func TestProbeUserGuardDatabaseCompatibility(t *testing.T) {
 				for err := range errs {
 					require.NoError(t, err)
 				}
-				applied := 0
+				applied, allowed := 0, 0
 				for result := range results {
 					if result.Applied {
 						applied++
 					}
+					if result.User.Status == common.UserStatusEnabled && !result.Ignored {
+						allowed++
+					}
 				}
 				require.Equal(t, 1, applied)
+				require.Equal(t, 2, allowed)
 				state, err := GetProbeUserAbuseState(user.Id)
 				require.NoError(t, err)
 				require.Equal(t, stage+1, state.OffenseCount)
+				require.Empty(t, state.PendingBatch)
 				require.NoError(t, db.First(&user, user.Id).Error)
 				require.Equal(t, minutes, user.DisableDurationMinutes)
 				require.Equal(t, common.UserStatusDisabled, user.Status)

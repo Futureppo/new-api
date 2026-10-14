@@ -45,6 +45,8 @@ const defaults = {
   enabled: false,
   dry_run: true,
   probe_ping_enabled: true,
+  batch_window_seconds: 30,
+  batch_request_count: 3,
   text_rules:
     'Reply with exactly OK\nreply exactly: OK\nReply with exactly: OK\nsay OK\nREPLY `PONG` ONLY\n回复两个字：可用\n请回复"API 连接正常"，并告诉我你的模型名称。',
   first_user_ban_minutes: 10,
@@ -101,6 +103,18 @@ export default function ProbeGuardSettings({ options, refresh }) {
   };
 
   async function save() {
+    if (
+      !Number.isInteger(Number(inputs.batch_window_seconds)) ||
+      Number(inputs.batch_window_seconds) < 1 ||
+      Number(inputs.batch_window_seconds) > 3600 ||
+      !Number.isInteger(Number(inputs.batch_request_count)) ||
+      Number(inputs.batch_request_count) < 1 ||
+      Number(inputs.batch_request_count) > 1000
+    ) {
+      return showError(
+        t('统计窗口须为1至3600秒，测活请求阈值须为1至1000次，均为整数'),
+      );
+    }
     if (
       !Number.isInteger(Number(inputs.first_user_ban_minutes)) ||
       Number(inputs.first_user_ban_minutes) < 1 ||
@@ -189,7 +203,7 @@ export default function ProbeGuardSettings({ options, refresh }) {
         <Form.Section text={t('单轮测活防护')}>
           <Typography.Paragraph type='tertiary'>
             {t(
-              '仅检测单轮纯文本请求，允许携带系统提示和工具定义；多轮对话、会话续接及图片音频请求跳过检测。命中后按账号处罚。',
+              '仅检测单轮纯文本请求，允许携带系统提示和工具定义；多轮对话、会话续接及图片音频请求跳过检测。窗口内测活请求达到阈值后按账号处罚。',
             )}
           </Typography.Paragraph>
           <Row gutter={16}>
@@ -204,7 +218,9 @@ export default function ProbeGuardSettings({ options, refresh }) {
               <Form.Switch
                 field='dry_run'
                 label={t('试运行')}
-                extraText={t('只记录命中，不封禁账号、不增加违规次数')}
+                extraText={t(
+                  '只记录达到阈值的批次，不封禁账号、不增加违规次数',
+                )}
                 onChange={change('dry_run')}
               />
             </Col>
@@ -219,6 +235,33 @@ export default function ProbeGuardSettings({ options, refresh }) {
               />
             </Col>
           </Row>
+          <Row gutter={16}>
+            <Col xs={24} md={12}>
+              <Form.InputNumber
+                field='batch_window_seconds'
+                label={t('测活统计窗口（秒）')}
+                min={1}
+                max={3600}
+                step={1}
+                onChange={change('batch_window_seconds')}
+              />
+            </Col>
+            <Col xs={24} md={12}>
+              <Form.InputNumber
+                field='batch_request_count'
+                label={t('测活请求阈值（次）')}
+                min={1}
+                max={1000}
+                step={1}
+                onChange={change('batch_request_count')}
+              />
+            </Col>
+          </Row>
+          <Typography.Paragraph type='tertiary'>
+            {t(
+              '按账号统计滚动窗口内命中规则的请求次数，所有密钥合并，同一模型重复测活也逐次计数。未达到阈值正常放行；修改窗口、阈值或试运行状态后重新累计。',
+            )}
+          </Typography.Paragraph>
           <Form.TextArea
             field='text_rules'
             label={t('用户全文匹配列表')}
@@ -256,7 +299,7 @@ export default function ProbeGuardSettings({ options, refresh }) {
             type='info'
             closeIcon={null}
             description={t(
-              '第三次永久封禁。按账号累计，所有密钥共同计次；同批并发和封禁期间重试不追加处罚。',
+              '每达到一次阈值记一次违规，第三次违规永久封禁。同批并发只处罚一次，封禁期间重试不追加处罚；解禁后重新累计测活请求。',
             )}
           />
           <Form.TextArea
@@ -348,7 +391,7 @@ export default function ProbeGuardSettings({ options, refresh }) {
           <Popconfirm
             title={t('重置该账号的测活违规次数？')}
             content={t(
-              '仅清零违规次数，不解除当前封禁。需要解禁时请在用户管理中操作。',
+              '清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。',
             )}
             onConfirm={() => loadUser(true)}
           >

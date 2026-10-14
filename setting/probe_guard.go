@@ -23,6 +23,8 @@ type ProbeGuardSetting struct {
 	DryRun               bool   `json:"dry_run"`
 	TextRules            string `json:"text_rules"`
 	ProbePingEnabled     bool   `json:"probe_ping_enabled"`
+	BatchWindowSeconds   int    `json:"batch_window_seconds"`
+	BatchRequestCount    int    `json:"batch_request_count"`
 	FirstUserBanMinutes  int    `json:"first_user_ban_minutes"`
 	SecondUserBanMinutes int    `json:"second_user_ban_minutes"`
 	FirstBanReason       string `json:"first_ban_reason"`
@@ -44,6 +46,8 @@ var probeGuardSetting = ProbeGuardSetting{
 	DryRun:                true,
 	TextRules:             DefaultProbeGuardTextRules,
 	ProbePingEnabled:      true,
+	BatchWindowSeconds:    30,
+	BatchRequestCount:     3,
 	FirstUserBanMinutes:   10,
 	SecondUserBanMinutes:  60,
 	FirstBanReason:        DefaultProbeGuardFirstReason,
@@ -73,6 +77,13 @@ func GetProbeGuardSetting() ProbeGuardSetting {
 }
 
 func (cfg *ProbeGuardSetting) Normalize() {
+	// Separate keys prevent old IP-guard thresholds from overriding account defaults.
+	if cfg.BatchWindowSeconds < 1 || cfg.BatchWindowSeconds > 3600 {
+		cfg.BatchWindowSeconds = 30
+	}
+	if cfg.BatchRequestCount < 1 || cfg.BatchRequestCount > 1000 {
+		cfg.BatchRequestCount = 3
+	}
 	if cfg.FirstUserBanMinutes < 1 || cfg.FirstUserBanMinutes > 43200 {
 		cfg.FirstUserBanMinutes = 10
 	}
@@ -157,6 +168,10 @@ func CheckProbeGuardOption(key string, value string) error {
 		return nil
 	case "window_seconds":
 		return checkProbeGuardIntRange(key, value, 10, 3600)
+	case "batch_window_seconds":
+		return checkProbeGuardIntRange(key, value, 1, 3600)
+	case "batch_request_count":
+		return checkProbeGuardIntRange(key, value, 1, 1000)
 	case "distinct_model_count":
 		return checkProbeGuardIntRange(key, value, 2, 1000)
 	case "first_ip_ban_minutes", "second_ip_ban_minutes", "first_user_ban_minutes", "second_user_ban_minutes":

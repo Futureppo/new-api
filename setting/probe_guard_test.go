@@ -32,3 +32,23 @@ func TestProbeGuardTextRulesAndReasons(t *testing.T) {
 	require.Error(t, CheckProbeGuardOption("first_user_ban_minutes", "0"))
 	require.Error(t, CheckProbeGuardOption("second_user_ban_minutes", "43201"))
 }
+
+func TestProbeGuardBatchDefaultsAndValidation(t *testing.T) {
+	// Old IP-guard values must not leak into the new account request threshold.
+	cfg := ProbeGuardSetting{WindowSeconds: 120, DistinctModelCount: 5}
+	cfg.Normalize()
+	require.Equal(t, 30, cfg.BatchWindowSeconds)
+	require.Equal(t, 3, cfg.BatchRequestCount)
+	for _, tc := range []struct {
+		key, value string
+		valid      bool
+	}{
+		{"batch_window_seconds", "1", true}, {"batch_window_seconds", "30", true}, {"batch_window_seconds", "3600", true},
+		{"batch_window_seconds", "0", false}, {"batch_window_seconds", "3601", false}, {"batch_window_seconds", "1.5", false},
+		{"batch_request_count", "1", true}, {"batch_request_count", "3", true}, {"batch_request_count", "1000", true},
+		{"batch_request_count", "0", false}, {"batch_request_count", "1001", false}, {"batch_request_count", "3.5", false},
+	} {
+		err := CheckProbeGuardOption("probe_guard_setting."+tc.key, tc.value)
+		require.Equal(t, tc.valid, err == nil, "%s=%s", tc.key, tc.value)
+	}
+}

@@ -5017,7 +5017,15 @@
     "累计违规次数": "Tổng số lần vi phạm",
     "账号状态": "Trạng thái tài khoản",
     "最近触发时间": "Lần vi phạm gần nhất",
-    "封禁时长必须为1至43200之间的整数分钟": "Thời gian khóa phải là số nguyên từ 1 đến 43200 phút"
+    "封禁时长必须为1至43200之间的整数分钟": "Thời gian khóa phải là số nguyên từ 1 đến 43200 phút",
+    "统计窗口须为1至3600秒，测活请求阈值须为1至1000次，均为整数": "Cửa sổ phải là số nguyên từ 1 đến 3600 giây và ngưỡng phải là số nguyên từ 1 đến 1000 yêu cầu.",
+    "仅检测单轮纯文本请求，允许携带系统提示和工具定义；多轮对话、会话续接及图片音频请求跳过检测。窗口内测活请求达到阈值后按账号处罚。": "Chỉ kiểm tra yêu cầu văn bản một lượt, cho phép chỉ dẫn hệ thống và định nghĩa công cụ. Bỏ qua hội thoại nhiều lượt, hội thoại tiếp nối và yêu cầu hình ảnh/âm thanh. Tài khoản bị khóa khi số yêu cầu thăm dò đạt ngưỡng trong cửa sổ.",
+    "只记录达到阈值的批次，不封禁账号、不增加违规次数": "Chỉ ghi nhật ký các đợt đạt ngưỡng, không khóa tài khoản hoặc tăng số lần vi phạm",
+    "测活统计窗口（秒）": "Cửa sổ đếm yêu cầu thăm dò (giây)",
+    "测活请求阈值（次）": "Ngưỡng số yêu cầu thăm dò",
+    "按账号统计滚动窗口内命中规则的请求次数，所有密钥合并，同一模型重复测活也逐次计数。未达到阈值正常放行；修改窗口、阈值或试运行状态后重新累计。": "Đếm yêu cầu khớp quy tắc theo tài khoản trong cửa sổ trượt, gộp tất cả khóa. Mỗi lần thăm dò lặp lại cùng mô hình vẫn được tính. Dưới ngưỡng, yêu cầu được xử lý bình thường. Đổi cửa sổ, ngưỡng hoặc chế độ chạy thử sẽ bắt đầu đếm lại.",
+    "每达到一次阈值记一次违规，第三次违规永久封禁。同批并发只处罚一次，封禁期间重试不追加处罚；解禁后重新累计测活请求。": "Mỗi lần đạt ngưỡng tính là một vi phạm; lần thứ ba khóa vĩnh viễn. Các yêu cầu đồng thời trong một đợt chỉ bị phạt một lần. Thử lại khi bị khóa không tăng mức phạt. Sau khi mở khóa, số yêu cầu thăm dò được đếm lại từ đầu.",
+    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Đặt lại số vi phạm và yêu cầu trong cửa sổ, giữ nguyên trạng thái khóa. Để mở khóa, hãy dùng phần quản lý người dùng."
   },
   "??": "T?t",
   "0.5h": "0.5h",

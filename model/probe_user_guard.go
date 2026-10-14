@@ -18,17 +18,43 @@ type ProbeUserAbuseState struct {
 	LastRuleID    string `json:"last_rule_id" gorm:"type:varchar(96)"`
 	LastRequestID string `json:"last_request_id" gorm:"type:varchar(128)"`
 	LastBanReason string `json:"last_ban_reason" gorm:"type:varchar(255)"`
+	PendingBatch  string `json:"-" gorm:"type:text"`
 }
 
 type ProbeUserPenaltyResult struct {
-	User    User
-	State   ProbeUserAbuseState
-	Applied bool
+	User             User
+	State            ProbeUserAbuseState
+	Applied          bool
+	Ignored          bool
+	ThresholdReached bool
+	MatchedRequests  int
+}
+
+type ProbeUserBatchPolicy struct {
+	WindowSeconds int
+	RequestCount  int
+	DryRun        bool
+}
+
+// Every matched request contributes one timestamp, including repeated models.
+// At most 999 timestamps survive a write, keeping this compatible with MySQL TEXT.
+type probeUserBatch struct {
+	WindowSeconds int     `json:"window_seconds"`
+	RequestCount  int     `json:"request_count"`
+	DryRun        bool    `json:"dry_run"`
+	Requests      []int64 `json:"requests"`
 }
 
 // The first statement takes the account's write lock in all three supported DBs.
-// This no-op update never changes an administrative ban. Count and ban commit together.
-func ApplyProbeUserPenalty(userId int, requestStarted time.Time, ruleID, requestID string, firstMinutes, secondMinutes int64, reason func(int, UserDisablePeriod) string) (*ProbeUserPenaltyResult, error) {
+// Matching, window updates and any resulting penalty commit together, across nodes.
+func RecordProbeUserMatch(userId int, requestStarted time.Time, ruleID, requestID string, batch ProbeUserBatchPolicy, firstMinutes, secondMinutes int64, reason func(int, UserDisablePeriod) string) (*ProbeUserPenaltyResult, error) {
+	return recordProbeUserMatchAt(userId, requestStarted, ruleID, requestID, batch, firstMinutes, secondMinutes, reason, time.Time{})
+}
+
+func recordProbeUserMatchAt(userId int, requestStarted time.Time, ruleID, requestID string, batch ProbeUserBatchPolicy, firstMinutes, secondMinutes int64, reason func(int, UserDisablePeriod) string, now time.Time) (*ProbeUserPenaltyResult, error) {
+	if batch.WindowSeconds < 1 || batch.WindowSeconds > 3600 || batch.RequestCount < 1 || batch.RequestCount > 1000 {
+		return nil, errors.New("invalid probe batch policy")
+	}
 	result := &ProbeUserPenaltyResult{}
 	err := DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Model(&User{}).Where("id = ?", userId).UpdateColumn("status", gorm.Expr("status")).Error; err != nil {
@@ -46,9 +72,53 @@ func ApplyProbeUserPenalty(userId int, requestStarted time.Time, ruleID, request
 		}
 		// Requests already in flight before a previous penalty/reset cannot escalate it.
 		if !requestStarted.IsZero() && requestStarted.UnixNano() <= result.State.LastEventAt {
+			result.Ignored = true
 			return nil
 		}
-		now := time.Now()
+		if now.IsZero() {
+			now = time.Now()
+		}
+		recent := probeUserBatch{}
+		if result.State.PendingBatch != "" {
+			if err := common.UnmarshalJsonStr(result.State.PendingBatch, &recent); err != nil {
+				return err
+			}
+		}
+		// Changing thresholds or leaving dry-run starts a fresh batch.
+		if recent.WindowSeconds != batch.WindowSeconds || recent.RequestCount != batch.RequestCount || recent.DryRun != batch.DryRun {
+			recent = probeUserBatch{WindowSeconds: batch.WindowSeconds, RequestCount: batch.RequestCount, DryRun: batch.DryRun}
+		}
+		cutoff := now.Add(-time.Duration(batch.WindowSeconds) * time.Second).UnixNano()
+		active := recent.Requests[:0]
+		for _, seen := range recent.Requests {
+			if seen > cutoff {
+				active = append(active, seen)
+			}
+		}
+		recent.Requests = active
+		seen := now.UnixNano()
+		if !requestStarted.IsZero() && requestStarted.Before(now) {
+			seen = requestStarted.UnixNano()
+		}
+		if seen > cutoff {
+			recent.Requests = append(recent.Requests, seen)
+		}
+		result.MatchedRequests = len(recent.Requests)
+		result.State.UserId = userId
+		if result.MatchedRequests < batch.RequestCount {
+			data, err := common.Marshal(recent)
+			if err != nil {
+				return err
+			}
+			result.State.PendingBatch = string(data)
+			return tx.Save(&result.State).Error
+		}
+		result.ThresholdReached = true
+		result.State.PendingBatch = ""
+		result.State.LastEventAt = now.UnixNano()
+		if batch.DryRun {
+			return tx.Save(&result.State).Error
+		}
 		count := min(result.State.OffenseCount+1, 3)
 		minutes := int64(0)
 		if count == 1 {
@@ -113,6 +183,7 @@ func ResetProbeUserAbuseState(userId int) error {
 		state.OffenseCount = 0
 		state.LastOffenseAt = 0
 		state.LastEventAt = time.Now().UnixNano()
+		state.PendingBatch = ""
 		state.LastRuleID, state.LastRequestID, state.LastBanReason = "", "", ""
 		return tx.Save(&state).Error
 	})

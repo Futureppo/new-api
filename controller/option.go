@@ -321,6 +321,8 @@ func UpdateOption(c *gin.Context) {
 		"probe_guard_setting.dry_run",
 		"probe_guard_setting.text_rules",
 		"probe_guard_setting.probe_ping_enabled",
+		"probe_guard_setting.batch_window_seconds",
+		"probe_guard_setting.batch_request_count",
 		"probe_guard_setting.first_user_ban_minutes",
 		"probe_guard_setting.second_user_ban_minutes",
 		"probe_guard_setting.first_ban_reason",

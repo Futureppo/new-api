@@ -43,7 +43,7 @@ func TestProbeGuardAuthBlocksEveryKeyAndProtocol(t *testing.T) {
 			oldCfg := setting.GetProbeGuardSetting()
 			oldValues, err := config.ConfigToMap(&oldCfg)
 			require.NoError(t, err)
-			require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{"enabled": "true", "dry_run": "false", "text_rules": "say OK", "whitelist_user_ids": "", "first_user_ban_minutes": "7", "first_ban_reason": "custom reason {count} {minutes} {until}"}))
+			require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{"enabled": "true", "dry_run": "false", "text_rules": "say OK", "whitelist_user_ids": "", "first_user_ban_minutes": "7", "first_ban_reason": "custom reason {count} {minutes} {until}", "batch_request_count": "3", "batch_window_seconds": "30"}))
 			t.Cleanup(func() {
 				require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), oldValues))
 			})
@@ -85,6 +85,12 @@ func TestProbeGuardAuthBlocksEveryKeyAndProtocol(t *testing.T) {
 			if useRedis {
 				require.Eventually(t, func() bool { return common.RDB.Exists(context.Background(), "user:"+strconv.Itoa(user.Id)).Val() > 0 }, time.Second, time.Millisecond)
 			}
+			forwarded = 0
+			// Identical model/prompt requests from different keys count separately.
+			for _, key := range []string{keyA, keyB} {
+				require.Equal(t, http.StatusOK, send("/v1/chat/completions", key, `{"messages":[{"role":"user","content":"say OK"}]}`).Code)
+			}
+			require.Equal(t, 2, forwarded)
 			forwarded = 0
 			first := send("/v1/chat/completions", keyA, `{"messages":[{"role":"user","content":"say OK"}]}`)
 			require.Equal(t, http.StatusForbidden, first.Code)

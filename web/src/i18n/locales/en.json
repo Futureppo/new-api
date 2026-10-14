@@ -4606,7 +4606,15 @@
     "累计违规次数": "Offense count",
     "账号状态": "Account status",
     "最近触发时间": "Last offense",
-    "封禁时长必须为1至43200之间的整数分钟": "Suspension duration must be an integer from 1 to 43,200 minutes."
+    "封禁时长必须为1至43200之间的整数分钟": "Suspension duration must be an integer from 1 to 43,200 minutes.",
+    "统计窗口须为1至3600秒，测活请求阈值须为1至1000次，均为整数": "The window must be an integer from 1 to 3,600 seconds and the probe threshold an integer from 1 to 1,000 requests.",
+    "仅检测单轮纯文本请求，允许携带系统提示和工具定义；多轮对话、会话续接及图片音频请求跳过检测。窗口内测活请求达到阈值后按账号处罚。": "Checks only single-turn text requests, allowing system prompts and tool definitions. Skips multi-turn conversations, continuations and image/audio requests. The account is suspended when probe requests reach the threshold within the window.",
+    "只记录达到阈值的批次，不封禁账号、不增加违规次数": "Log batches that reach the threshold without suspending accounts or adding offenses",
+    "测活统计窗口（秒）": "Probe counting window (seconds)",
+    "测活请求阈值（次）": "Probe request threshold",
+    "按账号统计滚动窗口内命中规则的请求次数，所有密钥合并，同一模型重复测活也逐次计数。未达到阈值正常放行；修改窗口、阈值或试运行状态后重新累计。": "Count matching requests per account within a sliding window across all keys. Repeated probes of the same model each count. Requests below the threshold pass normally. Changing the window, threshold or dry-run mode starts a fresh count.",
+    "每达到一次阈值记一次违规，第三次违规永久封禁。同批并发只处罚一次，封禁期间重试不追加处罚；解禁后重新累计测活请求。": "Each threshold crossing counts as one offense; the third offense permanently suspends the account. Concurrent requests in a batch trigger one penalty. Retries during suspension add no penalties. Probe requests start counting again after the suspension ends.",
+    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Reset offenses and requests accumulated in the window without lifting the current suspension. Use user management to lift a suspension."
   },
   "??": "Disable",
   "0.5h": "0.5h",
