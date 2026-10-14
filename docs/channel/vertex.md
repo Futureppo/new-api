@@ -134,12 +134,13 @@ Lyria 使用 `POST /v1/models/lyria-002:predict`：
 
 本轮自动化验证使用本地模拟上游和测试服务账号签名材料，覆盖 URL、认证、映射、向量聚合、媒体转换、错误、取消、退款、任务归属和重复结算。未使用真实 Google 项目凭据做云端验证；模型开通、区域及实际效果需要在已配置的测试项目中验证。
 
-本地检查记录（2026-10-14，独立 Vertex 提交工作树）：
+本地检查记录（2026-10-14）：
 
-- Vertex、Vertex task、Gemini、relay/common、relay/helper、common、DTO、能力表、controller、service 和 relay 包完整测试通过。
-- 前端渠道测试 5 项通过。
-- 全项目编译检查 go test ./... -run '^$' 和 bun run build 通过。
-- bun run i18n:lint 未通过，诊断来自其他未修改页面的硬编码文本；本轮渠道端点文件无对应诊断。
+- Vertex、Vertex task、Gemini、relay/common、relay/helper、common、DTO、能力表及 controller 包测试通过；Vertex 计费与文本计费专项测试通过。
+- `go test ./... -run '^$'` 全项目编译检查通过。
+- 前端渠道测试 5 项通过，`bun run build` 通过。
+- 扩大到整个 service / relay 包时，当前工作区仍有 3 项非 Vertex 用例失败：`TestRecalculate_ActualQuotaZero`（零额度任务结算预期）、`TestMistralGatewayPipeline`（multipart temperature 字符串解析）、`TestXfyunMaasImagePipeline`（显式 seed=0 丢失）。这些失败未计入 Vertex 专项通过结论。
+- `bun run i18n:lint` 未通过，诊断来自其他页面的硬编码文本；本轮渠道端点文件无对应诊断。
 
 ## 官方来源
 
