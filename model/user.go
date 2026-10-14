@@ -608,8 +608,8 @@ func (user *User) Update(updatePassword bool) error {
 		return err
 	}
 
-	// Update cache
-	return updateUserCache(*user)
+	// Invalidate cached snapshots, including any pending fills.
+	return invalidateUserCache(user.Id)
 }
 
 func (user *User) Edit(updatePassword bool, updateDisableReason bool) error {
@@ -640,8 +640,8 @@ func (user *User) Edit(updatePassword bool, updateDisableReason bool) error {
 		return err
 	}
 
-	// Update cache
-	return updateUserCache(*user)
+	// Invalidate cached snapshots, including any pending fills.
+	return invalidateUserCache(user.Id)
 }
 
 func (user *User) ClearBinding(bindingType string) error {
@@ -681,7 +681,7 @@ func (user *User) ClearBinding(bindingType string) error {
 		return err
 	}
 
-	return updateUserCache(*user)
+	return invalidateUserCache(user.Id)
 }
 
 func (user *User) Delete() error {

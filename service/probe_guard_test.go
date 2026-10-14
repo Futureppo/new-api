@@ -1,14 +1,16 @@
 package service
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/setting"
@@ -22,252 +24,177 @@ import (
 
 func setupProbeGuardTest(t *testing.T, dryRun bool) {
 	t.Helper()
-
-	oldDB := model.DB
-	oldLogDB := model.LOG_DB
-	oldRedisEnabled := common.RedisEnabled
+	require.NoError(t, i18n.Init())
+	oldDB, oldLogDB, oldRedis := model.DB, model.LOG_DB, common.RedisEnabled
 	oldCfg := setting.GetProbeGuardSetting()
-
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.IPBan{}, &model.ProbeIPAbuseState{}, &model.Log{}))
-	model.DB = db
-	model.LOG_DB = db
-	common.RedisEnabled = false
-	resetProbeGuardMemoryForTest()
-	updateProbeGuardTestConfig(t, map[string]string{
-		"enabled":                 "true",
-		"dry_run":                 strconv.FormatBool(dryRun),
-		"window_seconds":          "60",
-		"distinct_model_count":    "5",
-		"first_ip_ban_minutes":    "10",
-		"second_ip_ban_minutes":   "60",
-		"permanent_offense_count": "3",
-		"offense_dedupe_seconds":  "10",
-		"max_ips_per_offense":     "32",
-		"whitelist_user_ids":      "",
-	})
-
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.IPBan{}, &model.ProbeIPAbuseState{}, &model.ProbeUserAbuseState{}, &model.Log{}))
+	model.DB, model.LOG_DB, common.RedisEnabled = db, db, false
+	values, err := config.ConfigToMap(&oldCfg)
+	require.NoError(t, err)
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{
+		"enabled": "true", "dry_run": fmt.Sprint(dryRun), "text_rules": setting.DefaultProbeGuardTextRules, "probe_ping_enabled": "true",
+		"first_user_ban_minutes": "7", "second_user_ban_minutes": "25", "whitelist_user_ids": "",
+		"first_ban_reason": "first {count} {minutes} {until}", "second_ban_reason": "second {count} {minutes}", "permanent_ban_reason": "permanent {count}",
+	}))
 	t.Cleanup(func() {
-		model.DB = oldDB
-		model.LOG_DB = oldLogDB
-		common.RedisEnabled = oldRedisEnabled
-		resetProbeGuardMemoryForTest()
-		restoreProbeGuardTestConfig(t, oldCfg)
+		model.DB, model.LOG_DB, common.RedisEnabled = oldDB, oldLogDB, oldRedis
+		require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), values))
+		_ = sqlDB.Close()
 	})
-}
-
-func updateProbeGuardTestConfig(t *testing.T, values map[string]string) {
-	t.Helper()
-	cfg := config.GlobalConfig.Get("probe_guard_setting")
-	require.NotNil(t, cfg)
-	require.NoError(t, config.UpdateConfigFromMap(cfg, values))
-}
-
-func restoreProbeGuardTestConfig(t *testing.T, cfg setting.ProbeGuardSetting) {
-	t.Helper()
-	updateProbeGuardTestConfig(t, map[string]string{
-		"enabled":                 strconv.FormatBool(cfg.Enabled),
-		"dry_run":                 strconv.FormatBool(cfg.DryRun),
-		"window_seconds":          strconv.Itoa(cfg.WindowSeconds),
-		"distinct_model_count":    strconv.Itoa(cfg.DistinctModelCount),
-		"first_ip_ban_minutes":    strconv.Itoa(cfg.FirstIPBanMinutes),
-		"second_ip_ban_minutes":   strconv.Itoa(cfg.SecondIPBanMinutes),
-		"permanent_offense_count": strconv.Itoa(cfg.PermanentOffenseCount),
-		"offense_dedupe_seconds":  strconv.Itoa(cfg.OffenseDedupeSeconds),
-		"max_ips_per_offense":     strconv.Itoa(cfg.MaxIPsPerOffense),
-		"whitelist_user_ids":      cfg.WhitelistUserIDs,
-	})
-}
-
-func seedProbeGuardUser(t *testing.T, userId int) {
-	seedProbeGuardUserWithRole(t, userId, common.RoleCommonUser)
-}
-
-func seedProbeGuardUserWithRole(t *testing.T, userId int, role int) {
-	t.Helper()
-	require.NoError(t, model.DB.Create(&model.User{
-		Id:          userId,
-		Username:    fmt.Sprintf("probe-user-%d", userId),
-		DisplayName: fmt.Sprintf("probe-user-%d", userId),
-		Role:        role,
-		Status:      common.UserStatusEnabled,
-		AffCode:     fmt.Sprintf("pg-%d", userId),
-	}).Error)
-}
-
-func newProbeGuardContext(ip string, username string) *gin.Context {
 	gin.SetMode(gin.TestMode)
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-	req.RemoteAddr = ip + ":12345"
-	req.Header.Set("User-Agent", "curl/8.19.0")
-	c.Request = req
-	c.Set("username", username)
-	return c
 }
 
-func fireProbeGuardModel(t *testing.T, userId int, ip string, modelName string) *types.NewAPIError {
+func seedProbeGuardUser(t *testing.T, id int, role int) {
 	t.Helper()
-	c := newProbeGuardContext(ip, fmt.Sprintf("probe-user-%d", userId))
-	return CheckProbeGuard(c, &relaycommon.RelayInfo{
-		UserId:          userId,
-		OriginModelName: modelName,
-	})
+	require.NoError(t, model.DB.Create(&model.User{Id: id, Username: fmt.Sprintf("probe-%d", id), AffCode: fmt.Sprint(id), Role: role, Status: common.UserStatusEnabled}).Error)
 }
 
-func fireProbeGuardBurst(t *testing.T, userId int, ip string) *types.NewAPIError {
-	t.Helper()
-	var apiErr *types.NewAPIError
-	for i := 0; i < 5; i++ {
-		apiErr = fireProbeGuardModel(t, userId, ip, fmt.Sprintf("probe-model-%d", i))
+func probeGuardRequest(userId, tokenId int, ip string, start time.Time, text string) (*gin.Context, *relaycommon.RelayInfo) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	c.Request.RemoteAddr = ip + ":12345"
+	c.Set(common.RequestIdKey, "test-request")
+	info := &relaycommon.RelayInfo{UserId: userId, TokenId: tokenId, StartTime: start, OriginModelName: "test-model", Request: &dto.GeneralOpenAIRequest{Messages: []dto.Message{{Role: "user", Content: text}}}}
+	return c, info
+}
+
+func TestProbeGuardAccountEscalationAndExpiry(t *testing.T) {
+	setupProbeGuardTest(t, false)
+	seedProbeGuardUser(t, 1001, common.RoleCommonUser)
+	// Old IP offenses never carry into account penalties, even for the same IP/user.
+	require.NoError(t, model.DB.Create(&model.ProbeIPAbuseState{TargetIP: "8.8.8.8", LastUserId: 1001, OffenseCount: 3}).Error)
+	for index, minutes := range []int64{7, 25, 0} {
+		c, info := probeGuardRequest(1001, index+1, fmt.Sprintf("8.8.8.%d", index+1), time.Now(), "Reply with exactly OK")
+		err := CheckProbeGuard(c, info)
+		require.NotNil(t, err)
+		require.Equal(t, http.StatusForbidden, err.StatusCode)
+		require.Equal(t, string(types.ErrorCodeAccessDenied), fmt.Sprint(err.ToOpenAIError().Code))
+		user, dbErr := model.GetUserById(1001, false)
+		require.NoError(t, dbErr)
+		require.Equal(t, common.UserStatusDisabled, user.Status)
+		require.Equal(t, minutes, user.DisableDurationMinutes)
+		if minutes == 0 {
+			require.Zero(t, user.DisableUntil)
+			require.Equal(t, "permanent 3", user.DisableReason)
+		} else {
+			require.InDelta(t, time.Now().Unix()+minutes*60, user.DisableUntil, 2)
+		}
+		deadline := user.DisableUntil
+		for retry := 0; retry < 3; retry++ {
+			c, info = probeGuardRequest(1001, 99, "127.0.0.1", time.Now(), "say OK")
+			require.NotNil(t, CheckProbeGuard(c, info))
+		}
+		state, dbErr := model.GetProbeUserAbuseState(1001)
+		require.NoError(t, dbErr)
+		require.Equal(t, index+1, state.OffenseCount)
+		require.Equal(t, "test-request", state.LastRequestID)
+		require.NoError(t, model.DB.First(user, user.Id).Error)
+		require.Equal(t, deadline, user.DisableUntil)
+		if minutes > 0 {
+			require.NoError(t, model.ResolveUserDisableExpiry(user, deadline))
+			require.Equal(t, common.UserStatusEnabled, user.Status)
+		}
 	}
-	return apiErr
+	var bans int64
+	require.NoError(t, model.DB.Model(&model.IPBan{}).Count(&bans).Error)
+	require.Zero(t, bans)
 }
 
-func TestProbeGuardDryRunRecordsWithoutPenalties(t *testing.T) {
+func TestProbeGuardConcurrentBurstCountsOnce(t *testing.T) {
+	setupProbeGuardTest(t, false)
+	seedProbeGuardUser(t, 1002, common.RoleCommonUser)
+	start := time.Now()
+	errors := make(chan *types.NewAPIError, 24)
+	var wait sync.WaitGroup
+	for i := 0; i < cap(errors); i++ {
+		wait.Add(1)
+		go func(token int) {
+			defer wait.Done()
+			c, info := probeGuardRequest(1002, token, "8.8.8.8", start, "say OK")
+			errors <- CheckProbeGuard(c, info)
+		}(i)
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
+		require.NotNil(t, err)
+		require.Equal(t, http.StatusForbidden, err.StatusCode)
+	}
+	state, err := model.GetProbeUserAbuseState(1002)
+	require.NoError(t, err)
+	require.Equal(t, 1, state.OffenseCount)
+	var logs int64
+	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("type = ?", model.LogTypeManage).Count(&logs).Error)
+	require.Equal(t, int64(1), logs)
+	// An old request cannot apply a new penalty after an administrator unbans.
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1002).Updates(model.UserEnableUpdates()).Error)
+	c, info := probeGuardRequest(1002, 99, "1.1.1.1", start, "say OK")
+	require.NotNil(t, CheckProbeGuard(c, info))
+	state, err = model.GetProbeUserAbuseState(1002)
+	require.NoError(t, err)
+	require.Equal(t, 1, state.OffenseCount)
+}
+
+func TestProbeGuardDryRunAndExclusions(t *testing.T) {
 	setupProbeGuardTest(t, true)
-	seedProbeGuardUser(t, 1001)
-
-	apiErr := fireProbeGuardBurst(t, 1001, "8.8.8.8")
-	require.Nil(t, apiErr)
-
-	var state model.ProbeIPAbuseState
-	err := model.DB.Where("target_ip = ?", "8.8.8.8").First(&state).Error
-	require.True(t, errors.Is(err, gorm.ErrRecordNotFound))
-
-	var ipBanCount int64
-	require.NoError(t, model.DB.Model(&model.IPBan{}).Count(&ipBanCount).Error)
-	require.Equal(t, int64(0), ipBanCount)
-
-	var logCount int64
-	require.NoError(t, model.LOG_DB.Model(&model.Log{}).Where("user_id = ? AND type = ?", 1001, model.LogTypeManage).Count(&logCount).Error)
-	require.Equal(t, int64(1), logCount)
-}
-
-func TestProbeGuardEscalatesTemporaryThenPermanentPenalty(t *testing.T) {
-	setupProbeGuardTest(t, false)
-	seedProbeGuardUser(t, 1002)
-
-	firstErr := fireProbeGuardBurst(t, 1002, "8.8.8.8")
-	require.NotNil(t, firstErr)
-	require.Equal(t, http.StatusTooManyRequests, firstErr.StatusCode)
-
-	state, err := model.GetProbeIPAbuseState("8.8.8.8")
+	seedProbeGuardUser(t, 1003, common.RoleCommonUser)
+	c, info := probeGuardRequest(1003, 1, "8.8.8.8", time.Now(), "say OK")
+	require.Nil(t, CheckProbeGuard(c, info))
+	var offenses int64
+	require.NoError(t, model.DB.Model(&model.ProbeUserAbuseState{}).Count(&offenses).Error)
+	require.Zero(t, offenses)
+	user, err := model.GetUserById(1003, false)
 	require.NoError(t, err)
-	require.Equal(t, 1, state.OffenseCount)
-	ban, err := model.GetIPBanByTarget("8.8.8.8")
-	require.NoError(t, err)
-	require.Greater(t, ban.ExpiresAt, common.GetTimestamp())
-
-	resetProbeGuardMemoryForTest()
-	secondErr := fireProbeGuardBurst(t, 1002, "8.8.8.8")
-	require.NotNil(t, secondErr)
-	require.Equal(t, http.StatusTooManyRequests, secondErr.StatusCode)
-	state, err = model.GetProbeIPAbuseState("8.8.8.8")
-	require.NoError(t, err)
-	require.Equal(t, 2, state.OffenseCount)
-	ban, err = model.GetIPBanByTarget("8.8.8.8")
-	require.NoError(t, err)
-	require.Greater(t, ban.ExpiresAt, common.GetTimestamp()+3000)
-
-	resetProbeGuardMemoryForTest()
-	thirdErr := fireProbeGuardBurst(t, 1002, "8.8.8.8")
-	require.NotNil(t, thirdErr)
-	require.Equal(t, http.StatusForbidden, thirdErr.StatusCode)
-	state, err = model.GetProbeIPAbuseState("8.8.8.8")
-	require.NoError(t, err)
-	require.Equal(t, 3, state.OffenseCount)
-
-	var user model.User
-	require.NoError(t, model.DB.Where("id = ?", 1002).First(&user).Error)
 	require.Equal(t, common.UserStatusEnabled, user.Status)
-	ban, err = model.GetIPBanByTarget("8.8.8.8")
-	require.NoError(t, err)
-	require.Equal(t, int64(0), ban.ExpiresAt)
+	require.NoError(t, config.UpdateConfigFromMap(config.GlobalConfig.Get("probe_guard_setting"), map[string]string{"dry_run": "false", "whitelist_user_ids": "1003"}))
+	require.Nil(t, CheckProbeGuard(c, info))
+	seedProbeGuardUser(t, 1004, common.RoleAdminUser)
+	c, info = probeGuardRequest(1004, 1, "8.8.8.8", time.Now(), "say OK")
+	require.Nil(t, CheckProbeGuard(c, info))
+	// Another account sharing the IP continues normal work.
+	seedProbeGuardUser(t, 1005, common.RoleCommonUser)
+	c, info = probeGuardRequest(1005, 1, "8.8.8.8", time.Now(), "Please review this code")
+	require.Nil(t, CheckProbeGuard(c, info))
 }
 
-func TestProbeGuardIgnoresRepeatedSingleModel(t *testing.T) {
+func TestProbeGuardPreservesManualBanAndReset(t *testing.T) {
 	setupProbeGuardTest(t, false)
-	seedProbeGuardUser(t, 1003)
-
-	for i := 0; i < 5; i++ {
-		apiErr := fireProbeGuardModel(t, 1003, "8.8.8.8", "same-model")
-		require.Nil(t, apiErr)
-	}
-
-	var state model.ProbeIPAbuseState
-	err := model.DB.Where("target_ip = ?", "8.8.8.8").First(&state).Error
-	require.True(t, errors.Is(err, gorm.ErrRecordNotFound))
+	seedProbeGuardUser(t, 1006, common.RoleCommonUser)
+	c, info := probeGuardRequest(1006, 1, "8.8.8.8", time.Now(), "say OK")
+	require.NotNil(t, CheckProbeGuard(c, info))
+	require.NoError(t, model.DB.Model(&model.User{}).Where("id = ?", 1006).Updates((model.UserDisablePeriod{}).Updates("manual permanent")).Error)
+	c, info = probeGuardRequest(1006, 2, "1.1.1.1", time.Now(), "say OK")
+	err := CheckProbeGuard(c, info)
+	require.ErrorContains(t, err, "manual permanent")
+	require.NoError(t, model.ResetProbeUserAbuseState(1006))
+	state, dbErr := model.GetProbeUserAbuseState(1006)
+	require.NoError(t, dbErr)
+	require.Zero(t, state.OffenseCount)
+	user, dbErr := model.GetUserById(1006, false)
+	require.NoError(t, dbErr)
+	require.Equal(t, common.UserStatusDisabled, user.Status)
+	require.Equal(t, "manual permanent", user.DisableReason)
+	require.Zero(t, user.DisableUntil)
 }
 
-func TestProbeGuardAggregatesDistinctModelsByIPAcrossUsers(t *testing.T) {
+func TestProbeGuardPenaltyRollsBackWithCounter(t *testing.T) {
 	setupProbeGuardTest(t, false)
-	seedProbeGuardUser(t, 1006)
-	seedProbeGuardUser(t, 1007)
-
-	for i := 0; i < 3; i++ {
-		apiErr := fireProbeGuardModel(t, 1006, "9.9.9.9", fmt.Sprintf("shared-ip-model-%d", i))
-		require.Nil(t, apiErr)
-	}
-	var apiErr *types.NewAPIError
-	for i := 3; i < 5; i++ {
-		apiErr = fireProbeGuardModel(t, 1007, "9.9.9.9", fmt.Sprintf("shared-ip-model-%d", i))
-	}
-	require.NotNil(t, apiErr)
-	require.Equal(t, http.StatusTooManyRequests, apiErr.StatusCode)
-
-	state, err := model.GetProbeIPAbuseState("9.9.9.9")
-	require.NoError(t, err)
-	require.Equal(t, 1, state.OffenseCount)
-	require.Equal(t, 1007, state.LastUserId)
-
-	ban, err := model.GetIPBanByTarget("9.9.9.9")
-	require.NoError(t, err)
-	require.Greater(t, ban.ExpiresAt, common.GetTimestamp())
-}
-
-func TestProbeGuardDoesNotAggregateDistinctModelsAcrossDifferentIPs(t *testing.T) {
-	setupProbeGuardTest(t, false)
-	seedProbeGuardUser(t, 1008)
-
-	ips := []string{"8.8.8.8", "8.8.4.4", "1.1.1.1", "9.9.9.9", "208.67.222.222"}
-	for i, ip := range ips {
-		apiErr := fireProbeGuardModel(t, 1008, ip, fmt.Sprintf("different-ip-model-%d", i))
-		require.Nil(t, apiErr)
-	}
-
-	var stateCount int64
-	require.NoError(t, model.DB.Model(&model.ProbeIPAbuseState{}).Count(&stateCount).Error)
-	require.Equal(t, int64(0), stateCount)
-
-	var ipBanCount int64
-	require.NoError(t, model.DB.Model(&model.IPBan{}).Count(&ipBanCount).Error)
-	require.Equal(t, int64(0), ipBanCount)
-}
-
-func TestProbeGuardSkipsWhitelistUser(t *testing.T) {
-	setupProbeGuardTest(t, false)
-	updateProbeGuardTestConfig(t, map[string]string{"whitelist_user_ids": "1004, 2000"})
-	seedProbeGuardUser(t, 1004)
-
-	apiErr := fireProbeGuardBurst(t, 1004, "8.8.8.8")
-	require.Nil(t, apiErr)
-
-	var state model.ProbeIPAbuseState
-	err := model.DB.Where("target_ip = ?", "8.8.8.8").First(&state).Error
-	require.True(t, errors.Is(err, gorm.ErrRecordNotFound))
-}
-
-func TestProbeGuardSkipsAdminUser(t *testing.T) {
-	setupProbeGuardTest(t, false)
-	seedProbeGuardUserWithRole(t, 1005, common.RoleAdminUser)
-
-	apiErr := fireProbeGuardBurst(t, 1005, "8.8.8.8")
-	require.Nil(t, apiErr)
-
-	var state model.ProbeIPAbuseState
-	err := model.DB.Where("target_ip = ?", "8.8.8.8").First(&state).Error
-	require.True(t, errors.Is(err, gorm.ErrRecordNotFound))
+	seedProbeGuardUser(t, 1007, common.RoleCommonUser)
+	require.NoError(t, model.DB.Callback().Create().Before("gorm:create").Register("fail_probe_state", func(tx *gorm.DB) {
+		if tx.Statement.Schema != nil && tx.Statement.Schema.Name == "ProbeUserAbuseState" {
+			tx.AddError(fmt.Errorf("counter write failed"))
+		}
+	}))
+	c, info := probeGuardRequest(1007, 1, "8.8.8.8", time.Now(), "say OK")
+	err := CheckProbeGuard(c, info)
+	require.NotNil(t, err)
+	require.Equal(t, http.StatusInternalServerError, err.StatusCode)
+	user, dbErr := model.GetUserById(1007, false)
+	require.NoError(t, dbErr)
+	require.Equal(t, common.UserStatusEnabled, user.Status)
 }

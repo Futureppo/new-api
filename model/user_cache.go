@@ -1,6 +1,7 @@
 package model
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,8 +10,8 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 
 	"github.com/gin-gonic/gin"
-
-	"github.com/bytedance/gopkg/util/gopool"
+	"github.com/go-redis/redis/v8"
+	"github.com/google/uuid"
 )
 
 type UserBase struct {
@@ -57,7 +58,7 @@ func invalidateUserCache(userId int) error {
 	if !common.RedisEnabled {
 		return nil
 	}
-	return common.RedisDelKey(getUserCacheKey(userId))
+	return common.RDB.Del(context.Background(), getUserCacheKey(userId), getUserCacheKey(userId)+":fill").Err()
 }
 
 // InvalidateUserCache is the exported version of invalidateUserCache.
@@ -66,34 +67,8 @@ func InvalidateUserCache(userId int) error {
 	return invalidateUserCache(userId)
 }
 
-// updateUserCache updates all user cache fields using hash
-func updateUserCache(user User) error {
-	if !common.RedisEnabled {
-		return nil
-	}
-
-	return common.RedisHSetObj(
-		getUserCacheKey(user.Id),
-		user.ToBaseUser(),
-		time.Duration(common.RedisKeyCacheSeconds())*time.Second,
-	)
-}
-
 // GetUserCache gets complete user cache from hash
 func GetUserCache(userId int) (userCache *UserBase, err error) {
-	var user *User
-	var fromDB bool
-	defer func() {
-		// Update Redis cache asynchronously on successful DB read
-		if shouldUpdateRedis(fromDB, err) && user != nil {
-			gopool.Go(func() {
-				if err := updateUserCache(*user); err != nil {
-					common.SysLog("failed to update user status cache: " + err.Error())
-				}
-			})
-		}
-	}()
-
 	// Try getting from Redis first
 	userCache, err = cacheGetUserBase(userId)
 	if err == nil && !(userCache.Status == common.UserStatusDisabled && userCache.DisableUntil > 0 && userCache.DisableUntil <= time.Now().Unix()) {
@@ -101,8 +76,10 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 	}
 
 	// If Redis fails, get from DB
-	fromDB = true
-	user, err = GetUserById(userId, false)
+	// A short-lived fill ticket is acquired BEFORE reading the database. Any ban,
+	// unban or edit invalidates it atomically with the cached account, across nodes.
+	ticket := beginUserCacheFill(userId)
+	user, err := GetUserById(userId, false)
 	if err != nil {
 		return nil, err // Return nil and error if DB lookup fails
 	}
@@ -120,8 +97,43 @@ func GetUserCache(userId int) (userCache *UserBase, err error) {
 		Setting:                user.Setting,
 		Email:                  user.Email,
 	}
+	if ticket != "" {
+		if err := finishUserCacheFill(*user, ticket); err != nil {
+			common.SysLog("failed to update user status cache: " + err.Error())
+		}
+	}
 
 	return userCache, nil
+}
+
+func beginUserCacheFill(userId int) string {
+	if !common.RedisEnabled {
+		return ""
+	}
+	ticket := uuid.NewString()
+	if err := common.RDB.Set(context.Background(), getUserCacheKey(userId)+":fill", ticket,
+		time.Duration(max(1, common.RedisKeyCacheSeconds()))*time.Second).Err(); err != nil {
+		return "" // Redis failure must not cache an unversioned database snapshot.
+	}
+	return ticket
+}
+
+var userCacheFillScript = redis.NewScript(`
+if redis.call('GET', KEYS[2]) ~= ARGV[1] then return 0 end
+redis.call('HSET', KEYS[1], unpack(ARGV, 3))
+redis.call('EXPIRE', KEYS[1], ARGV[2])
+redis.call('DEL', KEYS[2])
+return 1
+`)
+
+func finishUserCacheFill(user User, ticket string) error {
+	return userCacheFillScript.Run(context.Background(), common.RDB,
+		[]string{getUserCacheKey(user.Id), getUserCacheKey(user.Id) + ":fill"},
+		ticket, max(1, common.RedisKeyCacheSeconds()),
+		"Id", user.Id, "Group", user.Group, "Email", user.Email, "Quota", user.Quota,
+		"Status", user.Status, "DisableReason", user.DisableReason,
+		"DisableDurationMinutes", user.DisableDurationMinutes, "DisableUntil", user.DisableUntil,
+		"Username", user.Username, "Setting", user.Setting).Err()
 }
 
 func cacheGetUserBase(userId int) (*UserBase, error) {
@@ -133,6 +145,9 @@ func cacheGetUserBase(userId int) (*UserBase, error) {
 	err := common.RedisHGetObj(getUserCacheKey(userId), &userCache)
 	if err != nil {
 		return nil, err
+	}
+	if userCache.Id != userId {
+		return nil, fmt.Errorf("incomplete user cache for %d", userId)
 	}
 	return &userCache, nil
 }

@@ -37,6 +37,18 @@ func authUserBannedMessage(c *gin.Context, user *model.UserBase) string {
 	return service.UserDisabledMessage(c, user, i18n.MsgAuthUserBanned)
 }
 
+func abortWithDisabledUser(c *gin.Context, user *model.UserBase) {
+	message := authUserBannedMessage(c, user)
+	if strings.TrimSuffix(c.Request.URL.Path, "/") == "/v1/messages" {
+		message = common.MessageWithRequestId(message, c.GetString(common.RequestIdKey))
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"type": "error", "error": types.ClaudeError{Type: string(types.ErrorTypeNewAPIError), Message: message},
+		})
+		return
+	}
+	abortWithOpenAiMessage(c, http.StatusForbidden, message, types.ErrorCodeAccessDenied)
+}
+
 func authHelper(c *gin.Context, minRole int) {
 	session := sessions.Default(c)
 	username := session.Get("username")
@@ -415,7 +427,7 @@ func TokenAuth() func(c *gin.Context) {
 		}
 		userEnabled := userCache.Status == common.UserStatusEnabled
 		if !userEnabled {
-			abortWithOpenAiMessage(c, http.StatusForbidden, authUserBannedMessage(c, userCache))
+			abortWithDisabledUser(c, userCache)
 			return
 		}
 

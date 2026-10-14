@@ -195,6 +195,9 @@ func SetApiRouter(router *gin.Engine) {
 		{
 			optionRoute.GET("/", controller.GetOptions)
 			optionRoute.PUT("/", controller.UpdateOption)
+			optionRoute.POST("/probe_guard/preview", controller.PreviewProbeGuardText)
+			optionRoute.GET("/probe_guard/users/:id", controller.GetProbeGuardUserState)
+			optionRoute.DELETE("/probe_guard/users/:id", controller.ResetProbeGuardUserState)
 			optionRoute.GET("/channel_affinity_cache", controller.GetChannelAffinityCacheStats)
 			optionRoute.DELETE("/channel_affinity_cache", controller.ClearChannelAffinityCache)
 			optionRoute.POST("/rest_model_ratio", controller.ResetModelRatio)

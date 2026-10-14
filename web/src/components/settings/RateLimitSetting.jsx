@@ -37,13 +37,7 @@ const RateLimitSetting = () => {
     ModelRequestRateLimitGroup: '',
     'probe_guard_setting.enabled': false,
     'probe_guard_setting.dry_run': true,
-    'probe_guard_setting.window_seconds': 60,
-    'probe_guard_setting.distinct_model_count': 5,
-    'probe_guard_setting.first_ip_ban_minutes': 10,
-    'probe_guard_setting.second_ip_ban_minutes': 60,
-    'probe_guard_setting.permanent_offense_count': 3,
-    'probe_guard_setting.offense_dedupe_seconds': 60,
-    'probe_guard_setting.max_ips_per_offense': 32,
+    'probe_guard_setting.probe_ping_enabled': true,
     'probe_guard_setting.whitelist_user_ids': '',
   });
 
@@ -62,7 +56,8 @@ const RateLimitSetting = () => {
         if (
           item.key.endsWith('Enabled') ||
           item.key === 'probe_guard_setting.enabled' ||
-          item.key === 'probe_guard_setting.dry_run'
+          item.key === 'probe_guard_setting.dry_run' ||
+          item.key === 'probe_guard_setting.probe_ping_enabled'
         ) {
           newInputs[item.key] = toBoolean(item.value);
         } else {

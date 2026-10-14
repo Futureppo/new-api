@@ -319,6 +319,13 @@ func UpdateOption(c *gin.Context) {
 		}
 	case "probe_guard_setting.enabled",
 		"probe_guard_setting.dry_run",
+		"probe_guard_setting.text_rules",
+		"probe_guard_setting.probe_ping_enabled",
+		"probe_guard_setting.first_user_ban_minutes",
+		"probe_guard_setting.second_user_ban_minutes",
+		"probe_guard_setting.first_ban_reason",
+		"probe_guard_setting.second_ban_reason",
+		"probe_guard_setting.permanent_ban_reason",
 		"probe_guard_setting.window_seconds",
 		"probe_guard_setting.distinct_model_count",
 		"probe_guard_setting.first_ip_ban_minutes",

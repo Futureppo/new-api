@@ -174,7 +174,7 @@ func TestUserDisableRedisExpiredCacheRechecksDatabase(t *testing.T) {
 	common.RedisEnabled = true
 	t.Cleanup(func() { common.RedisEnabled = false; common.RDB = oldClient; _ = client.Close() })
 	user := seedTimedDisable(t, "redis", time.Now().Unix()-1)
-	require.NoError(t, updateUserCache(user))
+	require.NoError(t, common.RedisHSetObj(getUserCacheKey(user.Id), user.ToBaseUser(), time.Minute))
 	// A newer permanent ban must win over the expired snapshot in Redis.
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates((UserDisablePeriod{}).Updates("permanent")).Error)
 	cache, err := GetUserCache(user.Id)
@@ -182,13 +182,16 @@ func TestUserDisableRedisExpiredCacheRechecksDatabase(t *testing.T) {
 	require.Equal(t, common.UserStatusDisabled, cache.Status)
 	require.Zero(t, cache.DisableUntil)
 	require.Equal(t, "permanent", cache.DisableReason)
-	// Wait for the existing asynchronous cache writer before changing the fixture.
+	// Verify the current permanent ban was cached before changing the fixture.
 	require.Eventually(t, func() bool { v, e := cacheGetUserBase(user.Id); return e == nil && v.DisableUntil == 0 }, time.Second, time.Millisecond)
 	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Updates((UserDisablePeriod{Minutes: 1, Until: user.DisableUntil}).Updates("expired")).Error)
-	require.NoError(t, updateUserCache(user))
+	require.NoError(t, common.RedisHSetObj(getUserCacheKey(user.Id), user.ToBaseUser(), time.Minute))
 	cache, err = GetUserCache(user.Id)
 	require.NoError(t, err)
 	require.Equal(t, common.UserStatusEnabled, cache.Status)
+	// Expiry invalidates the old fill ticket; the next read fills the enabled state.
+	_, err = GetUserCache(user.Id)
+	require.NoError(t, err)
 	require.Eventually(t, func() bool {
 		v, e := cacheGetUserBase(user.Id)
 		return e == nil && v.Status == common.UserStatusEnabled
