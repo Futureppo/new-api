@@ -50,7 +50,7 @@ func ExtractRequestSessionIdentity(headers http.Header, body []byte) RequestSess
 		headers.Get("x-opencode-session") != "" ||
 		strings.HasPrefix(strings.ToLower(headers.Get("User-Agent")), "opencode/") ||
 		headers.Get("x-opencode-session-id") != ""
-	for _, name := range []string{"x-opencode-session-id", "x-deepseek-harness-session-id", "x-claude-code-session-id", "session-id", "session_id", "x-session-id"} {
+	for _, name := range []string{"x-opencode-session-id", "x-deepseek-harness-session-id", "x-claude-code-session-id", "x-astrbot-conversation-id", "session-id", "session_id", "x-session-id"} {
 		if name == "x-session-id" && opencode {
 			continue
 		}
@@ -102,6 +102,19 @@ func ExtractRequestSessionIdentity(headers http.Header, body []byte) RequestSess
 			}
 			if identity.SessionID != "" {
 				identity.SessionSource = "body:metadata.user_id.session_id"
+			}
+			// Kimi's Anthropic adapter puts the session ID directly in user_id.
+			// Require an explicit client identity: for a generic Anthropic SDK this
+			// same field can be an account ID. Structured metadata must still use
+			// the session_id extraction above, never the entire JSON string.
+			userAgent := strings.ToLower(strings.TrimSpace(headers.Get("User-Agent")))
+			kimi := strings.HasPrefix(userAgent, "kimicli/") || strings.HasPrefix(userAgent, "kimi-code-desktop/") ||
+				strings.EqualFold(strings.TrimSpace(headers.Get("X-Msh-Platform")), "kimi_cli")
+			plain := NormalizeSessionIdentifier(metadata.Str)
+			structured := strings.HasPrefix(plain, "{") || strings.HasPrefix(plain, "[") ||
+				(strings.HasPrefix(plain, "user_") && strings.Contains(plain, "_account_"))
+			if identity.SessionID == "" && kimi && plain != "" && !structured {
+				identity.SessionID, identity.SessionSource = plain, "body:metadata.user_id"
 			}
 		}
 	}

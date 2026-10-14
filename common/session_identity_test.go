@@ -62,3 +62,140 @@ func TestRequestSessionIdentifierValidation(t *testing.T) {
 	require.Len(t, NormalizeSessionIdentifier(strings.Repeat("a", 512)), 512)
 	require.NotEqual(t, SessionIdentifierHash("AbC"), SessionIdentifierHash("abc"))
 }
+
+func TestRequestSessionIdentityKimiHarnessAstrBot(t *testing.T) {
+	cases := []struct {
+		name    string
+		headers map[string]string
+		body    string
+		want    RequestSessionIdentity
+	}{
+		{
+			name:    "Kimi desktop chat completions only supplies a cache key",
+			headers: map[string]string{"User-Agent": "kimi-code-desktop/1.0.4"},
+			body:    `{"prompt_cache_key":"kimi-cache","messages":[]}`,
+			want:    RequestSessionIdentity{CacheKey: "kimi-cache", CacheSource: "body:prompt_cache_key"},
+		},
+		{
+			name:    "Kimi CLI Anthropic plain metadata",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"  kimi-Session  "}}`,
+			want:    RequestSessionIdentity{SessionID: "kimi-Session", SessionSource: "body:metadata.user_id"},
+		},
+		{
+			name:    "Kimi desktop Anthropic plain metadata",
+			headers: map[string]string{"User-Agent": "kimi-code-desktop/1.0.4"},
+			body:    `{"metadata":{"user_id":"kimi-session"},"prompt_cache_key":"separate-cache"}`,
+			want:    RequestSessionIdentity{SessionID: "kimi-session", SessionSource: "body:metadata.user_id", CacheKey: "separate-cache", CacheSource: "body:prompt_cache_key"},
+		},
+		{
+			name:    "Kimi platform header identifies the client",
+			headers: map[string]string{"X-Msh-Platform": "kimi_cli", "X-Msh-Device-Id": "device"},
+			body:    `{"metadata":{"user_id":"kimi-session"}}`,
+			want:    RequestSessionIdentity{SessionID: "kimi-session", SessionSource: "body:metadata.user_id"},
+		},
+		{
+			name:    "explicit header wins over Kimi metadata",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0", "session-id": "header-session"},
+			body:    `{"metadata":{"user_id":"kimi-session"}}`,
+			want:    RequestSessionIdentity{SessionID: "header-session", SessionSource: "header:session-id"},
+		},
+		{
+			name:    "Kimi structured metadata still extracts only the session",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"{\"account_uuid\":\"account\",\"session_id\":\"nested-session\"}"}}`,
+			want:    RequestSessionIdentity{SessionID: "nested-session", SessionSource: "body:metadata.user_id.session_id"},
+		},
+		{
+			name:    "Kimi device header alone is not a session",
+			headers: map[string]string{"X-Msh-Platform": "kimi_cli", "X-Msh-Device-Id": "device"},
+		},
+		{
+			name:    "Kimi rejects structured metadata without a valid session",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"{\"account_uuid\":\"account\",\"session_id\":123}"}}`,
+		},
+		{
+			name:    "Kimi numeric session name is still a string identifier",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"12345"}}`,
+			want:    RequestSessionIdentity{SessionID: "12345", SessionSource: "body:metadata.user_id"},
+		},
+		{
+			name:    "Kimi rejects blank metadata",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"  "}}`,
+		},
+		{
+			name:    "Kimi rejects non-string metadata",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":123}}`,
+		},
+		{
+			name:    "Kimi rejects control characters",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"session\u0000tail"}}`,
+		},
+		{
+			name:    "Kimi rejects oversized metadata without truncating",
+			headers: map[string]string{"User-Agent": "KimiCLI/1.0.0"},
+			body:    `{"metadata":{"user_id":"` + strings.Repeat("a", 513) + `"}}`,
+		},
+		{
+			name:    "generic Anthropic SDK user ID remains an account identifier",
+			headers: map[string]string{"User-Agent": "Anthropic/Python 0.80.0"},
+			body:    `{"metadata":{"user_id":"uuid-shaped-account-id"}}`,
+		},
+		{
+			name:    "client name mentioned in an unrelated UA is insufficient",
+			headers: map[string]string{"User-Agent": "proxy/1.0 (KimiCLI/1.0.0)"},
+			body:    `{"metadata":{"user_id":"account"}}`,
+		},
+		{
+			name:    "Harness direct adapter current session wins over account and request IDs",
+			headers: map[string]string{"User-Agent": "deepseek-harness/0.1.7-rc.2", "x-deepseek-harness-session-id": "current", "x-deepseek-harness-user-id": "account", "x-client-request-id": "request"},
+			want:    RequestSessionIdentity{SessionID: "current", SessionSource: "header:x-deepseek-harness-session-id"},
+		},
+		{
+			name:    "Harness pi adapter without identifiers cannot be reconstructed",
+			headers: map[string]string{"User-Agent": "deepseek-harness/0.2.0-rc.2", "x-client-request-id": "request"},
+			body:    `{"messages":[],"metadata":{"user_id":"account"}}`,
+		},
+		{
+			name:    "Harness pi cache key stays separate from a session",
+			headers: map[string]string{"User-Agent": "deepseek-harness/0.2.0-rc.2"},
+			body:    `{"prompt_cache_key":"harness-cache"}`,
+			want:    RequestSessionIdentity{CacheKey: "harness-cache", CacheSource: "body:prompt_cache_key"},
+		},
+		{
+			name:    "AstrBot conversation header with any provider",
+			headers: map[string]string{"x-astrbot-conversation-id": "  astrbot-Session  "},
+			want:    RequestSessionIdentity{SessionID: "astrbot-Session", SessionSource: "header:x-astrbot-conversation-id"},
+		},
+		{
+			name:    "AstrBot dedicated header wins over generic affinity and metadata",
+			headers: map[string]string{"User-Agent": "AstrBot/4.29.0 AstrNa/1.7.1", "x-astrbot-conversation-id": "conversation", "x-opencode-session": "cache", "x-session-id": "affinity"},
+			body:    `{"metadata":{"user_id":"user_device_account__session_metadata"}}`,
+			want:    RequestSessionIdentity{SessionID: "conversation", SessionSource: "header:x-astrbot-conversation-id", CacheKey: "cache", CacheSource: "header:x-opencode-session"},
+		},
+		{
+			name:    "invalid AstrBot header falls back to a valid generic session",
+			headers: map[string]string{"x-astrbot-conversation-id": strings.Repeat("a", 513), "session-id": "fallback"},
+			want:    RequestSessionIdentity{SessionID: "fallback", SessionSource: "header:session-id"},
+		},
+		{
+			name:    "old AstrBot without a conversation header remains unprovided",
+			headers: map[string]string{"User-Agent": "astrbot/4.28.2", "X-AstrBot-Desktop-Session": "dashboard-login"},
+			body:    `{"messages":[],"user":"account"}`,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			headers := http.Header{}
+			for name, value := range tt.headers {
+				headers.Set(name, value)
+			}
+			require.Equal(t, tt.want, ExtractRequestSessionIdentity(headers, []byte(tt.body)))
+		})
+	}
+}
