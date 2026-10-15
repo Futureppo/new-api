@@ -242,7 +242,7 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
 	case constant.ChannelTypeOpenRouter:
-		return openrouter.NormalizeBaseURL(baseURL) + "/v1/models?output_modalities=text,image,embeddings,audio,rerank,speech,transcription"
+		return openrouter.NormalizeBaseURL(baseURL) + "/v1/models?output_modalities=all"
 	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:
 		return selfhost.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeCline:

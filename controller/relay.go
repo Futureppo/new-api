@@ -95,9 +95,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 	}
-	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI {
+	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenRouter {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
-			Message: "/v1/decisions requires an OpenAI channel", Type: "invalid_request_error",
+			Message: "/v1/decisions requires an OpenAI or OpenRouter channel", Type: "invalid_request_error",
 		}})
 		return
 	}

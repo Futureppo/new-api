@@ -2,6 +2,7 @@ package common
 
 import (
 	basecommon "github.com/QuantumNous/new-api/common"
+	baseconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -10,7 +11,7 @@ import (
 // GetBillingModelName never changes the model used for permissions, routing or
 // upstream requests. Decisions is priced by the client's model, even on retries.
 func (info *RelayInfo) GetBillingModelName() string {
-	if info.RelayMode == constant.RelayModeDecisions {
+	if info.RelayMode == constant.RelayModeDecisions && (info.ChannelMeta == nil || info.ChannelType != baseconstant.ChannelTypeOpenRouter) {
 		model := info.ClientModelName
 		if model == "" {
 			model = info.OriginModelName
@@ -33,6 +34,14 @@ func PrepareDecisionsRequest(info *RelayInfo, body []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+	if info.ChannelMeta != nil && info.ChannelType == baseconstant.ChannelTypeOpenRouter {
+		var effective dto.OpenRouterDecisionsRequest
+		if err := basecommon.Unmarshal(body, &effective); err != nil {
+			return nil, err
+		}
+		info.UpstreamModelName = effective.Model
+		return body, nil
 	}
 	var effective dto.OpenAIDecisionsRequest
 	if err := basecommon.Unmarshal(body, &effective); err != nil {

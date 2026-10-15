@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -313,6 +314,7 @@ func TestFetchOpenRouterManagedFreeAndAlphaModelIDs(t *testing.T) {
 	t.Run("uses authenticated user models endpoint and filters models", func(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, "/v1/models/user", r.URL.Path)
+			require.Equal(t, "all", r.URL.Query().Get("output_modalities"))
 			require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 			_, _ = w.Write([]byte(`{"data":[{"id":"paid/model"},{"id":"vendor/model:free"},{"id":"openrouter/free"},{"id":"openrouter/owl-alpha"},{"id":"vendor/model:free"}]}`))
 		}))
@@ -341,6 +343,7 @@ func TestFetchOpenRouterManagedFreeAndAlphaModelIDs(t *testing.T) {
 	t.Run("uses custom model list URL", func(t *testing.T) {
 		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			require.Equal(t, "/custom/models", r.URL.Path)
+			require.Equal(t, "output_modalities=embeddings", r.URL.RawQuery)
 			_, _ = w.Write([]byte(`{"data":[{"id":"custom/model:free"}]}`))
 		}))
 		defer upstream.Close()
@@ -350,7 +353,7 @@ func TestFetchOpenRouterManagedFreeAndAlphaModelIDs(t *testing.T) {
 			channel,
 			"https://unused.example.com",
 			"test-key",
-			upstream.URL+"/custom/models",
+			upstream.URL+"/custom/models?output_modalities=embeddings",
 		)
 
 		require.NoError(t, err)
@@ -446,6 +449,55 @@ func TestCheckAndPersistOpenRouterManagedModelUpdates(t *testing.T) {
 	var abilityModels []string
 	require.NoError(t, db.Model(&model.Ability{}).Where("channel_id = ?", channel.Id).Order("model asc").Pluck("model", &abilityModels).Error)
 	require.Equal(t, []string{"openrouter/free", "paid/local", "vendor/elephant-alpha", "vendor/manual-alpha", "vendor/new:free"}, abilityModels)
+}
+
+func TestCheckAndPersistOpenRouterManagedEmbeddingModels(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+	const liquid = "liquid/lfm-2.5-embedding-350m:free"
+	const nvidia = "nvidia/nemotron-3-embed-1b:free"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/proxy/v1/models/user", r.URL.Path)
+		require.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
+		// OpenRouter defaults to text output when no modality filter is supplied.
+		models := []string{"vendor/chat:free", "vendor/test-alpha"}
+		modalities := r.URL.Query().Get("output_modalities")
+		if modalities == "all" || strings.Contains(modalities, "embeddings") {
+			models = append(models, liquid, nvidia, "vendor/paid-embedding")
+		}
+		data := make([]map[string]string, 0, len(models))
+		for _, id := range models {
+			data = append(data, map[string]string{"id": id})
+		}
+		body, err := common.Marshal(map[string]any{"data": data})
+		require.NoError(t, err)
+		_, _ = w.Write(body)
+	}))
+	defer upstream.Close()
+
+	baseURL := upstream.URL + "/proxy/v1/"
+	channel := model.Channel{
+		Type: constant.ChannelTypeOpenRouter, Key: "test-key",
+		Status: common.ChannelStatusEnabled, Name: "openrouter-free-embeddings",
+		BaseURL: &baseURL, Models: "paid/local," + liquid, Group: "default",
+	}
+	settings := dto.ChannelOtherSettings{OpenRouterFreeAlphaSyncEnabled: true}
+	channel.SetOtherSettings(settings)
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, channel.UpdateAbilities(nil))
+
+	changed, result, err := checkAndPersistChannelUpstreamModelUpdates(&channel, &settings, true, true)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.ElementsMatch(t, []string{"vendor/chat:free", "vendor/test-alpha", nvidia}, result.AddedModels)
+	require.Empty(t, result.RemovedModels)
+
+	expected := []string{"paid/local", liquid, "vendor/chat:free", "vendor/test-alpha", nvidia}
+	var reloaded model.Channel
+	require.NoError(t, db.First(&reloaded, channel.Id).Error)
+	require.ElementsMatch(t, expected, reloaded.GetModels())
+	var abilityModels []string
+	require.NoError(t, db.Model(&model.Ability{}).Where("channel_id = ?", channel.Id).Pluck("model", &abilityModels).Error)
+	require.ElementsMatch(t, expected, abilityModels)
 }
 
 func TestCheckAndPersistOpenRouterManagedModelUpdatesPreservesModelsOnEmptyResult(t *testing.T) {

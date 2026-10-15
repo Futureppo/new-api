@@ -414,8 +414,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if !common.ChannelTestEndpointSupportsStream(constant.EndpointType(endpointType)) {
 		isStream = false
 	}
-	if endpointType == string(constant.EndpointTypeOpenAIDecisions) && channel.Type != constant.ChannelTypeOpenAI {
-		return testResult{localErr: errors.New("/v1/decisions requires an OpenAI channel")}
+	if endpointType == string(constant.EndpointTypeOpenAIDecisions) && channel.Type != constant.ChannelTypeOpenAI && channel.Type != constant.ChannelTypeOpenRouter {
+		return testResult{localErr: errors.New("/v1/decisions requires an OpenAI or OpenRouter channel")}
 	}
 	if endpointType == string(constant.EndpointTypeBatchGeneration) && channel.Type != constant.ChannelTypeGMICloud {
 		return testResult{localErr: errors.New("batch generation tests require a GMICloud channel")}
@@ -1460,6 +1460,12 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
 		case constant.EndpointTypeOpenAIDecisions:
+			if channel != nil && channel.Type == constant.ChannelTypeOpenRouter {
+				return &dto.OpenRouterDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
+					"state":     json.RawMessage(`"Have a nice day."`),
+					"questions": json.RawMessage(`{"greeting":{"type":"noul","instructions":"Is this a friendly greeting?"}}`),
+				}}
+			}
 			return &dto.OpenAIDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
 				"input":     json.RawMessage(`"Have a nice day."`),
 				"questions": json.RawMessage(`[{"type":"predicate","name":"greeting","instructions":"Does the text contain a friendly greeting?"}]`),

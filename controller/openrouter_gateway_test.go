@@ -38,6 +38,7 @@ func setupOpenRouterGateway(t *testing.T, base string) (*gorm.DB, *gin.Engine, *
 		engine.POST(path, func(c *gin.Context) { Relay(c, format) })
 	}
 	engine.POST("/v1/images", RelayOpenRouterImages)
+	engine.POST("/v1/decisions", func(c *gin.Context) { Relay(c, types.RelayFormatOpenAIDecisions) })
 	return db, engine, ch
 }
 
@@ -249,7 +250,7 @@ func TestOpenRouterGatewayFixedImagesAndSpeech(t *testing.T) {
 func TestOpenRouterModelDiscovery(t *testing.T) {
 	for _, base := range []string{"https://openrouter.ai/api", "https://openrouter.ai/api/v1/", "https://proxy.example/prefix/v1"} {
 		got := resolveFetchModelsURL(constant.ChannelTypeOpenRouter, base, "")
-		require.Equal(t, strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1")+"/v1/models?output_modalities=text,image,embeddings,audio,rerank,speech,transcription", got)
+		require.Equal(t, strings.TrimSuffix(strings.TrimRight(base, "/"), "/v1")+"/v1/models?output_modalities=all", got)
 		require.Equal(t, "https://custom.example/list", resolveFetchModelsURL(constant.ChannelTypeOpenRouter, base, "https://custom.example/list"))
 	}
 	for model, endpoint := range map[string]constant.EndpointType{"openai/text-embedding-3-small": constant.EndpointTypeEmbeddings, "cohere/rerank-v3.5": constant.EndpointTypeJinaRerank, "black-forest-labs/flux-2-pro": constant.EndpointTypeImageGeneration, "bytedance-seed/seedream-4.5": constant.EndpointTypeImageGeneration, "mistralai/voxtral-mini-tts-2603": constant.EndpointTypeAudioSpeech, "openai/whisper-1": constant.EndpointTypeAudioTranscription} {

@@ -20,16 +20,22 @@ import (
 func DecisionsHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	info.InitChannelMeta(c)
 	info.DisablePing = true
-	if info.ChannelType != constant.ChannelTypeOpenAI {
-		return types.NewErrorWithStatusCode(errors.New("/v1/decisions requires an OpenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeOpenRouter {
+		return types.NewErrorWithStatusCode(errors.New("/v1/decisions requires an OpenAI or OpenRouter channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	original, ok := info.Request.(*dto.OpenAIDecisionsRequest)
-	if !ok {
+	var request dto.Request
+	switch original := info.Request.(type) {
+	case *dto.OpenAIDecisionsRequest:
+		copy := *original
+		request = &copy
+	case *dto.OpenRouterDecisionsRequest:
+		copy := *original
+		request = &copy
+	default:
 		return types.NewErrorWithStatusCode(errors.New("invalid Decisions request"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 	service.StartConversationCapture(c, info)
-	request := *original
-	if err := helper.ModelMappedHelper(c, info, &request); err != nil {
+	if err := helper.ModelMappedHelper(c, info, request); err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
 	var body []byte

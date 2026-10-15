@@ -527,7 +527,8 @@ func fetchOpenRouterManagedFreeAndAlphaModelIDs(
 ) ([]string, error) {
 	fetchURL := strings.TrimSpace(customModelListURL)
 	if fetchURL == "" {
-		fetchURL = openrouter.NormalizeBaseURL(baseURL) + "/v1/models/user"
+		// Without this filter OpenRouter returns only text-output models.
+		fetchURL = openrouter.NormalizeBaseURL(baseURL) + "/v1/models/user?output_modalities=all"
 	}
 	models, err := fetchOpenAICompatibleModelIDs(channel, fetchURL, key)
 	if err != nil {
