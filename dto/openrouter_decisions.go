@@ -57,10 +57,22 @@ func (r *OpenRouterDecisionsRequest) UnmarshalJSON(data []byte) error {
 			if q.Type == "noul" && (!decisionGuidance(criteria["true"]) || !decisionGuidance(criteria["false"])) {
 				return fmt.Errorf("questions.%s.criteria requires true and false guidance", name)
 			}
+			if q.Type == "choice" {
+				for _, guidance := range criteria {
+					if !decisionGuidance(guidance) && string(bytes.TrimSpace(guidance)) != "null" {
+						return fmt.Errorf("questions.%s.criteria values must be strings, objects, arrays or null", name)
+					}
+				}
+			}
 		case "score":
 			var criteria []json.RawMessage
 			if common.Unmarshal(q.Criteria, &criteria) != nil || len(criteria) == 0 {
 				return fmt.Errorf("questions.%s.criteria must be a non-empty array", name)
+			}
+			for _, guidance := range criteria {
+				if !decisionGuidance(guidance) {
+					return fmt.Errorf("questions.%s.criteria values must be strings, objects or arrays", name)
+				}
 			}
 		default:
 			return fmt.Errorf("questions.%s.type must be noul, choice or score", name)

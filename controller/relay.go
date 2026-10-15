@@ -739,7 +739,7 @@ func RelayTask(c *gin.Context) {
 		if lockedCh, ok := relayInfo.LockedChannel.(*model.Channel); ok && lockedCh != nil {
 			channel = lockedCh
 			lockedChannel = true
-			if retryParam.GetRetry() > 0 {
+			if retryParam.GetRetry() > 0 || channel.Type == constant.ChannelTypeOpenRouter {
 				if setupErr := middleware.SetupContextForSelectedChannel(c, channel, relayInfo.OriginModelName); setupErr != nil {
 					taskErr = service.TaskErrorWrapperLocal(setupErr.Err, "setup_locked_channel_failed", http.StatusInternalServerError)
 					break
@@ -824,7 +824,7 @@ func RelayTask(c *gin.Context) {
 		deferred := result.Quota < 0 ||
 			(relayInfo.PriceData.UsePrice && relayInfo.PriceData.ModelPrice < 0) ||
 			(!relayInfo.PriceData.UsePrice && relayInfo.PriceData.ModelRatio < 0)
-		if !deferred && result.PendingImageRequest == "" {
+		if !deferred && result.PendingImageRequest == "" && relayInfo.ChannelType != constant.ChannelTypeOpenRouter {
 			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
 				common.SysError("settle task billing error: " + settleErr.Error())
 			}
@@ -861,6 +861,11 @@ func RelayTask(c *gin.Context) {
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
+			if relayInfo.ChannelType == constant.ChannelTypeOpenRouter {
+				taskErr = service.TaskErrorWrapperLocal(insertErr, "task_persist_failed", http.StatusInternalServerError)
+				respondTaskError(c, taskErr)
+				return
+			}
 			if c.GetBool("vertex_native_video") {
 				videoProxyError(c, http.StatusInternalServerError, "task_persist_failed", "Unable to persist Vertex operation")
 				return
@@ -872,6 +877,12 @@ func RelayTask(c *gin.Context) {
 				respondGMICloudImageError(c, http.StatusInternalServerError, "image_task_persist_failed", "Unable to persist image task; no upstream generation was submitted", "")
 				return
 			}
+		} else if relayInfo.ChannelType == constant.ChannelTypeOpenRouter {
+			if settleErr := service.SettleBilling(c, relayInfo, result.Quota); settleErr != nil {
+				common.SysError("settle OpenRouter video: " + settleErr.Error())
+			}
+			service.LogTaskConsumption(c, relayInfo)
+			respondOpenRouterVideoTask(c, task)
 		} else if c.GetBool("vertex_native_video") {
 			c.JSON(http.StatusOK, gin.H{"name": "operations/" + task.TaskID, "done": false})
 		} else if isGMICloudImageTask(relayInfo) {
@@ -906,6 +917,9 @@ func respondTaskError(c *gin.Context, taskErr *dto.TaskError) {
 }
 
 func shouldRetryTaskRelay(c *gin.Context, channelId int, taskErr *dto.TaskError, retryTimes int) bool {
+	if c.GetBool("openrouter_video_submitted") {
+		return false
+	}
 	if taskErr == nil {
 		return false
 	}

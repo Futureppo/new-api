@@ -242,6 +242,7 @@ func shouldPersistTaskPollingKey(meta *commonRelay.ChannelMeta) bool {
 	}
 	return meta.ChannelIsMultiKey ||
 		meta.ChannelType == constant.ChannelTypeQianwenAI ||
+		meta.ChannelType == constant.ChannelTypeOpenRouter ||
 		meta.ChannelType == constant.ChannelTypeGemini ||
 		meta.ChannelType == constant.ChannelTypeVertexAi
 }

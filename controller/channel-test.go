@@ -838,7 +838,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	}
-	if channel.Type == constant.ChannelTypeOpenAI {
+	if channel.Type == constant.ChannelTypeOpenAI || info.RelayMode == relayconstant.RelayModeDecisions {
 		if info.RelayMode == relayconstant.RelayModeDecisions {
 			jsonData, err = relaycommon.PrepareDecisionsRequest(info, jsonData)
 		} else {
@@ -1202,7 +1202,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 		}
 	}
-	if resp != nil && resp.StatusCode != http.StatusOK {
+	if resp != nil && resp.StatusCode != http.StatusOK && !(channel.Type == constant.ChannelTypeOpenRouter && resp.StatusCode == http.StatusAccepted) {
 		err := service.RelayErrorHandler(c.Request.Context(), resp, false)
 		common.SysError(fmt.Sprintf(
 			"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",

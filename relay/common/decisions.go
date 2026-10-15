@@ -11,7 +11,13 @@ import (
 // GetBillingModelName never changes the model used for permissions, routing or
 // upstream requests. Decisions is priced by the client's model, even on retries.
 func (info *RelayInfo) GetBillingModelName() string {
-	if info.RelayMode == constant.RelayModeDecisions && (info.ChannelMeta == nil || info.ChannelType != baseconstant.ChannelTypeOpenRouter) {
+	if info.RelayMode == constant.RelayModeDecisions {
+		if _, native := info.Request.(*dto.OpenRouterDecisionsRequest); native {
+			return info.OriginModelName
+		}
+		if info.ChannelMeta != nil && info.ChannelType == baseconstant.ChannelTypeOpenRouter {
+			return info.OriginModelName
+		}
 		model := info.ClientModelName
 		if model == "" {
 			model = info.OriginModelName

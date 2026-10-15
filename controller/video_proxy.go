@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/relay/channel/openrouter"
 	"github.com/QuantumNous/new-api/relay/channel/vertex"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/system_setting"
@@ -121,6 +122,21 @@ func VideoProxy(c *gin.Context) {
 			videoProxyError(c, http.StatusBadGateway, "server_error", "Failed to resolve Vertex video URL")
 			return
 		}
+	case constant.ChannelTypeOpenRouter:
+		index, parseErr := strconv.Atoi(c.DefaultQuery("index", "0"))
+		if parseErr != nil || index < 0 {
+			videoProxyError(c, 400, "invalid_request_error", "index must be a non-negative integer")
+			return
+		}
+		if task.PrivateData.Key == "" {
+			videoProxyError(c, 502, "server_error", "Original task credential is unavailable")
+			return
+		}
+		videoURL = openrouter.NormalizeBaseURL(channel.GetBaseURL()) + "/v1/videos/" + url.PathEscape(task.GetUpstreamTaskID()) + "/content?index=" + strconv.Itoa(index)
+		req.Header.Set("Authorization", "Bearer "+task.PrivateData.Key)
+		if value := c.GetHeader("Range"); value != "" {
+			req.Header.Set("Range", value)
+		}
 	case constant.ChannelTypeOpenAI, constant.ChannelTypeSora:
 		videoURL = fmt.Sprintf("%s/v1/videos/%s/content", baseURL, task.GetUpstreamTaskID())
 		req.Header.Set("Authorization", "Bearer "+channel.Key)
@@ -182,7 +198,7 @@ func VideoProxy(c *gin.Context) {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusOK && !(channel.Type == constant.ChannelTypeOpenRouter && resp.StatusCode == http.StatusPartialContent) {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Upstream returned status %d for %s", resp.StatusCode, videoURL))
 		videoProxyError(c, http.StatusBadGateway, "server_error",
 			fmt.Sprintf("Upstream service returned status %d", resp.StatusCode))
@@ -192,6 +208,9 @@ func VideoProxy(c *gin.Context) {
 	common.CopyUpstreamResponseHeaders(c.Writer.Header(), resp.Header)
 
 	c.Writer.Header().Set("Cache-Control", "public, max-age=86400")
+	if channel.Type == constant.ChannelTypeOpenRouter {
+		c.Writer.Header().Set("Cache-Control", "private, no-store")
+	}
 	c.Writer.WriteHeader(resp.StatusCode)
 	if _, err = io.Copy(c.Writer, resp.Body); err != nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("Failed to stream video content: %s", err.Error()))

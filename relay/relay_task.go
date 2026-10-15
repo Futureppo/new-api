@@ -39,6 +39,9 @@ type TaskSubmitResult struct {
 // 以及提取 OtherRatios（时长、分辨率）。
 // 该函数在控制器的重试循环之前调用一次，其结果通过 info 字段和上下文持久化。
 func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskError {
+	if info.ChannelMeta == nil {
+		info.InitChannelMeta(c)
+	}
 	// 检测 remix action
 	path := c.Request.URL.Path
 	if strings.Contains(path, "/v1/videos/") && strings.HasSuffix(path, "/remix") {
@@ -54,6 +57,19 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 		info.OriginTaskID = videoID
 	}
 
+	openRouterContinuation := info.ChannelType == constant.ChannelTypeOpenRouter && info.Action != constant.TaskActionRemix
+	if openRouterContinuation && info.OriginTaskID == "" {
+		storage, err := common.GetBodyStorage(c)
+		if err == nil {
+			body, err := storage.Bytes()
+			var request struct {
+				PreviousJobID string `json:"previous_job_id"`
+			}
+			if err == nil && common.Unmarshal(body, &request) == nil {
+				info.OriginTaskID = request.PreviousJobID
+			}
+		}
+	}
 	if info.OriginTaskID == "" {
 		return nil
 	}
@@ -65,6 +81,9 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	}
 	if !exist {
 		return service.TaskErrorWrapperLocal(errors.New("task_origin_not_exist"), "task_not_exist", http.StatusBadRequest)
+	}
+	if openRouterContinuation && originTask.Platform != constant.TaskPlatform(strconv.Itoa(constant.ChannelTypeOpenRouter)) {
+		return service.TaskErrorWrapperLocal(errors.New("previous_job_id must reference an OpenRouter video task"), "invalid_request", http.StatusBadRequest)
 	}
 
 	// 从原始任务推导模型名称
@@ -196,6 +215,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		return nil, service.TaskErrorWrapper(err, "model_price_error", http.StatusBadRequest)
 	}
 	info.PriceData = priceData
+	if info.ChannelType == constant.ChannelTypeOpenRouter && ((priceData.UsePrice && priceData.ModelPrice < 0) || (!priceData.UsePrice && priceData.ModelRatio < 0)) {
+		return nil, service.TaskErrorWrapperLocal(errors.New("OpenRouter videos require a non-negative site price or ratio; upstream cost billing is unsupported"), "model_price_error", http.StatusBadRequest)
+	}
 
 	// 5. 计费估算：让适配器根据用户请求提供 OtherRatios（时长、分辨率等）
 	//    必须在 ModelPriceHelperPerCall 之后调用（它会重建 PriceData）。
@@ -253,7 +275,7 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 		}
 		return nil, service.TaskErrorWrapper(err, "do_request_failed", http.StatusInternalServerError)
 	}
-	if resp != nil && resp.StatusCode != http.StatusOK {
+	if resp != nil && resp.StatusCode != http.StatusOK && !(info.ChannelType == constant.ChannelTypeOpenRouter && resp.StatusCode == http.StatusAccepted) {
 		newAPIError := service.RelayErrorHandler(c.Request.Context(), resp, false)
 		service.ResetStatusCode(newAPIError, c.GetString("status_code_mapping"))
 		newAPIError = service.NormalizeViolationFeeErrorForRelay(info, newAPIError)
@@ -475,7 +497,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	}
 	if channelModel.Type != constant.ChannelTypeVertexAi &&
 		channelModel.Type != constant.ChannelTypeGemini &&
-		channelModel.Type != constant.ChannelTypeAgnesAI {
+		channelModel.Type != constant.ChannelTypeAgnesAI && channelModel.Type != constant.ChannelTypeOpenRouter {
 		return nil
 	}
 
@@ -488,7 +510,7 @@ func tryRealtimeFetch(task *model.Task, isOpenAIVideoAPI bool) []byte {
 	if adaptor == nil {
 		return nil
 	}
-	if channelModel.Type == constant.ChannelTypeAgnesAI {
+	if channelModel.Type == constant.ChannelTypeAgnesAI || channelModel.Type == constant.ChannelTypeOpenRouter {
 		// Do not let a foreground query write a terminal status without applying
 		// the refund/settlement that the background poller would perform.
 		_ = service.RefreshVideoTask(context.Background(), adaptor, channelModel, task)

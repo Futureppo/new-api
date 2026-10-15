@@ -30,6 +30,9 @@ func openRouterInvalid(message string) *types.NewAPIError {
 
 func openRouterRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	base := openrouter.NormalizeBaseURL(info.ChannelBaseUrl)
+	if info.RelayMode == relayconstant.RelayModeDecisions && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
+		return "", openRouterInvalid("native Decisions requires a standard channel")
+	}
 	if !isOpenRouterNative(info) {
 		if info.RelayFormat == types.RelayFormatClaude || info.RelayFormat == types.RelayFormatGemini {
 			if info.RelayMode != relayconstant.RelayModeResponses && info.RelayMode != relayconstant.RelayModeResponsesCompact {

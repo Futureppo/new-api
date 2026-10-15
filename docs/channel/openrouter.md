@@ -16,9 +16,14 @@
 | `/v1/images`、`/v1/images/generations`、`/v1/images/edits` | `/v1/images` | 生成、参考图片编辑；JSON 或 SSE |
 | `/v1/audio/speech` | `/v1/audio/speech` | 字符串或多说话人 turns，二进制 PCM/MP3 |
 | `/v1/audio/transcriptions` | `/v1/audio/transcriptions` | JSON 音频输入或 multipart 上传 |
+| `/v1/decisions` | `/alpha/decisions` | 原生 `state` 和命名 `questions`；非流式 |
+| `POST /v1/videos` | `/v1/videos` | 原生 JSON 视频生成、参考输入、编辑或续接；返回 202 |
+| `GET /v1/videos/{task_id}` | `/v1/videos/{job_id}` | 查询任务状态与结果 |
+| `GET /v1/videos/{task_id}/content?index=0` | `/v1/videos/{job_id}/content?index=0` | 使用原任务密钥下载，支持 Range |
 
 `/v1/images` 原生入口只支持 OpenRouter，使用现有鉴权、限流、渠道选择与计费。
 Enterprise 模式保留原有转换和响应解包行为。显式启用的 Chat/Messages → Responses 策略仍然有效。
+新增 Decisions 和视频接口使用普通 OpenRouter 渠道；Enterprise 模式不支持这两个原生接口。
 
 ## 请求与响应
 
@@ -71,6 +76,44 @@ STT 接受 `input_audio: {"data":"<base64>","format":"wav"}` 或
 `input_audio: {"url":"https://example.com/audio.wav"}`，也接受 multipart 的 `file`
 或 `source_url`。时间戳、说话人和用量字段保留。音频翻译和音频 SSE 不在本次范围。
 
+Decisions 使用 OpenRouter 原生格式，问题类型支持 `noul`、`choice`、`score`：
+
+```json
+{
+  "model": "typesafe/jev-1.14",
+  "state": {"ticket": "支付失败"},
+  "questions": {
+    "is_bug": {"type": "noul", "instructions": "是否报告了产品故障？"}
+  }
+}
+```
+
+回答按问题名称返回，保留原始答案、用量及扩展字段。OpenRouter 的协议与
+OpenAI Decisions 的 `input` / 问题数组不同；请按所选渠道使用对应格式。
+
+视频请求使用 JSON，例如：
+
+```json
+{
+  "model": "google/veo-3.1",
+  "prompt": "夕阳中的山间湖泊",
+  "duration": 8,
+  "resolution": "720p",
+  "aspect_ratio": "16:9",
+  "seed": 0,
+  "generate_audio": false
+}
+```
+
+兼容 `seconds` 作为 `duration` 的别名；二者冲突时返回 400。
+保留 `frame_images`、`input_references`、`provider.options`、`creativity`、
+`upscale_factor` 等原生字段，具体支持情况取决于模型。
+提交成功返回本站 `task_…` ID 和 `polling_url`；结果中的 `unsigned_urls`
+指向本站鉴权下载接口。任务查询和下载继续使用提交时保存的渠道密钥。
+编辑或续接时，将本人已完成任务的本站 ID 作为 `previous_job_id`，并使用原模型。
+不支持 OpenAI 的 multipart 视频上传或 `/remix` 格式。
+`callback_url` 直接交给 OpenRouter，回调中的 ID 为上游 ID；本站状态通过轮询更新。
+
 ## 计费与错误
 
 继续使用站内价格、倍率或计费表达式，不使用上游 `usage.cost` 作为新的扣费依据。
@@ -82,6 +125,12 @@ STT 接受 `input_audio: {"data":"<base64>","format":"wav"}` 或
 缺失用量采用本地估算，显式零用量保留为零。消费日志的 `usage_source`
 区分 `upstream`、`openrouter_native_messages`、`duration` 和 `local_estimate`。
 
+Decisions 按原模型的站内 token 倍率、固定价格或计费表达式结算。
+视频沿用站内任务单价或倍率及分组倍率，每个任务结算一次；不按上游成本调价，
+也不自动按时长额外相乘。负数价格或倍率不受支持。生成失败、取消或超时使用
+既有任务退款流程；临时查询失败不会被当成生成失败。提交结果不明时不自动重试，
+避免重复创建付费任务。任务保存失败时不会返回成功，已预扣额度会退还。
+
 HTTP 200 中的业务错误、流中错误和异常断流会记录为失败。响应提交后不再重试，
 不在 SSE 尾部追加普通 JSON 错误。已产生文本且有实际消费的失败流按已有计费流程结算；
 仅有预估输入、没有上游用量或输出的失败流退款。
@@ -90,14 +139,15 @@ HTTP 200 中的业务错误、流中错误和异常断流会记录为失败。�
 自定义模型列表 URL 优先并保持原样。免费和 Alpha 同步继续使用 `/models/user`，
 遵循账户的提供商、隐私及访问限制，并按既有规则筛选免费和 Alpha 模型。
 模型发现不限制输出类型，实际可调用的接口见上表。
-未加入视频、Batch、账户管理或 Responses 状态存储。
+渠道测试自动识别已知的向量、重排、图片、音频、Decisions 和视频模型系列；
+新模型或自定义别名可手动选择接口。Batch、账户管理和 Responses 状态存储仍未加入。
 
 ## 验证
 
 本地 mock 测试覆盖适配器、网关鉴权、模型映射、覆盖与过滤、缓存计费、流式用量、错误、断流和退款：
 
 ```sh
-go test ./relay/channel/openai ./controller ./service ./dto ./relay/helper -run OpenRouter -count=1
+go test ./common ./relay/channel/openai ./relay/channel/task/openrouter ./controller ./service ./dto ./relay/helper -run OpenRouter -count=1
 cd web
 bun test src/helpers/channelTestEndpoints.test.js
 ```
@@ -106,7 +156,7 @@ bun test src/helpers/channelTestEndpoints.test.js
 和 `OPENROUTER_TEST_MODEL` 后执行 `go test ./controller -run '^TestOpenRouterLiveChat$' -count=1`。
 该测试会调用真实上游，可能产生费用。
 
-文档依据（2026-10-14 核对）：[OpenAPI](https://openrouter.ai/openapi.json)、
+文档依据（2026-10-16 核对）：[OpenAPI（含 Decisions 和 Videos 定义）](https://openrouter.ai/openapi.json)、
 [Messages](https://openrouter.ai/docs/api/api-reference/anthropic-messages/create-a-message)、
 [Responses](https://openrouter.ai/docs/api_reference/responses/overview)、
 [Streaming](https://openrouter.ai/docs/api_reference/streaming)、

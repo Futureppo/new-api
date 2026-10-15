@@ -105,23 +105,7 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	case constant.ChannelTypeGemini:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeOpenRouter:
-		name := strings.ToLower(modelName)
-		if IsImageGenerationModel(name) || strings.Contains(name, "flux") || strings.Contains(name, "seedream") || strings.Contains(name, "recraft") || strings.Contains(name, "imagen") {
-			return []constant.EndpointType{constant.EndpointTypeImageGeneration}
-		}
-		if strings.Contains(name, "embed") {
-			return []constant.EndpointType{constant.EndpointTypeEmbeddings}
-		}
-		if strings.Contains(name, "rerank") {
-			return []constant.EndpointType{constant.EndpointTypeJinaRerank}
-		}
-		if strings.Contains(name, "transcri") || strings.Contains(name, "whisper") {
-			return []constant.EndpointType{constant.EndpointTypeAudioTranscription}
-		}
-		if strings.Contains(name, "tts") || strings.Contains(name, "voice") {
-			return []constant.EndpointType{constant.EndpointTypeAudioSpeech}
-		}
-		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAIResponse}
+		return openRouterEndpointTypes(modelName)
 	case constant.ChannelTypeModal, constant.ChannelTypeKilo, constant.ChannelTypeCline:
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeGMICloud:

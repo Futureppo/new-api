@@ -440,7 +440,7 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if ch.Type == constant.ChannelTypeAgnesAI && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("Agnes task retrieval returned HTTP %d", resp.StatusCode)
 	}
-	if (ch.Type == constant.ChannelTypeGMICloud || ch.Type == constant.ChannelTypeVertexAi) && resp.StatusCode != http.StatusOK {
+	if (ch.Type == constant.ChannelTypeGMICloud || ch.Type == constant.ChannelTypeVertexAi || ch.Type == constant.ChannelTypeOpenRouter) && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("video task retrieval returned HTTP %d", resp.StatusCode)
 	}
 	responseBody, err := io.ReadAll(resp.Body)
@@ -478,6 +478,9 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 		task.Data = t.Data
 	} else if taskResult, err = adaptor.ParseTaskResult(responseBody); err != nil {
 		return fmt.Errorf("parseTaskResult failed for task %s: %w", taskId, err)
+	}
+	if ch.Type == constant.ChannelTypeOpenRouter && taskResult.TaskID != taskId {
+		return fmt.Errorf("OpenRouter video response does not match the requested job")
 	}
 
 	task.Data = redactVideoResponseBody(responseBody)
