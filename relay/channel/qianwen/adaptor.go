@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
+	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/types"
@@ -29,7 +30,7 @@ var ModelList = []string{
 	"wan3.0-video", "wan3.0-video-prime", "wan2.7-t2v", "wan2.7-i2v",
 	"qwen-audio-3.1-tts-flash", "qwen-audio-3.0-tts-flash", "qwen-audio-3.1-tts-next", "qwen3-tts-flash", "fun-music-v1",
 	"text-embedding-v4", "text-embedding-v3", "qwen3-rerank", "qwen3.7-text-rerank", "qwen3-vl-rerank",
-	constant.QianwenIntentModel,
+	constant.QianwenIntentModel, constant.QianwenDecisionModel,
 }
 
 type Adaptor struct{}
@@ -48,6 +49,7 @@ func NormalizeBaseURL(base string) string {
 		"/compatible-api/v1/reranks", "/compatible-api/v1",
 		multimodalPath, speechPath, musicPath, videoPath, rerankPath, "/api/v1",
 		"/api/v1/services/aigc/text-generation/generation",
+		"/compatible-mode/v1/systemone", "/compatible-mode",
 	} {
 		if strings.HasSuffix(base, suffix) {
 			return strings.TrimSuffix(base, suffix)
@@ -70,12 +72,18 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.ChannelMeta != nil && constant.IsQianwenDecisionModel(info.UpstreamModelName) &&
+		(info.RelayFormat != types.RelayFormatTypeSafe || info.RelayMode != relayconstant.RelayModeTypeSafeSystemOne) {
+		return "", invalid("decision-model-preview uses POST /v1/systemone with state and questions; Chat Completions, Messages and Responses are not supported")
+	}
 	if info.ChannelMeta != nil && constant.IsQianwenIntentModel(info.UpstreamModelName) &&
 		(info.RelayFormat != types.RelayFormatOpenAI || info.RelayMode != relayconstant.RelayModeChatCompletions) {
 		return "", invalid("tongyi-intent-detect-v3 uses /v1/chat/completions; select the intent or tool mode in the system message")
 	}
 	var path string
 	switch {
+	case info.RelayFormat == types.RelayFormatTypeSafe && info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne:
+		path = "/compatible-mode/v1/systemone"
 	case info.RelayFormat == types.RelayFormatClaude:
 		path = "/apps/anthropic/v1/messages"
 	case info.RelayFormat == types.RelayFormatOpenAI && info.RelayMode == relayconstant.RelayModeChatCompletions:
@@ -148,6 +156,23 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 	if _, err := a.GetRequestURL(info); err != nil {
 		return nil, err
 	}
+	if info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne {
+		if c.Request.Method != http.MethodPost || info.IsStream {
+			return nil, invalid("QianwenAI System One only supports synchronous POST /v1/systemone")
+		}
+		data, err := io.ReadAll(body)
+		if err != nil {
+			return nil, err
+		}
+		var request dto.TypeSafeRequest
+		if err := common.Unmarshal(data, &request); err != nil {
+			return nil, invalid(err.Error())
+		}
+		if request.Model != info.UpstreamModelName {
+			return nil, invalid("System One model overrides must use channel model mapping")
+		}
+		body = bytes.NewReader(data)
+	}
 	// Validate the final body, including passthrough and administrator overrides.
 	if info.RelayMode == relayconstant.RelayModeResponses {
 		data, err := io.ReadAll(body)
@@ -172,6 +197,8 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
 	switch info.RelayMode {
+	case relayconstant.RelayModeTypeSafeSystemOne:
+		return (&typesafe.Adaptor{}).DoResponse(c, resp, info)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		return imageResponse(c, resp, info)
 	case relayconstant.RelayModeRerank:

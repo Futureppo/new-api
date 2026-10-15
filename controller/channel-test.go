@@ -276,6 +276,14 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 		}
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeQianwenAI {
+		// Select the protocol using the mapped model, while retaining the client
+		// alias on the real request and its billing snapshot.
+		mappingContext, _ := gin.CreateTestContext(httptest.NewRecorder())
+		mappingContext.Set("model_mapping", channel.GetModelMapping())
+		mappingInfo := &relaycommon.RelayInfo{OriginModelName: modelName}
+		if err := helper.ModelMappedHelper(mappingContext, mappingInfo, nil); err == nil {
+			modelName = mappingInfo.UpstreamModelName
+		}
 		return string(common.GetEndpointTypesByChannelType(channel.Type, modelName)[0])
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeTypeSafe {
@@ -418,8 +426,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 		isStream = false
 	}
-	if endpointType == string(constant.EndpointTypeTypeSafeSystemOne) && channel.Type != constant.ChannelTypeTypeSafe {
-		return testResult{localErr: errors.New("/v1/systemone requires a TypeSafe channel")}
+	if endpointType == string(constant.EndpointTypeTypeSafeSystemOne) && channel.Type != constant.ChannelTypeTypeSafe && channel.Type != constant.ChannelTypeQianwenAI {
+		return testResult{localErr: errors.New("/v1/systemone requires a TypeSafe or QianwenAI channel")}
 	}
 
 	requestPath := "/v1/chat/completions"

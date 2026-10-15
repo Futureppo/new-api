@@ -28,7 +28,7 @@ export const CHANNEL_TEST_ENDPOINTS = [
   },
   {
     value: 'typesafe-systemone',
-    label: 'TypeSafe (/v1/systemone)',
+    label: 'System One (/v1/systemone)',
     stream: false,
   },
   {

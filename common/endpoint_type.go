@@ -16,6 +16,9 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 	var endpointTypes []constant.EndpointType
 	switch channelType {
 	case constant.ChannelTypeQianwenAI:
+		if constant.IsQianwenDecisionModel(modelName) {
+			return []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne}
+		}
 		if constant.IsQianwenIntentModel(modelName) {
 			return []constant.EndpointType{constant.EndpointTypeOpenAI}
 		}

@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/channel/typesafe"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -19,8 +18,8 @@ import (
 func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	info.InitChannelMeta(c)
 	info.DisablePing = true
-	if info.ChannelType != constant.ChannelTypeTypeSafe {
-		return types.NewErrorWithStatusCode(errors.New("/v1/systemone requires a TypeSafe channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	if info.ChannelType != constant.ChannelTypeTypeSafe && info.ChannelType != constant.ChannelTypeQianwenAI {
+		return types.NewErrorWithStatusCode(errors.New("/v1/systemone requires a TypeSafe or QianwenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 	original, ok := info.Request.(*dto.TypeSafeRequest)
 	if !ok {
@@ -49,7 +48,7 @@ func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIEr
 	if err := common.Unmarshal(body, &effective); err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	a := &typesafe.Adaptor{}
+	a := GetAdaptor(info.ApiType)
 	a.Init(info)
 	response, err := doChannelRPMGuardedRequest(c, info, func() (any, error) {
 		return a.DoRequest(c, info, bytes.NewReader(body))
@@ -69,6 +68,6 @@ func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIEr
 	if apiErr != nil {
 		return apiErr
 	}
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), []string{"TypeSafe System One"})
+	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), []string{a.GetChannelName() + " System One"})
 	return nil
 }

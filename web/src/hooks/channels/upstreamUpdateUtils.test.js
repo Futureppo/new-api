@@ -24,6 +24,14 @@ import {
 } from './upstreamUpdateUtils';
 import { isManualModelFetchSupported } from '../../constants/channel.constants';
 
+describe('Qianwen model fetching', () => {
+  test('offers model fetching for new and existing Qianwen channels', () => {
+    expect(isManualModelFetchSupported(77)).toBe(true);
+    expect(isManualModelFetchSupported('77')).toBe(true);
+    expect(isManualModelFetchSupported(77, 'json', 'https://proxy.example/models')).toBe(true);
+  });
+});
+
 describe('Cline model synchronization', () => {
   test('fetching mapped upstream IDs never duplicates existing short names', () => {
     const mapping = JSON.stringify({

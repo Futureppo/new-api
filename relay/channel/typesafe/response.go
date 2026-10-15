@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/service"
@@ -73,10 +74,16 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 			OutputTokens *int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	if err := common.Unmarshal(body, &result); err != nil || strings.TrimSpace(result.Model) == "" || result.Answers == nil || result.Usage == nil || result.Usage.InputTokens == nil || result.Usage.OutputTokens == nil {
+	// Qianwen's documented System One response only reports input_tokens:
+	// decision models do not generate output tokens. TypeSafe still requires both.
+	inputOnly := info != nil && info.ChannelMeta != nil && info.ChannelType == constant.ChannelTypeQianwenAI
+	if err := common.Unmarshal(body, &result); err != nil || strings.TrimSpace(result.Model) == "" || result.Answers == nil || result.Usage == nil || result.Usage.InputTokens == nil || (!inputOnly && result.Usage.OutputTokens == nil) {
 		return nil, badResponse("invalid TypeSafe response: model, answers and token usage are required")
 	}
-	input, output := *result.Usage.InputTokens, *result.Usage.OutputTokens
+	input, output := *result.Usage.InputTokens, 0
+	if result.Usage.OutputTokens != nil {
+		output = *result.Usage.OutputTokens
+	}
 	if input < 0 || output < 0 || input > math.MaxInt-output {
 		return nil, badResponse("invalid TypeSafe token usage")
 	}
