@@ -16,8 +16,6 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-var freeCoreTools = []string{"bash", "edit", "glob", "grep", "read"}
-
 func (a *Adaptor) needsFreeCompatibility(info *relaycommon.RelayInfo) bool {
 	// OpenCode always selects and converts the upstream protocol by model.
 	// Match that policy here: a generic passthrough flag must not disable the
@@ -59,11 +57,16 @@ func (a *Adaptor) shapeFreeRequest(body []byte) ([]byte, map[string]bool, error)
 		}
 	}
 	injected := map[string]bool{}
+	definitions, err := loadFreeTools()
+	if err != nil {
+		return nil, nil, err
+	}
 	for _, name := range freeCoreTools {
 		if existing[name] {
 			continue
 		}
-		function := map[string]any{"name": name, "description": name, "parameters": map[string]any{"type": "object", "properties": map[string]any{}}}
+		definition := definitions[name]
+		function := map[string]any{"name": name, "description": definition.Description, "parameters": definition.Parameters}
 		var tool any = map[string]any{"type": "function", "function": function}
 		if a.freeRequestMode == constant.OpenCodeEndpointResponses {
 			function["type"] = "function"
@@ -76,7 +79,6 @@ func (a *Adaptor) shapeFreeRequest(body []byte) ([]byte, map[string]bool, error)
 		tools = append(tools, encoded)
 		injected[name] = true
 	}
-	var err error
 	for path, value := range map[string]any{"stream": true, "tools": tools} {
 		body, err = sjson.SetBytes(body, path, value)
 		if err != nil {

@@ -61,6 +61,14 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		return "", errors.New("opencode zen: relay info is nil")
 	}
 	baseURL := strings.TrimRight(info.ChannelBaseUrl, "/")
+	// The legacy Zen proxy strips the public credential. Free inference now
+	// uses the direct OpenAI-compatible route, including for existing channels.
+	// Keep custom gateway addresses and paid/Go routing under user control.
+	if info.ChannelType == constant.ChannelTypeOpenCode &&
+		constant.IsOpenCodeFreeChatModel(strings.TrimPrefix(info.UpstreamModelName, "models/")) &&
+		baseURL == constant.ChannelBaseURLs[constant.ChannelTypeOpenCode] {
+		baseURL = freeInferenceBaseURL
+	}
 	switch endpoint(info) {
 	case constant.OpenCodeEndpointResponses:
 		if info.RelayMode == relayconstant.RelayModeResponsesCompact {

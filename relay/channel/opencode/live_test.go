@@ -163,7 +163,7 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 				t.Fatalf("status=%d body=%s", result.Status, result.Error)
 			}
 			result.Headers = make(map[string]string)
-			for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project"} {
+			for _, name := range []string{"User-Agent", "x-opencode-client", "x-opencode-session", "x-opencode-session-id", "x-session-affinity", "X-Session-Id", "x-opencode-project"} {
 				result.Headers[name] = response.Request.Header.Get(name)
 				require.NotEmpty(t, result.Headers[name], "missing outbound %s", name)
 			}
@@ -172,7 +172,7 @@ func TestOpenCodeLiveClientIdentifiers(t *testing.T) {
 			require.Equal(t, defaultProject, result.Headers["x-opencode-project"])
 			require.Equal(t, result.Headers["x-opencode-session"], result.Headers["x-opencode-session-id"])
 			require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, result.Headers["x-opencode-session"])
-			require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, result.Headers["x-opencode-request"])
+			require.Empty(t, response.Request.Header.Get("x-opencode-request"))
 			require.Empty(t, response.Request.Header.Get("x-opencode-parent-session-id"))
 			require.Empty(t, response.Request.Header.Get("x-stainless-package-version"))
 			usage, apiErr := adaptor.DoResponse(c, response, info)

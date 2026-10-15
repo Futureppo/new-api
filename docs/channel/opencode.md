@@ -18,18 +18,18 @@ OpenCode Zen 和 Go 共用“统一使用 OpenCode 客户端标识”开关，�
 
 | 请求头 | 开启时的行为 |
 | --- | --- |
-| `User-Agent` | 覆盖为 `opencode/1.18.34` |
+| `User-Agent` | 覆盖为 `opencode/latest/2.0.29/cli` |
 | `x-opencode-client` | 覆盖为 `cli` |
 | `x-opencode-project` | 覆盖为 `global` |
-| `x-opencode-session`、`x-opencode-session-id` | 覆盖为同一个生成的 OpenCode 格式 `ses_` 标识 |
-| `x-opencode-request` | 覆盖为生成的 OpenCode 格式 `msg_` 标识 |
+| `x-opencode-session`、`x-opencode-session-id`、`x-session-affinity`、`X-Session-Id` | 覆盖为同一个生成的 OpenCode 格式 `ses_` 标识 |
+| `x-opencode-request` | 移除；OpenCode 2.x 不再发送，当前免费端点会拒绝此旧版头 |
 | `x-parent-session-id`、`x-opencode-parent-session-id` | 网关生成新的请求会话，不携带调用方的父会话标识 |
 
-生成的标识在同一次入口请求的重试中保持不变，不继承调用方的跨轮会话身份。需要自行管理上游会话时，关闭此开关后使用显式渠道请求头配置。
+生成的标识在同一次入口请求的重试中保持不变，不继承调用方的跨轮会话身份。每个新会话从计数 1 开始，时间部分按官方降序编码，随机后缀保证并发会话唯一；不再使用持续累加的进程计数器。需要自行管理上游会话时，关闭此开关后使用显式渠道请求头配置。
 
 关闭开关后仅透传已有标识，自定义请求头仍生效。开启时，在通配符、正则、显式渠道／运行时请求头覆盖全部应用之后，再统一 UA、`x-opencode-*`、父会话、`x-session-id`、`x-session-affinity`、`x-stainless-*`、`x-cline-*`、`x-app`、`x-title`，确保最终出站身份不被旧配置覆盖。鉴权和其他自定义头仍按原有规则生效。
 
-请求头定义对照 [OpenCode 官方源码 907b3bc 的 request.ts](https://github.com/anomalyco/opencode/blob/907b3bc518fa48e90e8ec24dd327d13eee71c36c/packages/opencode/src/session/llm/request.ts#L187)，其中新增的 `x-opencode-session-id` 与 `x-opencode-session` 使用相同值。
+请求头定义对照 [OpenCode 官方源码 81200db 的 model-request.ts](https://github.com/anomalyco/opencode/blob/81200db2a3a86fc72a60dff996557f59865a6f24/packages/core/src/session/model-request.ts#L282)。
 
 ## 免费对话模型兼容
 
@@ -38,13 +38,51 @@ OpenCode Zen 和 Go 共用“统一使用 OpenCode 客户端标识”开关，�
 Zen 的 Chat Completions／Responses 免费模型（`-free` 后缀及 `big-pickle`）默认执行以下处理：
 
 - 上游始终使用 `stream: true`；后台测试或非流式调用方的响应由网关汇总为 JSON，保留用量。
-- 保留原有工具及其参数，只补缺少的 `bash`、`edit`、`glob`、`grep`、`read` 函数声明，不添加系统提示词。
+- 保留原有工具及其参数，只补缺少的 `shell`、`edit`、`glob`、`grep`、`read` 函数声明，不添加系统提示词。补充的声明使用完整的 OpenCode 参数定义，不再使用空 schema；快照参考 opencode2api，来源及许可证见 `relay/channel/opencode/opencode_tools.LICENSE`。
 - Chat 请求开启流式用量；没有客户端工具且未指定 `tool_choice` 时设为 `none`。Responses 保留客户端原有选择。
 - 模型若调用仅为兼容而补充的工具，返回明确错误；调用方原本声明的同名工具正常透传。
 - 校验 SSE 错误、结束事件、工具名分片、超时和取消；错误或截断后不补成功结束标记。单事件限 8 MiB，非流式汇总限 32 MiB。
 - Zen 付费模型、Go、Messages／Gemini 上游不应用此兼容逻辑。客户端使用 Claude／Gemini 协议、但转为免费 Chat 上游的请求仍应用兼容处理。
 
 这部分处理独立于请求头开关，全局或渠道请求体透传均不会将其关闭。OpenCode 按模型选择协议，Chat、Messages、Gemini 及 Responses 入口均须经过相应转换及模型映射。既有 Chat／Messages → Responses 转换也经过同一响应校验；`muse-spark-*` 使用 `/v1/responses`。
+
+免费模型使用官方默认 `https://opencode.ai/zen` 地址时，推理请求自动改发 `https://opencode.ai/inference/openai`，已有渠道无需重新保存。付费模型、Go、模型列表接口和自定义网关地址保持原配置；自建反向代理应自行指向新的免费推理地址。API key 仍使用该渠道配置的值，不改成匿名凭据。
+
+## 403 回归修复：2026-10-15
+
+对照 [opencode2api a6601da](https://github.com/jasonxu114514/opencode2api/tree/a6601da673c03832bf78ce04b100dee8c8a92385) 和官方最新源码，重新用 MiMo 2.6 Flash Free 复现了当前代码的 HTTP 403。所有生成请求均使用流式。匿名 `public` 凭据的单变量对照结果如下：
+
+| 请求变化 | 结果 |
+| --- | --- |
+| 完整兼容请求发往旧 `/zen/v1/chat/completions` | 403 FreeTierError |
+| 同一请求发往 `/inference/openai/v1/chat/completions` | 200，正常结束 |
+| 成功请求重新加入 `x-opencode-request` | 403 FreeTierError |
+| 成功请求换回原有空参数工具定义 | 403 FreeTierError |
+| 成功请求使用计数 64 的 session 时间部分 | 403 FreeTierError |
+| 保留客户端自定义 `read(path)` 工具或其他非空参数 schema | 200，工具调用正常 |
+
+[官方旧地址代理](https://github.com/anomalyco/opencode/blob/81200db2a3a86fc72a60dff996557f59865a6f24/packages/console/app/src/lib/inference-proxy.ts) 会剥离 `public` 鉴权，说明旧地址与直接推理入口并不等价。本次修复同时覆盖地址、旧请求头、session 编码和空工具 schema。参考项目关于工具描述必须逐字一致的说法未在本次实测中成立，因此不覆盖调用方工具定义，以免改变 agent 实际执行的参数。
+
+使用用户提供的 key，MiMo 与 Muse 1.3 的 `read(path)` 流式调用通过；MiMo 的实际后台渠道测试路径也通过，覆盖对外别名 `mimo-v2.6-flash`、非流式/流式调用方、全局/渠道透传和冲突身份头。当前 key 目录中的 10 个免费对话模型全部返回 HTTP 200、`OK` 和正常结束事件：
+
+| 模型 | HTTP | 正文及结束事件 |
+| --- | --- | --- |
+| big-pickle | 200 | OK，正常结束 |
+| cat-jam-free | 200 | OK，正常结束 |
+| deepseek-v4.1-flash-free | 200 | OK，正常结束 |
+| longcat-2.5-preview-free | 200 | OK，正常结束 |
+| mimo-v2.6-flash-free | 200 | OK，正常结束 |
+| muse-spark-1.2-contributor-free | 200 | OK，正常结束 |
+| muse-spark-1.3-contributor-free | 200 | OK，正常结束 |
+| nemotron-3.5-lightning-free | 200 | OK，正常结束 |
+| space-bunny-free | 200 | OK，正常结束 |
+| step-5-preview-free | 200 | OK，正常结束 |
+
+匿名目录测试中这 10 个模型也均返回 200，其中 Big Pickle 一次正文为空；匿名后台 MiMo 曾返回 429 `Endpoint is unavailable`，这类上游结果保持原样。JEV 为非流式 SystemOne，按要求跳过。后台测试默认仅允许输出 16 tokens，可能正常以 `length` 结束，不等于生成了完整回答。
+
+验证：`go test ./relay/channel ./relay/channel/opencode ./relay ./controller ./dto -count=1`、前端 `bun run build` 均通过。七份语言文件的新文案键均有效；`bun run i18n:lint` 的 354 项报告逐项核对均位于本次未修改的原有代码行。
+
+本地通过不代表线上部署已更新。线上需部署包含本次修复的版本，并开启“统一使用 OpenCode 客户端标识”；对外无 `-free` 后缀的别名仍需映射到官方免费模型 ID。
 
 ## 403 回归修复：2026-10-05
 

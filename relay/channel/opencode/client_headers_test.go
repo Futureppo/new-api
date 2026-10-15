@@ -186,8 +186,10 @@ func TestClientHeadersOnUpstreamRequests(t *testing.T) {
 						require.Equal(t, "cli", got.header.Get("x-opencode-client"))
 						require.Equal(t, "global", got.header.Get("x-opencode-project"))
 						require.Regexp(t, `^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get("x-opencode-session"))
-						require.Regexp(t, `^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$`, got.header.Get("x-opencode-request"))
+						require.Empty(t, got.header.Get("x-opencode-request"))
 						require.Equal(t, got.header.Get("x-opencode-session"), got.header.Get("x-opencode-session-id"))
+						require.Equal(t, got.header.Get("x-opencode-session"), got.header.Get("x-session-affinity"))
+						require.Equal(t, got.header.Get("x-opencode-session"), got.header.Get("X-Session-Id"))
 						for _, name := range []string{"x-parent-session-id", "x-opencode-parent-session-id", "x-stainless-package-version", "x-cline-version", "x-app", "x-title"} {
 							require.Empty(t, got.header.Get(name), name)
 						}
@@ -214,7 +216,7 @@ func TestMissingClientIdentifiersRemainStableAcrossRetries(t *testing.T) {
 	require.NoError(t, adaptor.SetupRequestHeader(c, &first, newRelayInfo("mimo-v2.5-free")))
 	retry := make(http.Header)
 	require.NoError(t, adaptor.SetupRequestHeader(c, &retry, newGoRelayInfo("kimi-k3")))
-	for _, name := range []string{"x-opencode-session", "x-opencode-session-id", "x-opencode-request", "x-opencode-project"} {
+	for _, name := range []string{"x-opencode-session", "x-opencode-session-id", "x-session-affinity", "X-Session-Id", "x-opencode-project"} {
 		require.NotEmpty(t, first.Get(name))
 		require.Equal(t, first.Get(name), retry.Get(name))
 	}
@@ -223,7 +225,8 @@ func TestMissingClientIdentifiersRemainStableAcrossRetries(t *testing.T) {
 	other := make(http.Header)
 	require.NoError(t, adaptor.SetupRequestHeader(otherContext, &other, newRelayInfo("mimo-v2.5-free")))
 	require.NotEqual(t, first.Get("x-opencode-session"), other.Get("x-opencode-session"))
-	require.NotEqual(t, first.Get("x-opencode-request"), other.Get("x-opencode-request"))
+	require.Empty(t, first.Get("x-opencode-request"))
+	require.Empty(t, other.Get("x-opencode-request"))
 }
 
 func TestPartiallyMissingClientIdentifiersAreNormalized(t *testing.T) {
@@ -238,12 +241,33 @@ func TestPartiallyMissingClientIdentifiersAreNormalized(t *testing.T) {
 			}
 			header := make(http.Header)
 			require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &header, newRelayInfo("mimo-v2.5-free")))
-			require.NotEmpty(t, header.Get(missing))
+			if missing == "x-opencode-request" {
+				require.Empty(t, header.Get(missing))
+			} else {
+				require.NotEmpty(t, header.Get(missing))
+			}
 			for name, values := range c.Request.Header {
 				require.NotEqual(t, values[0], header.Get(name))
 			}
 			require.Equal(t, defaultProject, header.Get("x-opencode-project"))
 			require.Equal(t, header.Get("x-opencode-session"), header.Get("x-opencode-session-id"))
 		})
+	}
+}
+
+func TestSessionIdentifiersDoNotAccumulateProcessWideCounter(t *testing.T) {
+	// The old global counter produced low timestamp bits outside the client's
+	// descending-session range after the 63rd request, regardless of elapsed time.
+	seen := make(map[string]bool)
+	for i := 0; i < 256; i++ {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		id, err := clientSessionIdentifier(c)
+		require.NoError(t, err)
+		require.Regexp(t, `^ses_[0-9a-f]{9}ffe[0-9A-Za-z]{14}$`, id)
+		require.False(t, seen[id], "sessions must remain unique within a millisecond")
+		seen[id] = true
+		retry, err := clientSessionIdentifier(c)
+		require.NoError(t, err)
+		require.Equal(t, id, retry)
 	}
 }

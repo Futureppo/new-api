@@ -52,7 +52,7 @@ func TestFreeShapePreservesToolsAndZeroFields(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, gjson.GetBytes(shaped, "stream").Bool())
 		require.Equal(t, gjson.Parse(tools).Array()[0].Raw, gjson.GetBytes(shaped, "tools.0").Raw)
-		require.Len(t, gjson.GetBytes(shaped, "tools").Array(), 5)
+		require.Len(t, gjson.GetBytes(shaped, "tools").Array(), 6)
 		require.False(t, injected["bash"])
 		require.True(t, injected["read"])
 		require.Equal(t, "9007199254740993", gjson.GetBytes(shaped, "large").Raw)

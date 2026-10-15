@@ -40,8 +40,9 @@ func TestGetRequestURLRoutesModelsToRequiredEndpoints(t *testing.T) {
 	}{
 		{name: "gpt responses", model: "gpt-5.6-sol", want: "https://opencode.ai/zen/v1/responses"},
 		{name: "grok responses", model: "grok-4.5", want: "https://opencode.ai/zen/v1/responses"},
-		{name: "muse 1.2 responses", model: "muse-spark-1.2-contributor-free", want: "https://opencode.ai/zen/v1/responses"},
-		{name: "muse 1.3 responses", model: "muse-spark-1.3-contributor-free", want: "https://opencode.ai/zen/v1/responses"},
+		{name: "muse 1.2 responses", model: "muse-spark-1.2-contributor-free", want: "https://opencode.ai/inference/openai/v1/responses"},
+		{name: "muse 1.3 responses", model: "muse-spark-1.3-contributor-free", want: "https://opencode.ai/inference/openai/v1/responses"},
+		{name: "mimo free", model: "mimo-v2.6-flash-free", want: "https://opencode.ai/inference/openai/v1/chat/completions"},
 		{name: "claude messages", model: "claude-sonnet-5", want: "https://opencode.ai/zen/v1/messages"},
 		{name: "qwen messages", model: "qwen3.6-plus", want: "https://opencode.ai/zen/v1/messages"},
 		{name: "gemini", model: "gemini-3-flash", want: "https://opencode.ai/zen/v1/models/gemini-3-flash:generateContent"},
@@ -66,6 +67,22 @@ func TestGetRequestURLRejectsResponsesCompaction(t *testing.T) {
 	info.RelayMode = relayconstant.RelayModeResponsesCompact
 	_, err := (&Adaptor{}).GetRequestURL(info)
 	require.ErrorContains(t, err, "does not support responses compaction")
+}
+
+func TestFreeInferenceURLMigrationPreservesCustomRoutes(t *testing.T) {
+	for _, tc := range []struct{ base, model, want string }{
+		{"https://opencode.ai/zen/", "mimo-v2.6-flash-free", freeInferenceBaseURL + "/v1/chat/completions"},
+		{"https://opencode.ai/zen", "big-pickle", freeInferenceBaseURL + "/v1/chat/completions"},
+		{"https://opencode.ai/inference", "mimo-v2.6-flash-free", "https://opencode.ai/inference/v1/chat/completions"},
+		{"https://gateway.example/zen", "mimo-v2.6-flash-free", "https://gateway.example/zen/v1/chat/completions"},
+		{"https://opencode.ai/zen", "mimo-v2.5-pro", "https://opencode.ai/zen/v1/chat/completions"},
+	} {
+		info := newRelayInfo(tc.model)
+		info.ChannelBaseUrl = tc.base
+		got, err := (&Adaptor{}).GetRequestURL(info)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, got)
+	}
 }
 
 func TestGetRequestURLRoutesOpenCodeGoModels(t *testing.T) {

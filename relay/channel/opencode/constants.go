@@ -1,9 +1,10 @@
 package opencode
 
 const (
-	defaultUserAgent = "opencode/1.18.34"
-	defaultClient    = "cli"
-	defaultProject   = "global"
+	defaultUserAgent     = "opencode/latest/2.0.29/cli"
+	defaultClient        = "cli"
+	defaultProject       = "global"
+	freeInferenceBaseURL = "https://opencode.ai/inference/openai"
 )
 
 var ModelList = []string{
