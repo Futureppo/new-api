@@ -1,6 +1,7 @@
 package qianwen
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -19,7 +20,7 @@ import (
 func TestQianwenURLs(t *testing.T) {
 	a := &Adaptor{}
 	for _, base := range []string{"https://maas.qianwenaiapi.com", "https://proxy.example/prefix"} {
-		for _, suffix := range []string{"", "/compatible-mode/v1", "/apps/anthropic", "/apps/anthropic/v1", "/compatible-mode/v1/models", "/compatible-mode/v1/chat/completions", "/compatible-mode/v1/responses", "/apps/anthropic/v1/messages"} {
+		for _, suffix := range []string{"", "/compatible-mode", "/compatible-mode/v1", "/compatible-mode/v1/systemone", "/apps/anthropic", "/apps/anthropic/v1", "/compatible-mode/v1/models", "/compatible-mode/v1/chat/completions", "/compatible-mode/v1/responses", "/apps/anthropic/v1/messages"} {
 			for _, tc := range []struct {
 				format types.RelayFormat
 				mode   int
@@ -28,6 +29,7 @@ func TestQianwenURLs(t *testing.T) {
 				{types.RelayFormatOpenAI, relayconstant.RelayModeChatCompletions, "/compatible-mode/v1/chat/completions"},
 				{types.RelayFormatClaude, relayconstant.RelayModeUnknown, "/apps/anthropic/v1/messages"},
 				{types.RelayFormatOpenAIResponses, relayconstant.RelayModeResponses, "/compatible-mode/v1/responses"},
+				{types.RelayFormatTypeSafe, relayconstant.RelayModeTypeSafeSystemOne, "/compatible-mode/v1/systemone"},
 			} {
 				info := &relaycommon.RelayInfo{RelayFormat: tc.format, RelayMode: tc.mode, ChannelMeta: &relaycommon.ChannelMeta{ChannelBaseUrl: " " + base + suffix + "/ "}}
 				got, err := a.GetRequestURL(info)
@@ -95,7 +97,7 @@ func TestQianwenAuthHeaders(t *testing.T) {
 	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
 	c.Request.Header.Set("Authorization", "Bearer client-key")
 	c.Request.Header.Set("x-api-key", "client-key")
-	for _, format := range []types.RelayFormat{types.RelayFormatOpenAI, types.RelayFormatClaude, types.RelayFormatOpenAIResponses} {
+	for _, format := range []types.RelayFormat{types.RelayFormatOpenAI, types.RelayFormatClaude, types.RelayFormatOpenAIResponses, types.RelayFormatTypeSafe} {
 		h := http.Header{}
 		info := &relaycommon.RelayInfo{RelayFormat: format, ChannelMeta: &relaycommon.ChannelMeta{ApiKey: "upstream-key"}}
 		require.NoError(t, (&Adaptor{}).SetupRequestHeader(c, &h, info))
@@ -106,6 +108,38 @@ func TestQianwenAuthHeaders(t *testing.T) {
 		} else {
 			require.Equal(t, "Bearer upstream-key", h.Get("Authorization"))
 			require.Empty(t, h.Get("x-api-key"))
+		}
+	}
+}
+
+func TestQianwenSystemOneInputOnlyUsage(t *testing.T) {
+	for _, tc := range []struct {
+		usage string
+		input int
+		valid bool
+	}{
+		{`{"input_tokens":125}`, 125, true},
+		{`{"input_tokens":0}`, 0, true},
+		{`{"input_tokens":125,"output_tokens":0}`, 125, true},
+		{`{}`, 0, false},
+		{`{"input_tokens":null}`, 0, false},
+		{`{"input_tokens":-1}`, 0, false},
+		{`{"input_tokens":1.5}`, 0, false},
+	} {
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		body := `{"model":"decision-model-preview","answers":{"urgent":{"type":"noul","noul":0}},"usage":` + tc.usage + `}`
+		info := &relaycommon.RelayInfo{RelayMode: relayconstant.RelayModeTypeSafeSystemOne, ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeQianwenAI}}
+		usage, err := (&Adaptor{}).DoResponse(c, &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, info)
+		if tc.valid {
+			require.Nil(t, err, "%v", err)
+			require.Equal(t, tc.input, usage.(*dto.Usage).PromptTokens)
+			require.Zero(t, usage.(*dto.Usage).CompletionTokens)
+			require.Equal(t, body, w.Body.String())
+		} else {
+			require.Nil(t, usage)
+			require.Equal(t, http.StatusBadGateway, err.StatusCode)
+			require.False(t, c.Writer.Written())
 		}
 	}
 }

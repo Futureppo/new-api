@@ -10,6 +10,7 @@ Base URL 可填根地址、`/compatible-mode/v1`、`/apps/anthropic`、`/apps/an
 | --- | --- | --- |
 | `POST /v1/chat/completions` | `/compatible-mode/v1/chat/completions` | 原生 OpenAI Chat；JSON / SSE |
 | `POST /v1/chat/completions`，模型 `tongyi-intent-detect-v3` | 同上 | 意图分类、意图加工具调用、仅工具调用 |
+| `POST /v1/systemone`，模型 `decision-model-preview` | `/compatible-mode/v1/systemone` | 同步结构化决策：分类、是非判断、评分 |
 | `POST /v1/messages` | `/apps/anthropic/v1/messages` | 原生 Anthropic Messages；JSON / SSE |
 | `POST /v1/responses` | `/compatible-mode/v1/responses` | 原生 Responses；JSON / SSE |
 | `GET /v1/responses/{id}` | `/compatible-mode/v1/responses/{id}` | 查询已存储响应 |
@@ -30,7 +31,29 @@ Messages 使用渠道密钥生成 `x-api-key`，默认 `anthropic-version: 2023-
 
 默认测试模型 `qwen3.7-plus`。对话推荐模型还包括 `qwen3.8-max`、`qwen3.8-flash`、`deepseek-v4.1-flash`、`kimi-k3`、`glm-5.3`、`MiniMax-M2.5`。推荐列表不代表账号授权；支持手动配置其他模型及模型映射。获取模型请求 `/compatible-mode/v1/models`，保留自定义模型列表地址；失败显示上游错误，不以推荐列表替代真实结果。
 
-渠道测试可选择自动、Chat Completions、Messages、Responses，以及对应的图片、音频、视频、向量、重排序接口。自动按模型家族选择，对话模型默认 Chat Completions。流式切换只对支持流式的接口生效。
+渠道测试可选择自动、System One、Chat Completions、Messages、Responses，以及对应的图片、音频、视频、向量、重排序接口。自动根据模型映射后的模型家族选择，普通对话模型默认 Chat Completions，决策模型选择 System One。流式切换只对支持流式的接口生效。
+
+## 决策模型
+
+`decision-model-preview` 使用独立的 System One 协议，与下面的 `tongyi-intent-detect-v3` 不同。客户端调用 `POST /v1/systemone`，网关转发到官方的 `/compatible-mode/v1/systemone`，使用 Bearer 密钥认证。也支持版本模型及渠道模型别名。
+
+```json
+{
+  "model": "decision-model-preview",
+  "state": {"text": "登录后页面打不开", "attempts": 0},
+  "questions": {
+    "team": {"type": "choice", "criteria": {"support": "技术问题", "sales": "购买咨询"}},
+    "urgent": {"type": "noul", "instructions": "是否需要立即处理？"},
+    "severity": {"type": "score", "criteria": ["轻微", "严重"]}
+  }
+}
+```
+
+`state` 可为字符串、对象或数组，`questions` 为以问题 ID 为键的对象。返回的 `answers`、概率、置信度及零值保留原样。该模型不生成文本，不支持流式、Chat Completions、Messages 或 Responses。请求了不支持的协议时，网关提示改用 `/v1/systemone`。
+
+用量按官方 `usage.input_tokens` 结算，缺少 `output_tokens` 时计为 0，不根据结构化答案估算输出 Token。渠道测试使用 System One 样例；自动检测支持链式别名，即使开启测试流式开关也不会发送流式决策请求。Base URL 还可填写 TypeSafe SDK 使用的 `/compatible-mode` 地址或完整 `/compatible-mode/v1/systemone` 地址。
+
+模型获取按钮已为千问渠道开放。获取仍请求真实的 `/compatible-mode/v1/models`，支持自定义模型列表地址；推荐模型与上游实际可用模型分别处理。`TestQianwenModelDiscoveryLive` 与 `TestQianwenDecisionLive` 需配置专用 `QIANWEN_API_KEY`，未配置时跳过，不代表真实连通验证通过。
 
 ## 意图理解
 
@@ -184,6 +207,7 @@ Wan3.0 / Wan2.7 使用 `resolution` / `ratio`；兼容尺寸如 `1280x720` 会�
 
 - [Chat](https://platform.qianwenai.com/docs/api-reference/chat/openai-chat)、[Messages](https://platform.qianwenai.com/docs/api-reference/chat/anthropic)、[Responses](https://platform.qianwenai.com/docs/api-reference/chat/openai-responses)
 - [意图理解（Tongyi-Intent-Detect）](https://platform.qianwenai.com/docs/developer-guides/text-generation/intent-detect)
+- [决策模型 System One API](https://platform.qianwenai.com/docs/api-reference/decision-model-api)、[decision-model-preview 模型信息](https://www.qianwenai.com/models/decision-model-preview#overview)（2026-10-15 核对）
 - [查询响应](https://platform.qianwenai.com/docs/api-reference/chat/retrieve-response)、[删除响应](https://platform.qianwenai.com/docs/api-reference/chat/delete-response)、[输入项](https://platform.qianwenai.com/docs/api-reference/chat/list-input-items)
 - [兼容图片](https://platform.qianwenai.com/docs/api-reference/image-generation/qwen-text-to-image-openai)、[原生 Qwen 图片](https://platform.qianwenai.com/docs/api-reference/image-generation/qwen-text-to-image)、[Wan2.7 同步图片](https://platform.qianwenai.com/docs/api-reference/image-generation/wan27-image-gen-edit/synchronous)
 - [文本向量](https://platform.qianwenai.com/docs/api-reference/text-embedding/openai-embedding)、[兼容重排序](https://platform.qianwenai.com/docs/api-reference/rerank/openai-rerank)、[原生重排序](https://platform.qianwenai.com/docs/api-reference/rerank/dashscope-rerank)

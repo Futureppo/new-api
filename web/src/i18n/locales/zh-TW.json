@@ -1,5 +1,6 @@
 {
   "translation": {
+    "决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。": "決策模型 decision-model-preview 使用 System One（/v1/systemone），請求需包含 state 和 questions，不支援串流。渠道測試可選擇自動偵測或 System One。",
     "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "意圖理解模型 tongyi-intent-detect-v3 使用 Chat Completions，透過 system 訊息選擇意圖分類或工具呼叫模式。",
     "千问AI平台": "千問AI平台",
     "千问AI平台支持对话、图片、音频、视频、向量和重排序，以及已存储 Responses 的查询和删除；暂不支持 compact。填写按量付费 API Key，模型可获取或手动配置。非 Token 模型需配置单位价格：图片按张、视频及音频生成按秒、字符计费 TTS 按字符。": "千問AI平台支援對話、圖片、音訊、影片、向量和重排序，以及已儲存 Responses 的查詢和刪除；暫不支援 compact。填寫隨用隨付 API Key，模型可取得或手動設定。非 Token 模型需設定單位價格：圖片按張、影片及音訊生成按秒、字元計費 TTS 按字元。",

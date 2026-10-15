@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
@@ -47,6 +48,17 @@ func TestQianwenRegistrationAndModelDiscovery(t *testing.T) {
 	names, err = fetchChannelModelIDsWithKey(ch, ch.GetBaseURL(), ch.Key, upstream.URL+"/custom")
 	require.NoError(t, err)
 	require.Equal(t, []string{"custom-model"}, names)
+}
+
+func TestQianwenModelDiscoveryLive(t *testing.T) {
+	key := os.Getenv("QIANWEN_API_KEY")
+	if key == "" {
+		t.Skip("set QIANWEN_API_KEY to verify the real model list")
+	}
+	_, _, ch := setupQianwenGateway(t, "https://maas.qianwenaiapi.com", key)
+	names, err := fetchChannelModelIDsWithKey(ch, ch.GetBaseURL(), key, "")
+	require.NoError(t, err)
+	require.NotEmpty(t, names)
 }
 
 func TestQianwenModelDiscoveryErrors(t *testing.T) {

@@ -4361,6 +4361,11 @@ const EditChannelModal = (props) => {
                                   '意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。',
                                 )}
                               </div>
+                              <div>
+                                {t(
+                                  '决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。',
+                                )}
+                              </div>
                             </>
                           }
                           className='!rounded-lg'

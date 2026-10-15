@@ -28,7 +28,9 @@ describe('Qianwen model fetching', () => {
   test('offers model fetching for new and existing Qianwen channels', () => {
     expect(isManualModelFetchSupported(77)).toBe(true);
     expect(isManualModelFetchSupported('77')).toBe(true);
-    expect(isManualModelFetchSupported(77, 'json', 'https://proxy.example/models')).toBe(true);
+    expect(
+      isManualModelFetchSupported(77, 'json', 'https://proxy.example/models'),
+    ).toBe(true);
   });
 });
 

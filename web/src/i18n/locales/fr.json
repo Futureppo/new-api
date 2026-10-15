@@ -1,5 +1,6 @@
 {
   "translation": {
+    "决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。": "Le modèle decision-model-preview utilise System One (/v1/systemone) avec state et questions, sans streaming. Pour le test du canal, sélectionnez Automatique ou System One.",
     "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "Le modèle tongyi-intent-detect-v3 utilise Chat Completions. Le message system sélectionne la classification des intentions ou les appels aux outils.",
     "千问AI平台": "Plateforme IA Qianwen",
     "千问AI平台支持对话、图片、音频、视频、向量和重排序，以及已存储 Responses 的查询和删除；暂不支持 compact。填写按量付费 API Key，模型可获取或手动配置。非 Token 模型需配置单位价格：图片按张、视频及音频生成按秒、字符计费 TTS 按字符。": "Qianwen AI Platform prend en charge le dialogue, les images, le son, la vidéo, les embeddings, le reclassement et la consultation/suppression des Responses stockées. Compact non pris en charge. Utilisez une clé API à la consommation ; récupérez ou configurez les modèles. Définissez un prix par image, par seconde de vidéo/son ou par caractère pour les TTS facturés au caractère.",
