@@ -25,41 +25,33 @@ import {
   channelTestSupportsStream,
 } from './channelTestEndpoints';
 
-const options = (type) =>
-  getChannelTestEndpoints(type, (key) => key).map(({ value }) => value);
+const options = () =>
+  getChannelTestEndpoints((key) => key).map(({ value }) => value);
 
 describe('channel test endpoints', () => {
-  test('adds Decisions and existing synchronous tests without changing auto detection', () => {
-    expect(options(1)[0]).toBe('');
+  test('exposes the full endpoint catalog without a channel filter', () => {
+    expect(options()).toEqual(CHANNEL_TEST_ENDPOINTS.map(({ value }) => value));
+    expect(options()[0]).toBe('');
     for (const value of [
       'openai-decisions',
       'moderations',
       'audio-speech',
       'audio-transcription',
+      'batch-generation',
+      'typesafe-systemone',
+      'vertex-native',
+      'cohere-chat',
+      'cohere-rerank',
+      'cohere-embeddings',
     ]) {
-      expect(options(1)).toContain(value);
-      expect(channelTestSupportsStream(1, value)).toBe(false);
+      expect(options()).toContain(value);
     }
     expect(channelTestSupportsStream(1, '')).toBe(true);
     expect(channelTestSupportsStream(1, 'openai-response')).toBe(true);
-    expect(options(3)).not.toContain('openai-decisions');
   });
 
-  test('preserves provider restrictions and limits batch generation to GMICloud', () => {
-    expect(options(71)).toEqual(['', 'typesafe-systemone']);
+  test('keeps stream capabilities separate from endpoint visibility', () => {
     expect(channelTestSupportsStream(71, '')).toBe(false);
-    expect(options(72)).toEqual(['', 'openai', 'anthropic']);
-    expect(options(77)).toEqual([
-      '',
-      'openai',
-      'openai-response',
-      'anthropic',
-      'jina-rerank',
-      'image-generation',
-      'openai-video',
-      'embeddings',
-      'audio-speech',
-    ]);
     for (const endpoint of [
       '',
       'openai',
@@ -70,6 +62,7 @@ describe('channel test endpoints', () => {
       expect(channelTestSupportsStream(77, endpoint)).toBe(true);
     }
     for (const endpoint of [
+      'typesafe-systemone',
       'jina-rerank',
       'image-generation',
       'openai-video',
@@ -80,14 +73,23 @@ describe('channel test endpoints', () => {
     expect(channelTestSupportsStream(77, 'openai-response-compact')).toBe(
       false,
     );
-    expect(options('34')).toContain('cohere-chat');
-    expect(options(1)).not.toContain('cohere-chat');
-    expect(options(67)).toContain('batch-generation');
-    expect(options(1)).not.toContain('batch-generation');
-    expect(channelTestSupportsStream(67, 'batch-generation')).toBe(false);
+    for (const type of [1, 3, 20, 34, 41, 67, 71, 72, 77, '34', undefined]) {
+      for (const endpoint of [
+        'openai-decisions',
+        'moderations',
+        'audio-transcription',
+        'batch-generation',
+        'typesafe-systemone',
+        'vertex-native',
+      ]) {
+        expect(channelTestSupportsStream(type, endpoint)).toBe(false);
+      }
+      expect(channelTestSupportsStream(type, 'unknown-endpoint')).toBe(false);
+    }
+    expect(channelTestSupportsStream(1, 'audio-speech')).toBe(false);
   });
 
-  test('the dialog catalog covers every backend channel test endpoint', () => {
+  test('the displayed options cover every backend channel test endpoint', () => {
     const source = readFileSync(
       new URL('../../../constant/endpoint_type.go', import.meta.url),
       'utf8',
@@ -97,27 +99,12 @@ describe('channel test endpoints', () => {
         /^\s*EndpointType\w+\s+EndpointType\s*=\s*"([^"]+)"/gm,
       ),
     ].map((match) => match[1]);
-    expect(
-      CHANNEL_TEST_ENDPOINTS.map(({ value }) => value)
-        .filter(Boolean)
-        .sort(),
-    ).toEqual(backend.sort());
+    expect(options().filter(Boolean).sort()).toEqual(backend.sort());
   });
 });
 
-describe('OpenRouter channel test endpoints', () => {
-  test('exposes supported inference endpoints and stream choices', () => {
-    expect(options(20)).toEqual([
-      '',
-      'openai',
-      'openai-response',
-      'anthropic',
-      'jina-rerank',
-      'image-generation',
-      'embeddings',
-      'audio-speech',
-      'audio-transcription',
-    ]);
+describe('OpenRouter channel test streams', () => {
+  test('retains synchronous samples and streaming protocols', () => {
     expect(channelTestSupportsStream(20, 'openai')).toBe(true);
     expect(channelTestSupportsStream(20, 'anthropic')).toBe(true);
     expect(channelTestSupportsStream(20, 'openai-response')).toBe(true);
@@ -134,15 +121,8 @@ describe('OpenRouter channel test endpoints', () => {
   });
 });
 
-describe('Vertex inference endpoints', () => {
-  test('offers native inference and only supported compatibility protocols', () => {
-    expect(options(41)[0]).toBe('');
-    expect(options(41)).toContain('vertex-native');
-    expect(options(41)).toContain('embeddings');
-    expect(options(41)).toContain('audio-speech');
-    expect(options(41)).not.toContain('openai-response-compact');
-    expect(options(41)).not.toContain('jina-rerank');
-    expect(options(1)).not.toContain('vertex-native');
+describe('Vertex inference streams', () => {
+  test('keeps native inference tests synchronous', () => {
     expect(channelTestSupportsStream(41, 'vertex-native')).toBe(false);
   });
 });

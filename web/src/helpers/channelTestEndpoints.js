@@ -17,38 +17,34 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-// Shared by the test dialog and the request sender (including batch tests).
+// Every channel displays this full catalog. Stream capability is resolved
+// separately for the test dialog and request sender (including batch tests).
 export const CHANNEL_TEST_ENDPOINTS = [
   { value: '', label: '', stream: true },
   {
     value: 'vertex-native',
     label: 'Vertex Native (/v1/models/{model}:{action})',
     stream: false,
-    channels: [41],
   },
   {
     value: 'typesafe-systemone',
     label: 'TypeSafe (/v1/systemone)',
     stream: false,
-    channels: [71],
   },
   {
     value: 'cohere-chat',
     label: 'Cohere Chat (/v2/chat)',
     stream: true,
-    channels: [34],
   },
   {
     value: 'cohere-rerank',
     label: 'Cohere Rerank (/v2/rerank)',
     stream: false,
-    channels: [34],
   },
   {
     value: 'cohere-embeddings',
     label: 'Cohere Embeddings (/v2/embed)',
     stream: false,
-    channels: [34],
   },
   { value: 'openai', label: 'OpenAI (/v1/chat/completions)', stream: true },
   {
@@ -65,7 +61,6 @@ export const CHANNEL_TEST_ENDPOINTS = [
     value: 'openai-decisions',
     label: 'OpenAI Decisions (/v1/decisions)',
     stream: false,
-    channels: [1],
   },
   { value: 'anthropic', label: 'Anthropic (/v1/messages)', stream: true },
   {
@@ -96,60 +91,12 @@ export const CHANNEL_TEST_ENDPOINTS = [
     value: 'batch-generation',
     label: 'Batch Generation (/v1/batch/generations)',
     stream: false,
-    channels: [67],
   },
 ];
 
-export function getChannelTestEndpoints(channelType, t) {
-  const type = Number(channelType);
-  return CHANNEL_TEST_ENDPOINTS.filter((endpoint) => {
-    if (endpoint.channels && !endpoint.channels.includes(type)) return false;
-    if (type === 41)
-      return [
-        '',
-        'openai',
-        'anthropic',
-        'openai-response',
-        'gemini',
-        'vertex-native',
-        'embeddings',
-        'image-generation',
-        'audio-speech',
-        'audio-transcription',
-        'openai-video',
-      ].includes(endpoint.value);
-    if (type === 20)
-      return [
-        '',
-        'openai',
-        'anthropic',
-        'openai-response',
-        'embeddings',
-        'jina-rerank',
-        'image-generation',
-        'audio-speech',
-        'audio-transcription',
-      ].includes(endpoint.value);
-    if (type === 71) return ['', 'typesafe-systemone'].includes(endpoint.value);
-    if (type === 72)
-      return ['', 'openai', 'anthropic'].includes(endpoint.value);
-    if (type === 77)
-      return [
-        '',
-        'openai',
-        'anthropic',
-        'openai-response',
-        'image-generation',
-        'openai-video',
-        'audio-speech',
-        'embeddings',
-        'jina-rerank',
-      ].includes(endpoint.value);
-    return true;
-  }).map((endpoint) => ({
+export function getChannelTestEndpoints(t) {
+  return CHANNEL_TEST_ENDPOINTS.map((endpoint) => ({
     ...endpoint,
-    stream:
-      type === 77 && endpoint.value === 'audio-speech' ? true : endpoint.stream,
     label:
       endpoint.value === ''
         ? t('自动检测')
@@ -160,8 +107,10 @@ export function getChannelTestEndpoints(channelType, t) {
 }
 
 export function channelTestSupportsStream(channelType, endpointType) {
-  if (Number(channelType) === 71) return false;
-  return getChannelTestEndpoints(channelType, (key) => key).some(
+  const type = Number(channelType);
+  if (type === 71) return false;
+  if (type === 77 && endpointType === 'audio-speech') return true;
+  return CHANNEL_TEST_ENDPOINTS.some(
     (endpoint) => endpoint.value === endpointType && endpoint.stream,
   );
 }

@@ -65,7 +65,7 @@ const ModelTestModal = ({
   const channelType = Number(
     currentTestChannel?.type ?? currentTestChannel?.channel_type,
   );
-  const endpointTypeOptions = getChannelTestEndpoints(channelType, t);
+  const endpointTypeOptions = getChannelTestEndpoints(t);
   const streamToggleDisabled = !channelTestSupportsStream(
     channelType,
     selectedEndpointType,
@@ -76,13 +76,13 @@ const ModelTestModal = ({
   }, [streamToggleDisabled, isStreamTest, setIsStreamTest]);
 
   React.useEffect(() => {
-    const available = getChannelTestEndpoints(channelType, (key) => key);
+    const available = getChannelTestEndpoints((key) => key);
     if (
       !available.some((endpoint) => endpoint.value === selectedEndpointType)
     ) {
-      setSelectedEndpointType(channelType === 71 ? 'typesafe-systemone' : '');
+      setSelectedEndpointType('');
     }
-  }, [channelType, selectedEndpointType, setSelectedEndpointType]);
+  }, [selectedEndpointType, setSelectedEndpointType]);
 
   const filteredModels = hasChannel
     ? currentTestChannel.models
