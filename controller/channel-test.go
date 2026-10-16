@@ -374,6 +374,13 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 
 func testChannel(channel *model.Channel, testModel string, endpointType string, isStream bool) testResult {
 	tik := time.Now()
+	explicitEndpoint := strings.TrimSpace(endpointType) != ""
+	directEndpoint := false
+	if explicitEndpoint {
+		if _, ok := common.GetDefaultEndpointInfo(constant.EndpointType(strings.TrimSpace(endpointType))); !ok {
+			return testResult{localErr: fmt.Errorf("unknown test endpoint: %s", endpointType)}
+		}
+	}
 	var unsupportedTestChannelTypes = []int{
 		constant.ChannelTypeMidjourney,
 		constant.ChannelTypeMidjourneyPlus,
@@ -383,7 +390,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		constant.ChannelTypeDoubaoVideo,
 		constant.ChannelTypeVidu,
 	}
-	if lo.Contains(unsupportedTestChannelTypes, channel.Type) {
+	if !explicitEndpoint && lo.Contains(unsupportedTestChannelTypes, channel.Type) {
 		channelTypeName := constant.GetChannelTypeName(channel.Type)
 		return testResult{
 			localErr: fmt.Errorf("%s channel test is not supported", channelTypeName),
@@ -410,24 +417,16 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 
+	if explicitEndpoint {
+		var err error
+		channel, directEndpoint, err = channelForExplicitEndpointTest(channel, constant.EndpointType(strings.TrimSpace(endpointType)), testModel)
+		if err != nil {
+			return testResult{localErr: err}
+		}
+	}
 	endpointType = normalizeChannelTestEndpoint(channel, testModel, endpointType)
 	if !common.ChannelTestEndpointSupportsStream(constant.EndpointType(endpointType)) {
 		isStream = false
-	}
-	if endpointType == string(constant.EndpointTypeOpenAIDecisions) && channel.Type != constant.ChannelTypeOpenAI && channel.Type != constant.ChannelTypeOpenRouter {
-		return testResult{localErr: errors.New("/v1/decisions requires an OpenAI or OpenRouter channel")}
-	}
-	if endpointType == string(constant.EndpointTypeBatchGeneration) && channel.Type != constant.ChannelTypeGMICloud {
-		return testResult{localErr: errors.New("batch generation tests require a GMICloud channel")}
-	}
-	if channel.Type == constant.ChannelTypeTypeSafe {
-		if endpointType != string(constant.EndpointTypeTypeSafeSystemOne) {
-			return testResult{localErr: errors.New("TypeSafe only supports /v1/systemone")}
-		}
-		isStream = false
-	}
-	if endpointType == string(constant.EndpointTypeTypeSafeSystemOne) && channel.Type != constant.ChannelTypeTypeSafe && channel.Type != constant.ChannelTypeQianwenAI {
-		return testResult{localErr: errors.New("/v1/systemone requires a TypeSafe or QianwenAI channel")}
 	}
 
 	requestPath := "/v1/chat/completions"
@@ -477,7 +476,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		testModel = ratio_setting.WithCompactModelSuffix(testModel)
 	}
 
-	if channel.Type == constant.ChannelTypeVertexAi && endpointType == string(constant.EndpointTypeVertexNative) {
+	if endpointType == string(constant.EndpointTypeVertexNative) {
 		cap, err := vertexmodel.Resolve(testModel)
 		if err != nil {
 			return testResult{localErr: err}
@@ -581,7 +580,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if constant.EndpointType(endpointType) == constant.EndpointTypeOpenAIVideo ||
 		constant.EndpointType(endpointType) == constant.EndpointTypeBatchGeneration ||
 		(channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsImageModel(testModel)) {
-		return testTaskChannel(c, channel, testModel, tik)
+		return testTaskChannel(c, channel, testModel, tik, directEndpoint)
 	}
 
 	request := buildTestRequest(testModel, endpointType, channel, isStream)
@@ -637,15 +636,6 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	apiType, _ := common.ChannelType2APIType(channel.Type)
-	if info.RelayMode == relayconstant.RelayModeResponsesCompact &&
-		apiType != constant.APITypeOpenAI &&
-		apiType != constant.APITypeCodex {
-		return testResult{
-			context:     c,
-			localErr:    fmt.Errorf("responses compaction test only supports openai/codex channels, got api type %d", apiType),
-			newAPIError: types.NewError(fmt.Errorf("unsupported api type: %d", apiType), types.ErrorCodeInvalidApiType),
-		}
-	}
 	adaptor := relay.GetAdaptor(apiType)
 	if adaptor == nil {
 		return testResult{
@@ -653,6 +643,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			localErr:    fmt.Errorf("invalid api type: %d, adaptor is nil", apiType),
 			newAPIError: types.NewError(fmt.Errorf("invalid api type: %d, adaptor is nil", apiType), types.ErrorCodeInvalidApiType),
 		}
+	}
+	if directEndpoint {
+		adaptor = &explicitEndpointTestAdaptor{Adaptor: adaptor, endpoint: constant.EndpointType(endpointType)}
 	}
 
 	//// 创建一个用于日志的 info 副本，移除 ApiKey
@@ -759,6 +752,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	default:
 		if native, ok := request.(*dto.VertexRequest); ok {
+			if directEndpoint {
+				convertedRequest = native
+				break
+			}
 			a, ok := adaptor.(*vertexchannel.Adaptor)
 			if !ok {
 				return testResult{localErr: errors.New("Vertex native tests require a Vertex channel")}
@@ -841,6 +838,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	if channel.Type == constant.ChannelTypeOpenAI || info.RelayMode == relayconstant.RelayModeDecisions {
 		if info.RelayMode == relayconstant.RelayModeDecisions {
 			jsonData, err = relaycommon.PrepareDecisionsRequest(info, jsonData)
+		} else if explicitEndpoint && info.RelayMode == relayconstant.RelayModeChatCompletions {
+			// An explicit endpoint must not be silently changed to /responses.
+			jsonData, info.UpstreamModelName, _, err = relaycommon.NormalizeOpenAIRequest(jsonData, false)
 		} else {
 			jsonData, err = prepareOpenAIChannelTestRequest(info, jsonData)
 		}
@@ -1081,7 +1081,7 @@ func buildTaskTestLogOther(info *relaycommon.RelayInfo, taskID, requestPath stri
 	return other
 }
 
-func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, tik time.Time) testResult {
+func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, tik time.Time, directEndpoint bool) testResult {
 	taskEndpointType := constant.EndpointTypeOpenAIVideo
 	var jsonData []byte
 	var err error
@@ -1092,7 +1092,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			"model":   testModel,
 			"payload": map[string]any{"prompt": "A small red apple on a white background", "size": "1920x1080"},
 		})
-	} else if channel.Type == constant.ChannelTypeGMICloud && gmicloud.IsBatchModel(testModel) {
+	} else if c.Request.URL.Path == "/v1/batch/generations" {
 		taskEndpointType = constant.EndpointTypeBatchGeneration
 		jsonData, err = common.Marshal(map[string]any{
 			"model": testModel,
@@ -1137,6 +1137,9 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 		err := fmt.Errorf("invalid api platform: %s", platform)
 		taskErr := service.TaskErrorWrapperLocal(err, "invalid_api_platform", http.StatusBadRequest)
 		return taskErrorToTestResult(c, taskErr)
+	}
+	if directEndpoint {
+		adaptor = &explicitEndpointTaskTestAdaptor{TaskAdaptor: adaptor, endpoint: taskEndpointType, body: jsonData}
 	}
 	adaptor.Init(info)
 	if taskErr := adaptor.ValidateRequestAndSetAction(c, info); taskErr != nil {
@@ -1202,7 +1205,10 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 		}
 	}
-	if resp != nil && resp.StatusCode != http.StatusOK && !(channel.Type == constant.ChannelTypeOpenRouter && resp.StatusCode == http.StatusAccepted) {
+	accepted := resp.StatusCode == http.StatusOK ||
+		((directEndpoint || channel.Type == constant.ChannelTypeOpenRouter) && resp.StatusCode == http.StatusAccepted) ||
+		(directEndpoint && resp.StatusCode == http.StatusCreated)
+	if !accepted {
 		err := service.RelayErrorHandler(c.Request.Context(), resp, false)
 		common.SysError(fmt.Sprintf(
 			"channel test bad response: channel_id=%d name=%s type=%d model=%s endpoint_type=%s status=%d err=%v",
@@ -1433,10 +1439,10 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if endpointType == string(constant.EndpointTypeVertexNative) {
+		return buildVertexNativeTestRequest(model)
+	}
 	if channel != nil && channel.Type == constant.ChannelTypeVertexAi {
-		if endpointType == string(constant.EndpointTypeVertexNative) {
-			return buildVertexNativeTestRequest(model)
-		}
 		if endpointType == string(constant.EndpointTypeAudioSpeech) {
 			return &dto.AudioRequest{Model: model, Input: "Hello", Voice: dto.AudioVoice{Name: "Kore"}, ResponseFormat: "wav"}
 		}

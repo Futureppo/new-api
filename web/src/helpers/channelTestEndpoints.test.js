@@ -52,6 +52,8 @@ describe('channel test endpoints', () => {
 
   test('keeps stream capabilities separate from endpoint visibility', () => {
     expect(channelTestSupportsStream(71, '')).toBe(false);
+    expect(channelTestSupportsStream(71, 'openai')).toBe(true);
+    expect(channelTestSupportsStream(71, 'anthropic')).toBe(true);
     for (const endpoint of [
       '',
       'openai',

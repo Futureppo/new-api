@@ -33,13 +33,9 @@ func TestBatchGenerationChannelTestUsesExistingGMICloudProtocol(t *testing.T) {
 	}))
 	defer upstream.Close()
 	db, _, channel := setupDecisionsGateway(t, upstream.URL)
-	// A manually selected batch endpoint is rejected on unsupported channels.
-	result := testChannel(channel, gmicloud.BatchInferenceModel, "batch-generation", true)
-	require.ErrorContains(t, result.localErr, "require a GMICloud channel")
-	require.Zero(t, calls.Load())
 	channel.Type = constant.ChannelTypeGMICloud
 	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{"Gemini-batch-inference":0.002}`))
-	result = testChannel(channel, gmicloud.BatchInferenceModel, "batch-generation", true)
+	result := testChannel(channel, gmicloud.BatchInferenceModel, "batch-generation", true)
 	require.NoError(t, result.localErr)
 	require.Nil(t, result.newAPIError)
 	require.Equal(t, gmicloud.BatchInferenceModel, result.upstreamModel)

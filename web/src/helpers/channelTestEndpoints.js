@@ -108,7 +108,7 @@ export function getChannelTestEndpoints(t) {
 
 export function channelTestSupportsStream(channelType, endpointType) {
   const type = Number(channelType);
-  if (type === 71) return false;
+  if (type === 71 && endpointType === '') return false;
   if (type === 77 && endpointType === 'audio-speech') return true;
   return CHANNEL_TEST_ENDPOINTS.some(
     (endpoint) => endpoint.value === endpointType && endpoint.stream,
