@@ -36,5 +36,14 @@ func NodeLocRedirectURI(serverAddress string) (string, error) {
 
 func (s *NodeLocSettings) IsConfigured() bool {
 	_, err := NodeLocRedirectURI(ServerAddress)
-	return err == nil && strings.TrimSpace(s.ClientId) != "" && strings.TrimSpace(s.ClientSecret) != ""
+	return err == nil && IsValidNodeLocCredential(s.ClientId) && IsValidNodeLocCredential(s.ClientSecret)
+}
+
+func IsValidNodeLocCredential(value string) bool {
+	switch strings.TrimSpace(value) {
+	case "", "<nil>", "null", "undefined":
+		return false
+	default:
+		return true
+	}
 }

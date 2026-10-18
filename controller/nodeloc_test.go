@@ -262,6 +262,39 @@ func TestNodeLocOptionsAndStatus(t *testing.T) {
 	require.Equal(t, "SECRET-MUST-NOT-LEAK", settings.ClientSecret)
 }
 
+func TestNodeLocOptionsRejectInvalidCredentialValues(t *testing.T) {
+	setupNodeLocController(t)
+	settings := system_setting.GetNodeLocSettings()
+	settings.Enabled = false
+	for _, key := range []string{"nodeloc.client_id", "nodeloc.client_secret"} {
+		require.NoError(t, model.UpdateOption(key, "saved-value"))
+		for _, value := range []any{nil, true, 123, map[string]any{"value": "nested"}, []string{"secret"}, "<nil>", "null", "undefined"} {
+			body, err := common.Marshal(gin.H{"key": key, "value": value})
+			require.NoError(t, err)
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPut, "/api/option/", bytes.NewReader(body))
+			UpdateOption(c)
+			var res map[string]any
+			require.NoError(t, common.Unmarshal(w.Body.Bytes(), &res))
+			require.Equal(t, false, res["success"], "key=%s type=%T", key, value)
+			var stored model.Option
+			require.NoError(t, model.DB.Where("key = ?", key).First(&stored).Error)
+			require.Equal(t, "saved-value", stored.Value)
+		}
+		// Undefined frontend values are omitted entirely by JSON.stringify.
+		body, err := common.Marshal(gin.H{"key": key})
+		require.NoError(t, err)
+		w := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(w)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/option/", bytes.NewReader(body))
+		UpdateOption(c)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
+	require.Equal(t, "saved-value", settings.ClientId)
+	require.Equal(t, "saved-value", settings.ClientSecret)
+}
+
 func TestNodeLocSlugReservedForBuiltInProvider(t *testing.T) {
 	setupNodeLocController(t)
 	require.NoError(t, model.DB.AutoMigrate(&model.CustomOAuthProvider{}))

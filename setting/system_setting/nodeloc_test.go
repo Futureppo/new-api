@@ -20,3 +20,14 @@ func TestNodeLocRedirectURI(t *testing.T) {
 		require.Error(t, err, address)
 	}
 }
+
+func TestNodeLocRejectsCorruptedStoredCredentials(t *testing.T) {
+	previousAddress := ServerAddress
+	ServerAddress = "https://gateway.example"
+	t.Cleanup(func() { ServerAddress = previousAddress })
+	for _, value := range []string{"", " ", "<nil>", " <nil> ", "null", "undefined"} {
+		require.False(t, (&NodeLocSettings{ClientId: value, ClientSecret: "valid-secret"}).IsConfigured())
+		require.False(t, (&NodeLocSettings{ClientId: "valid-id", ClientSecret: value}).IsConfigured())
+	}
+	require.True(t, (&NodeLocSettings{ClientId: "valid-id", ClientSecret: "valid-secret"}).IsConfigured())
+}

@@ -45,6 +45,10 @@ import {
 import axios from 'axios';
 import { useTranslation } from 'react-i18next';
 import CustomOAuthSetting from './CustomOAuthSetting';
+import {
+  getNodeLocSettingsUpdates,
+  nodeLocFormFields,
+} from '../../helpers/nodelocSettings';
 
 const emailDomainLabelPattern = '[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?';
 const emailDomainRegex = new RegExp(
@@ -753,23 +757,16 @@ const SystemSetting = () => {
   };
 
   const submitNodeLocOAuth = async () => {
-    const options = [];
-    if (originInputs['nodeloc.client_id'] !== inputs['nodeloc.client_id']) {
-      options.push({
-        key: 'nodeloc.client_id',
-        value: inputs['nodeloc.client_id'],
-      });
-    }
-    if (inputs['nodeloc.client_secret']?.trim()) {
-      options.push({
-        key: 'nodeloc.client_secret',
-        value: inputs['nodeloc.client_secret'],
-      });
-    }
+    const values = formApiRef.current?.getValues() || inputs;
+    const options = getNodeLocSettingsUpdates(values, originInputs);
     if (options.length > 0) {
       if (await updateOptions(options)) {
-        formApiRef.current?.setValue('nodeloc.client_secret', '');
+        formApiRef.current?.setValue(nodeLocFormFields.clientSecret, '');
         setInputs((previous) => ({ ...previous, 'nodeloc.client_secret': '' }));
+        setOriginInputs((previous) => ({
+          ...previous,
+          'nodeloc.client_id': values['nodeloc.client_id']?.trim(),
+        }));
       }
     }
   };
@@ -821,7 +818,7 @@ const SystemSetting = () => {
     } else {
       const saved = await updateOptions([{ key: optionKey, value }]);
       if (!saved && optionKey === 'nodeloc.enabled') {
-        formApiRef.current?.setValue(optionKey, !value);
+        formApiRef.current?.setValue(nodeLocFormFields.enabled, !value);
       }
     }
     if (optionKey === 'LinuxDOOAuthEnabled') {
@@ -1194,7 +1191,7 @@ const SystemSetting = () => {
                         {t('允许通过 Discord 账户登录 & 注册')}
                       </Form.Checkbox>
                       <Form.Checkbox
-                        field='nodeloc.enabled'
+                        field={nodeLocFormFields.enabled}
                         noLabel
                         onChange={(e) =>
                           handleCheckboxChange('nodeloc.enabled', e)
@@ -1893,13 +1890,13 @@ const SystemSetting = () => {
                   <Row gutter={24}>
                     <Col xs={24} md={12}>
                       <Form.Input
-                        field='nodeloc.client_id'
+                        field={nodeLocFormFields.clientId}
                         label={t('NodeLoc Client ID')}
                       />
                     </Col>
                     <Col xs={24} md={12}>
                       <Form.Input
-                        field='nodeloc.client_secret'
+                        field={nodeLocFormFields.clientSecret}
                         label={t('NodeLoc Client Secret')}
                         type='password'
                         autoComplete='new-password'

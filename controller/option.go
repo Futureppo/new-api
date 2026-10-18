@@ -117,12 +117,20 @@ type OptionUpdateRequest struct {
 func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)
-	if err != nil {
+	if err != nil || option.Value == nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "无效的参数",
 		})
 		return
+	}
+	if option.Key == "nodeloc.client_id" || option.Key == "nodeloc.client_secret" {
+		value, ok := option.Value.(string)
+		if !ok || (strings.TrimSpace(value) != "" && !system_setting.IsValidNodeLocCredential(value)) {
+			common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+			return
+		}
+		option.Value = strings.TrimSpace(value)
 	}
 	switch option.Value.(type) {
 	case bool:

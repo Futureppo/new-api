@@ -64,10 +64,12 @@
 - 绑定仅更新 `nodeloc_id`，保留同期变化的余额、邮箱和资料；解绑恢复 NULL。
 - 旧用户表升级、未绑定账号共存、绑定唯一约束，以及邀请额度的并发划转。
 
-运行后端测试：`go test ./model ./controller ./oauth ./setting/system_setting ./router`。前端授权参数测试：在 `web/` 执行 `bun test ./src/helpers/nodeloc.test.js`。
+运行后端测试：`go test ./model ./controller ./oauth ./setting/system_setting ./router`。前端授权参数及配置表单测试：在 `web/` 执行 `bun test ./src/helpers/nodeloc.test.js ./src/helpers/nodelocSettings.test.js`。
 
 数据库测试默认运行 SQLite；设置 `TEST_POSTGRES_DSN` 或 `TEST_MYSQL_DSN` 后，`go test ./model -run '^TestNodeLoc' -count=1` 会在对应数据库创建独立命名的测试表，并在结束后删除这些测试表。本次已使用本机隔离的 PostgreSQL 18.4 实际验证旧表升级、绑定/解绑及并发划转；MySQL 目前只验证了字段类型和 SQL 生成。
 
 OAuth 上游仍使用模拟服务，尚未完成真实 NodeLoc 账号的浏览器授权验收，也没有修改生产配置。真实应用验收按上面的步骤进行。
 
 常见失败原因：未先保存凭据便启用、服务器地址无效、NodeLoc 应用回调不匹配、从别名域名发起授权、上游准入拒绝或应用审核未完成。修改配置后重新发起授权，避免复用过期授权码。
+
+若旧版配置页保存后 Client ID 显示 `<nil>`，原因是 Semi Form 将带点的配置键解析成嵌套对象，保存时读不到输入值。修复版使用字面量字段路径，并拒绝后端缺失值及无效凭据。更新前后端、刷新页面后需重新保存 Client ID 和 Client Secret；旧版未正确提交的凭据无法从数据库恢复。Secret 保存后留空是正常的，后续留空保存会保留已存密钥。
