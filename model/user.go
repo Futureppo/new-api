@@ -424,15 +424,21 @@ func HardDeleteUserById(id int) error {
 	return err
 }
 
-func inviteUser(inviterId int) (err error) {
-	user, err := GetUserById(inviterId, true)
-	if err != nil {
-		return err
+func inviteUser(inviterId int) error {
+	// Update only referral counters; saving the whole user converts nullable
+	// OAuth IDs such as nodeloc_id from NULL to an empty string.
+	result := DB.Model(&User{}).Where("id = ?", inviterId).Updates(map[string]interface{}{
+		"aff_count":   gorm.Expr("aff_count + ?", 1),
+		"aff_quota":   gorm.Expr("aff_quota + ?", common.QuotaForInviter),
+		"aff_history": gorm.Expr("aff_history + ?", common.QuotaForInviter),
+	})
+	if result.Error != nil {
+		return result.Error
 	}
-	user.AffCount++
-	user.AffQuota += common.QuotaForInviter
-	user.AffHistoryQuota += common.QuotaForInviter
-	return DB.Save(user).Error
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (user *User) TransferAffQuotaToQuota(quota int) error {
@@ -441,35 +447,38 @@ func (user *User) TransferAffQuotaToQuota(quota int) error {
 		return fmt.Errorf("转移额度最小为%s！", logger.LogQuota(int(common.QuotaPerUnit)))
 	}
 
-	// 开始数据库事务
-	tx := DB.Begin()
-	if tx.Error != nil {
-		return tx.Error
+	if user.Id == 0 {
+		return errors.New("id 为空！")
 	}
-	defer tx.Rollback() // 确保在函数退出时事务能回滚
 
-	// 加锁查询用户以确保数据一致性
-	err := tx.Set("gorm:query_option", "FOR UPDATE").First(&user, user.Id).Error
+	var updated User
+	err := DB.Transaction(func(tx *gorm.DB) error {
+		// Check and transfer in one statement so concurrent requests cannot
+		// overspend or overwrite another balance update on any supported DB.
+		result := tx.Model(&User{}).Where("id = ? AND aff_quota >= ?", user.Id, quota).
+			Updates(map[string]interface{}{
+				"aff_quota": gorm.Expr("aff_quota - ?", quota),
+				"quota":     gorm.Expr("quota + ?", quota),
+			})
+		if result.Error != nil {
+			return result.Error
+		}
+		if err := tx.Select("quota", "aff_quota").First(&updated, "id = ?", user.Id).Error; err != nil {
+			return err
+		}
+		if result.RowsAffected == 0 {
+			return errors.New("邀请额度不足！")
+		}
+		return nil
+	})
 	if err != nil {
 		return err
 	}
 
-	// 再次检查用户的AffQuota是否足够
-	if user.AffQuota < quota {
-		return errors.New("邀请额度不足！")
-	}
-
-	// 更新用户额度
-	user.AffQuota -= quota
-	user.Quota += quota
-
-	// 保存用户状态
-	if err := tx.Save(user).Error; err != nil {
-		return err
-	}
-
-	// 提交事务
-	return tx.Commit().Error
+	// Only expose the new balances after the transaction has committed.
+	user.AffQuota = updated.AffQuota
+	user.Quota = updated.Quota
+	return nil
 }
 
 func (user *User) Insert(inviterId int) error {
