@@ -1309,6 +1309,22 @@ func (user *User) FillUserByNodeLocId() error {
 	return DB.Where("nodeloc_id = ?", user.NodeLocId).First(user).Error
 }
 
+// UpdateNodeLocId changes only the binding, preserving concurrent account updates.
+func (user *User) UpdateNodeLocId(nodeLocID string) error {
+	if user.Id == 0 || nodeLocID == "" {
+		return errors.New("user id or NodeLoc id is empty")
+	}
+	result := DB.Model(&User{}).Where("id = ?", user.Id).Update("nodeloc_id", nodeLocID)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	user.NodeLocId = nodeLocID
+	return invalidateUserCache(user.Id)
+}
+
 func RootUserExists() bool {
 	var user User
 	err := DB.Where("role = ?", common.RoleRootUser).First(&user).Error

@@ -144,6 +144,11 @@ func TestTransferAffQuotaRollsBackOnDatabaseError(t *testing.T) {
 
 func TestTransferAffQuotaConcurrentRequests(t *testing.T) {
 	setupUserAffQuotaTestDB(t)
+	testTransferAffQuotaConcurrentRequests(t)
+}
+
+func testTransferAffQuotaConcurrentRequests(t *testing.T) {
+	t.Helper()
 	user := seedAffQuotaUser(t, "concurrent", "bound-id")
 	unit := int(common.QuotaPerUnit)
 	const available = 6

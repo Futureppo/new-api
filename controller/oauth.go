@@ -205,6 +205,11 @@ func handleOAuthBind(c *gin.Context, provider oauth.Provider) {
 			common.ApiError(c, err)
 			return
 		}
+	} else if _, ok := provider.(*oauth.NodeLocProvider); ok {
+		if err := user.UpdateNodeLocId(oauthUser.ProviderUserID); err != nil {
+			common.ApiError(c, err)
+			return
+		}
 	} else {
 		// Built-in provider: update user record directly
 		provider.SetProviderUserID(&user, oauthUser.ProviderUserID)
