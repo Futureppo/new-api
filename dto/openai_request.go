@@ -28,6 +28,7 @@ type FormatJsonSchema struct {
 // GeneralOpenAIRequest represents a general request structure for OpenAI-compatible APIs.
 // 参数增加规范：无引用的参数必须使用json.RawMessage类型，并添加omitempty标签
 type GeneralOpenAIRequest struct {
+	BilibiliWeb json.RawMessage `json:"bilibili_web,omitempty"`
 	// OpenRouter routing and observability extensions.
 	Provider            json.RawMessage `json:"provider,omitempty"`
 	SessionID           json.RawMessage `json:"session_id,omitempty"`
@@ -885,6 +886,7 @@ type WebSearchOptions struct {
 
 // https://platform.openai.com/docs/api-reference/responses/create
 type OpenAIResponsesRequest struct {
+	BilibiliWeb               json.RawMessage `json:"bilibili_web,omitempty"`
 	previousResponseIDPresent bool
 	// OpenRouter routing and observability extensions.
 	Provider            json.RawMessage `json:"provider,omitempty"`

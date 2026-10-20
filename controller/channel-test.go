@@ -24,6 +24,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/QuantumNous/new-api/relay"
 	"github.com/QuantumNous/new-api/relay/channel/bilibili"
+	"github.com/QuantumNous/new-api/relay/channel/bilibili_web"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	vertexchannel "github.com/QuantumNous/new-api/relay/channel/vertex"
@@ -620,6 +621,21 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	testModel = info.UpstreamModelName
 	// 更新请求中的模型名称
 	request.SetModelName(testModel)
+	if channel.Type == constant.ChannelTypeBilibiliWeb && constant.IsBilibiliWebEchoModel(testModel) {
+		echoRequest := bilibili_web.EchoTestRequest(testModel)
+		request = echoRequest
+		info.Request = request
+		info.IsStream = false
+		isStream = false
+		if endpointType == string(constant.EndpointTypeOpenAIResponse) {
+			return testResult{context: c, localErr: fmt.Errorf("Echo only supports audio Chat Completions")}
+		}
+		billingRequest := *echoRequest
+		billingRequest.Model = info.OriginModelName
+		if err := attachTestBillingRequestInput(info, &billingRequest); err != nil {
+			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
+		}
+	}
 	if channel.Type == constant.ChannelTypeQianwenAI && constant.IsQianwenIntentModel(testModel) {
 		if chat, ok := request.(*dto.GeneralOpenAIRequest); ok && info.RelayMode == relayconstant.RelayModeChatCompletions {
 			// Apply after mapping so aliases get the same intent classification test.
@@ -1440,7 +1456,10 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
-	if channel != nil && channel.Type == constant.ChannelTypeBilibili {
+	if channel != nil && channel.Type == constant.ChannelTypeBilibiliWeb && constant.IsBilibiliWebEchoModel(model) {
+		return bilibili_web.EchoTestRequest(model)
+	}
+	if channel != nil && (channel.Type == constant.ChannelTypeBilibili || channel.Type == constant.ChannelTypeBilibiliWeb) {
 		switch constant.EndpointType(endpointType) {
 		case constant.EndpointTypeOpenAIResponse:
 			input, _ := common.Marshal(bilibili.TestPrompt)

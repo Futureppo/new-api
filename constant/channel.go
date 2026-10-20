@@ -76,7 +76,8 @@ const (
 	ChannelTypeLiteLLM        = 76
 	ChannelTypeQianwenAI      = 77
 	ChannelTypeBilibili       = 78
-	ChannelTypeDummy          = ChannelTypeBilibili + 1 // this one is only for count, do not add any channel after this
+	ChannelTypeBilibiliWeb    = 79
+	ChannelTypeDummy          = ChannelTypeBilibiliWeb + 1 // this one is only for count, do not add any channel after this
 
 )
 
@@ -160,6 +161,7 @@ var ChannelBaseURLs = []string{
 	"",                                     //76, LiteLLM proxies use custom base URLs
 	"https://maas.qianwenaiapi.com",        //77
 	"https://index-translate.bilibili.com", //78
+	"https://index-translate.bilibili.com", //79
 }
 
 var ChannelTypeNames = map[int]string{
@@ -238,6 +240,7 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeLiteLLM:        "LiteLLM",
 	ChannelTypeQianwenAI:      "QianwenAI",
 	ChannelTypeBilibili:       "Bilibili",
+	ChannelTypeBilibiliWeb:    "Bilibili Web",
 }
 
 func IsSelfHostedChannel(channelType int) bool {
@@ -247,7 +250,11 @@ func IsSelfHostedChannel(channelType int) bool {
 // IsKeyOptionalChannel identifies channels that accept an empty upstream key.
 // Mode-dependent anonymous authentication (such as Kilo) is handled separately.
 func IsKeyOptionalChannel(channelType int) bool {
-	return IsSelfHostedChannel(channelType) || channelType == ChannelTypeBilibili
+	return IsSelfHostedChannel(channelType) || channelType == ChannelTypeBilibili || channelType == ChannelTypeBilibiliWeb
+}
+
+func IsBilibiliWebEchoModel(name string) bool {
+	return name == "index-echo-2b-s2st" || name == "index-echo-9b-s2st"
 }
 
 func GetChannelTypeName(channelType int) string {

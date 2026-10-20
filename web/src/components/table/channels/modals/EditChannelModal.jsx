@@ -143,8 +143,11 @@ const QIANWEN_CHANNEL_TYPE = 77;
 const QIANWEN_TEST_MODEL = 'qwen3.7-plus';
 const BILIBILI_CHANNEL_TYPE = 78;
 const BILIBILI_TEST_MODEL = 'Index-Translate-35B-A3B';
+const BILIBILI_WEB_CHANNEL_TYPE = 79;
+const BILIBILI_WEB_TEST_MODEL = 'index-mt-9b-syllable';
 const isKeyOptionalChannel = (type) =>
-  isSelfHostedChannel(type) || Number(type) === BILIBILI_CHANNEL_TYPE;
+  isSelfHostedChannel(type) ||
+  [BILIBILI_CHANNEL_TYPE, BILIBILI_WEB_CHANNEL_TYPE].includes(Number(type));
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -158,6 +161,7 @@ function type2secretPrompt(type) {
     case 75:
     case 76:
     case BILIBILI_CHANNEL_TYPE:
+    case BILIBILI_WEB_CHANNEL_TYPE:
       return '上游 API Key（可选）';
     case 15:
       return '按照如下格式输入：APIKey|SecretKey';
@@ -667,6 +671,7 @@ const EditChannelModal = (props) => {
       inputs.type !== TYPESAFE_CHANNEL_TYPE &&
       inputs.type !== MIMO_CHANNEL_TYPE &&
       inputs.type !== BILIBILI_CHANNEL_TYPE &&
+      inputs.type !== BILIBILI_WEB_CHANNEL_TYPE &&
       inputs.type !== CLINE_CHANNEL_TYPE
     ) {
       Modal.confirm({
@@ -684,9 +689,12 @@ const EditChannelModal = (props) => {
       let localModels = [];
       switch (value) {
         case BILIBILI_CHANNEL_TYPE:
+        case BILIBILI_WEB_CHANNEL_TYPE:
           localModels = getChannelModels(value);
           if (!isEdit) {
-            const testModel = inputs.test_model || BILIBILI_TEST_MODEL;
+            const testModel = value === BILIBILI_WEB_CHANNEL_TYPE
+              ? BILIBILI_WEB_TEST_MODEL
+              : inputs.test_model || BILIBILI_TEST_MODEL;
             setInputs((prev) => ({
               ...prev,
               base_url: '',
@@ -1237,6 +1245,11 @@ const EditChannelModal = (props) => {
         data.base_url = 'https://ark.cn-beijing.volces.com';
       }
 
+      const bilibiliSettings = (() => {
+        try { return JSON.parse(data.settings || '{}'); } catch { return {}; }
+      })();
+      data.bilibili_web_source_language = bilibiliSettings.bilibili_web_source_language || 'zh';
+      data.bilibili_web_target_language = bilibiliSettings.bilibili_web_target_language || 'en';
       initialBaseUrlRef.current = data.base_url || '';
       data.clear_key = false;
       setInputs(data);
@@ -4305,6 +4318,30 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === BILIBILI_WEB_CHANNEL_TYPE && (
+                        <>
+                          <Banner
+                            type='info'
+                            description={t('Bilibili Web：Homura 和 Nailong 支持文本 Chat/Responses（含流式）；Echo 仅支持非流式音频 Chat、10 秒内 WAV/MP3 输入和原音色 WAV 输出，需配置按次价格。Key 可留空。获取模型返回预设目录，不代表实时可用；音频测试使用内置英语样例译为中文。')}
+                            className='!rounded-lg'
+                          />
+                          <Form.Select
+                            field='bilibili_web_source_language'
+                            label={t('Echo 默认源语言')}
+                            initValue='zh'
+                            optionList={['zh', 'en', 'ja'].map((value) => ({ label: value, value }))}
+                            onChange={(value) => handleChannelOtherSettingsChange('bilibili_web_source_language', value)}
+                          />
+                          <Form.Select
+                            field='bilibili_web_target_language'
+                            label={t('Echo 默认目标语言')}
+                            initValue='en'
+                            optionList={['en', 'zh', 'ja', 'es', 'ko'].map((value) => ({ label: value, value }))}
+                            onChange={(value) => handleChannelOtherSettingsChange('bilibili_web_target_language', value)}
+                            extraText={t('调用方可通过 bilibili_web.source_language 和 bilibili_web.target_language 覆盖默认方向；源语言和目标语言必须不同。')}
+                          />
+                        </>
+                      )}
                       {inputs.type === BILIBILI_CHANNEL_TYPE && (
                         <Banner
                           type='info'
@@ -4487,7 +4524,7 @@ const EditChannelModal = (props) => {
                                   ? 'https://api.xiaomimimo.com'
                                   : inputs.type === QIANWEN_CHANNEL_TYPE
                                   ? 'https://maas.qianwenaiapi.com'
-                                  : inputs.type === BILIBILI_CHANNEL_TYPE
+                                  : [BILIBILI_CHANNEL_TYPE, BILIBILI_WEB_CHANNEL_TYPE].includes(inputs.type)
                                   ? 'https://index-translate.bilibili.com'
                                   : inputs.type === KILO_CHANNEL_TYPE
                                   ? 'https://api.kilo.ai/api/gateway'

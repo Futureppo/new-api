@@ -319,6 +319,7 @@ func (info *RelayInfo) ToString() string {
 // 定义支持流式选项的通道类型
 var streamSupportedChannels = map[int]bool{
 	constant.ChannelTypeBilibili:    true, // Verified stream_options.include_usage on 2026-10-20.
+	constant.ChannelTypeBilibiliWeb: true, // Text models support include_usage; Echo rejects streaming.
 	constant.ChannelTypeOpenRouter:  true, // Accepted; OpenRouter always reports stream usage.
 	constant.ChannelTypeQianwenAI:   true, // https://platform.qianwenai.com/docs/developer-guides/run-and-scale/streaming
 	constant.ChannelTypeVLLM:        true,

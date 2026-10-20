@@ -51,5 +51,6 @@ const (
 	APITypeLiteLLM
 	APITypeQianwenAI
 	APITypeBilibili
+	APITypeBilibiliWeb
 	APITypeDummy // this one is only for count, do not add any channel after this
 )

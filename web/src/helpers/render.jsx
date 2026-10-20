@@ -377,6 +377,7 @@ export function getChannelIcon(channelType) {
     case 70: // Kilo
     case 73: // Cline
     case 78: // Bilibili
+    case 79: // Bilibili Web
       return <Cloud size={iconSize} />;
     case 63: // OpenCode Zen
     case 64: // OpenCode Go

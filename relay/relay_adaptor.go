@@ -11,6 +11,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/baidu"
 	"github.com/QuantumNous/new-api/relay/channel/baidu_v2"
 	"github.com/QuantumNous/new-api/relay/channel/bilibili"
+	"github.com/QuantumNous/new-api/relay/channel/bilibili_web"
 	"github.com/QuantumNous/new-api/relay/channel/cerebras"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/cloudflare"
@@ -71,6 +72,8 @@ func GetAdaptor(apiType int) channel.Adaptor {
 	switch apiType {
 	case constant.APITypeBilibili:
 		return &bilibili.Adaptor{}
+	case constant.APITypeBilibiliWeb:
+		return &bilibili_web.Adaptor{}
 	case constant.APITypeQianwenAI:
 		return &qianwen.Adaptor{}
 	case constant.APITypeVLLM:

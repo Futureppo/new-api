@@ -349,7 +349,7 @@ func usageSemanticFromUsage(relayInfo *relaycommon.RelayInfo, usage *dto.Usage) 
 // tokens. Honor explicit per-request pricing without fabricating token usage.
 func mistralNativeCallPrice(info *relaycommon.RelayInfo) bool {
 	return info != nil && info.PriceData.UsePrice && (info.RelayFormat == types.RelayFormatMistralNative ||
-		(info.ChannelMeta != nil && (info.ChannelType == constant.ChannelTypeQianwenAI || info.ChannelType == constant.ChannelTypeVertexAi) && info.NonTokenUsage))
+		(info.ChannelMeta != nil && (info.ChannelType == constant.ChannelTypeQianwenAI || info.ChannelType == constant.ChannelTypeVertexAi || info.ChannelType == constant.ChannelTypeBilibiliWeb) && info.NonTokenUsage))
 }
 
 func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usage *dto.Usage, extraContent []string) {

@@ -91,6 +91,7 @@ export const CHANNEL_OPTIONS = [
   },
   { value: 77, color: 'purple', label: '千问AI平台' },
   { value: 78, color: 'pink', label: 'Bilibili' },
+  { value: 79, color: 'pink', label: 'Bilibili Web' },
   {
     value: 18,
     color: 'blue',
@@ -223,7 +224,7 @@ export const CHANNEL_OPTIONS = [
 // Channel types that support upstream model list fetching in UI.
 export const MODEL_FETCHABLE_CHANNEL_TYPES = new Set([
   1, 4, 14, 33, 34, 17, 26, 27, 24, 47, 25, 20, 23, 31, 40, 42, 48, 43, 58, 59,
-  61, 62, 63, 64, 65, 66, 67, 69, 70, 71, 72, 73, 77, 78,
+  61, 62, 63, 64, 65, 66, 67, 69, 70, 71, 72, 73, 77, 78, 79,
 ]);
 
 export const isManualModelFetchSupported = (

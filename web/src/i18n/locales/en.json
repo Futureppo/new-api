@@ -1,5 +1,9 @@
 {
   "translation": {
+    "Bilibili Web：Homura 和 Nailong 支持文本 Chat/Responses（含流式）；Echo 仅支持非流式音频 Chat、10 秒内 WAV/MP3 输入和原音色 WAV 输出，需配置按次价格。Key 可留空。获取模型返回预设目录，不代表实时可用；音频测试使用内置英语样例译为中文。": "Bilibili Web: Homura and Nailong support text Chat/Responses, including streaming. Echo supports only non-streaming audio Chat, WAV/MP3 input up to 10 seconds, and WAV output in the source voice; configure per-request pricing. The key is optional. Fetching models returns a preset catalog, not a live availability check. Audio tests translate a built-in English sample into Chinese.",
+    "Echo 默认源语言": "Echo default source language",
+    "Echo 默认目标语言": "Echo default target language",
+    "调用方可通过 bilibili_web.source_language 和 bilibili_web.target_language 覆盖默认方向；源语言和目标语言必须不同。": "Callers can override the default direction with bilibili_web.source_language and bilibili_web.target_language. Source and target languages must differ.",
     "Bilibili Index-Translate 支持文本和图片翻译，以及 Chat Completions、Responses 的普通和流式请求。官方接口当前无需密钥，模型可获取或手动配置，本站价格需由管理员配置。": "Bilibili Index-Translate supports text and image translation through Chat Completions and Responses, with streaming and non-streaming requests. The official API currently requires no key. Fetch models or configure them manually; site pricing must be configured by an administrator.",
     "决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。": "The decision-model-preview model uses System One (/v1/systemone) with state and questions. Streaming is not supported. Select Auto or System One for channel tests.",
     "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "The tongyi-intent-detect-v3 model uses Chat Completions. Select intent classification or tool calling through the system message.",

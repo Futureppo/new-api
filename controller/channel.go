@@ -20,6 +20,7 @@ import (
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	awsChannel "github.com/QuantumNous/new-api/relay/channel/aws"
 	"github.com/QuantumNous/new-api/relay/channel/bilibili"
+	"github.com/QuantumNous/new-api/relay/channel/bilibili_web"
 	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
@@ -196,7 +197,7 @@ func GetAllChannels(c *gin.Context) {
 func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
 	var headers http.Header
 	switch channel.Type {
-	case constant.ChannelTypeBilibili:
+	case constant.ChannelTypeBilibili, constant.ChannelTypeBilibiliWeb:
 		headers = make(http.Header)
 		headers.Set("User-Agent", bilibili.UserAgent)
 		if key = strings.TrimSpace(key); key != "" {
@@ -437,6 +438,12 @@ func fetchCohereModelIDs(channel *model.Channel, baseURL string, key string) ([]
 func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
+	}
+	if channel.Type == constant.ChannelTypeBilibiliWeb && strings.TrimSpace(customModelListURL) == "" {
+		if err := bilibili.ValidateBaseURL(baseURL); err != nil {
+			return nil, err
+		}
+		return append([]string(nil), bilibili_web.ModelList...), nil
 	}
 	if channel.Type == constant.ChannelTypeBilibili && strings.TrimSpace(customModelListURL) == "" {
 		if err := bilibili.ValidateBaseURL(baseURL); err != nil {
@@ -833,7 +840,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if isAdd && channel.Type == constant.ChannelTypeMiMo && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
 		channel.TestModel = common.GetPointer(mimo.DefaultTestModel)
 	}
-	if channel.Type == constant.ChannelTypeBilibili {
+	if channel.Type == constant.ChannelTypeBilibili || channel.Type == constant.ChannelTypeBilibiliWeb {
 		if isAdd || channel.BaseURL != nil {
 			if err := bilibili.ValidateBaseURL(channel.GetBaseURL()); err != nil {
 				return err
@@ -841,7 +848,16 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 			channel.BaseURL = common.GetPointer(bilibili.NormalizeBaseURL(channel.GetBaseURL()))
 		}
 		if isAdd && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
-			channel.TestModel = common.GetPointer(bilibili.DefaultModel)
+			testModel := bilibili.DefaultModel
+			if channel.Type == constant.ChannelTypeBilibiliWeb {
+				testModel = bilibili_web.DefaultModel
+			}
+			channel.TestModel = common.GetPointer(testModel)
+		}
+	}
+	if channel.Type == constant.ChannelTypeBilibiliWeb {
+		if err := validateBilibiliWebSettings(channel.OtherSettings); err != nil {
+			return err
 		}
 	}
 	// 校验 channel settings
@@ -927,6 +943,16 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	}
 
 	return nil
+}
+
+func validateBilibiliWebSettings(raw string) error {
+	var options dto.ChannelOtherSettings
+	if strings.TrimSpace(raw) != "" {
+		if err := common.UnmarshalJsonStr(raw, &options); err != nil {
+			return fmt.Errorf("invalid Bilibili Web settings: %w", err)
+		}
+	}
+	return bilibili_web.ValidateLanguages(options.BilibiliWebSourceLanguage, options.BilibiliWebTargetLanguage)
 }
 
 func RefreshCodexChannelCredential(c *gin.Context) {
@@ -1387,6 +1413,15 @@ func UpdateChannel(c *gin.Context) {
 	if _, provided := rawBody["type"]; !provided {
 		effectiveType = originChannel.Type
 	}
+	if effectiveType == constant.ChannelTypeBilibiliWeb {
+		if _, provided := rawBody["settings"]; !provided {
+			channel.OtherSettings = originChannel.OtherSettings
+		}
+		if err := validateBilibiliWebSettings(channel.OtherSettings); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+	}
 	if channel.ClearKey && (!constant.IsKeyOptionalChannel(effectiveType) || originChannel.ChannelInfo.IsMultiKey || strings.TrimSpace(channel.Key) != "") {
 		common.ApiError(c, fmt.Errorf("仅支持可选密钥的单密钥渠道清除密钥，且不能同时设置新密钥"))
 		return
@@ -1404,7 +1439,7 @@ func UpdateChannel(c *gin.Context) {
 			channel.Key = strings.Join(keys, "\n")
 		}
 	}
-	if effectiveType == constant.ChannelTypeBilibili && channel.BaseURL != nil {
+	if (effectiveType == constant.ChannelTypeBilibili || effectiveType == constant.ChannelTypeBilibiliWeb) && channel.BaseURL != nil {
 		if err := bilibili.ValidateBaseURL(channel.GetBaseURL()); err != nil {
 			common.ApiError(c, err)
 			return

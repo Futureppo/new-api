@@ -82,8 +82,8 @@ func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
 	if info == nil {
 		return false
 	}
-	if info.ChannelType == constant.ChannelTypeXunfeiMaas {
-		return false // MaaS has distinct native endpoints and request schemas.
+	if info.ChannelType == constant.ChannelTypeXunfeiMaas || info.ChannelType == constant.ChannelTypeBilibiliWeb {
+		return false // These adapters require their own request conversion.
 	}
 	model := info.OriginModelName
 	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo {
@@ -93,7 +93,7 @@ func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
 }
 
 func shouldPassThroughTextRequest(info *relaycommon.RelayInfo, globalEnabled bool) bool {
-	if info != nil && info.ChannelType == constant.ChannelTypeXunfeiMaas {
+	if info != nil && (info.ChannelType == constant.ChannelTypeXunfeiMaas || info.ChannelType == constant.ChannelTypeBilibiliWeb) {
 		return false
 	}
 	// OpenCode gateways select an upstream wire protocol per model. The client

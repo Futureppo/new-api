@@ -83,7 +83,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	}
 	adaptor.Init(info)
 	var requestBody io.Reader
-	if info.ChannelType != appconstant.ChannelTypeXunfeiMaas &&
+	if info.ChannelType != appconstant.ChannelTypeXunfeiMaas && info.ChannelType != appconstant.ChannelTypeBilibiliWeb &&
 		info.ChannelType != appconstant.ChannelTypeOpenCode && info.ChannelType != appconstant.ChannelTypeOpenCodeGo &&
 		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		info.MarkModelMappingBypassed()

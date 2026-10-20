@@ -148,6 +148,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if c.GetBool("qianwen_audio_committed") && c.Writer.Written() {
 				return // Do not append JSON to an audio binary stream or an SSE error.
 			}
+			if c.GetBool("bilibili_web_response_committed") && c.Writer.Written() {
+				return
+			}
 			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
 				return
 			}
