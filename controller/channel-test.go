@@ -23,6 +23,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	"github.com/QuantumNous/new-api/pkg/vertexmodel"
 	"github.com/QuantumNous/new-api/relay"
+	"github.com/QuantumNous/new-api/relay/channel/bilibili"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/mistral"
 	vertexchannel "github.com/QuantumNous/new-api/relay/channel/vertex"
@@ -1439,6 +1440,24 @@ func detectErrorMessageFromJSONBytes(jsonBytes []byte) string {
 }
 
 func buildTestRequest(model string, endpointType string, channel *model.Channel, isStream bool) dto.Request {
+	if channel != nil && channel.Type == constant.ChannelTypeBilibili {
+		switch constant.EndpointType(endpointType) {
+		case constant.EndpointTypeOpenAIResponse:
+			input, _ := common.Marshal(bilibili.TestPrompt)
+			return &dto.OpenAIResponsesRequest{
+				Model: model, Input: input, Stream: lo.ToPtr(isStream), MaxOutputTokens: lo.ToPtr(uint(32)),
+			}
+		case "", constant.EndpointTypeOpenAI:
+			request := &dto.GeneralOpenAIRequest{
+				Model: model, Messages: []dto.Message{{Role: "user", Content: bilibili.TestPrompt}},
+				Stream: lo.ToPtr(isStream), MaxTokens: lo.ToPtr(uint(32)),
+			}
+			if isStream {
+				request.StreamOptions = &dto.StreamOptions{IncludeUsage: lo.ToPtr(true)}
+			}
+			return request
+		}
+	}
 	if endpointType == string(constant.EndpointTypeVertexNative) {
 		return buildVertexNativeTestRequest(model)
 	}

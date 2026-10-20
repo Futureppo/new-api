@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Bilibili Index-Translate 支持文本和图片翻译，以及 Chat Completions、Responses 的普通和流式请求。官方接口当前无需密钥，模型可获取或手动配置，本站价格需由管理员配置。": "Bilibili Index-Translate supports text and image translation through Chat Completions and Responses, with streaming and non-streaming requests. The official API currently requires no key. Fetch models or configure them manually; site pricing must be configured by an administrator.",
     "决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。": "The decision-model-preview model uses System One (/v1/systemone) with state and questions. Streaming is not supported. Select Auto or System One for channel tests.",
     "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "The tongyi-intent-detect-v3 model uses Chat Completions. Select intent classification or tool calling through the system message.",
     "千问AI平台": "Qianwen AI Platform",

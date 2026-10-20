@@ -1,5 +1,6 @@
 {
   "translation": {
+    "Bilibili Index-Translate 支持文本和图片翻译，以及 Chat Completions、Responses 的普通和流式请求。官方接口当前无需密钥，模型可获取或手动配置，本站价格需由管理员配置。": "Bilibili Index-Translate 支援文字和圖片翻譯，以及 Chat Completions、Responses 的一般和串流請求。官方介面目前無需金鑰，模型可取得或手動設定，本站價格需由管理員設定。",
     "决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。": "決策模型 decision-model-preview 使用 System One（/v1/systemone），請求需包含 state 和 questions，不支援串流。渠道測試可選擇自動偵測或 System One。",
     "意图理解模型 tongyi-intent-detect-v3 使用 Chat Completions，通过 system 消息选择意图分类或工具调用模式。": "意圖理解模型 tongyi-intent-detect-v3 使用 Chat Completions，透過 system 訊息選擇意圖分類或工具呼叫模式。",
     "千问AI平台": "千問AI平台",

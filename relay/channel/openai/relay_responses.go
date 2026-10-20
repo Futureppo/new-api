@@ -31,8 +31,8 @@ func OaiResponsesHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http
 	if err != nil {
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
-	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeQianwenAI) {
-		if (constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeQianwenAI) && resp.StatusCode == http.StatusOK {
+	if oaiError := responsesResponse.GetOpenAIError(); oaiError != nil && (oaiError.Type != "" || constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeBilibili || info.ChannelType == constant.ChannelTypeQianwenAI) {
+		if (constant.IsSelfHostedChannel(info.ChannelType) || info.ChannelType == constant.ChannelTypeBilibili || info.ChannelType == constant.ChannelTypeQianwenAI) && resp.StatusCode == http.StatusOK {
 			return nil, types.WithOpenAIError(*oaiError, http.StatusBadGateway)
 		}
 		return nil, types.WithOpenAIError(*oaiError, resp.StatusCode)

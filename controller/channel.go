@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	relaychannel "github.com/QuantumNous/new-api/relay/channel"
 	awsChannel "github.com/QuantumNous/new-api/relay/channel/aws"
+	"github.com/QuantumNous/new-api/relay/channel/bilibili"
 	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/channel/cohere"
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
@@ -195,6 +196,12 @@ func GetAllChannels(c *gin.Context) {
 func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, error) {
 	var headers http.Header
 	switch channel.Type {
+	case constant.ChannelTypeBilibili:
+		headers = make(http.Header)
+		headers.Set("User-Agent", bilibili.UserAgent)
+		if key = strings.TrimSpace(key); key != "" {
+			headers.Set("Authorization", "Bearer "+key)
+		}
 	case constant.ChannelTypeMiMo:
 		headers = make(http.Header)
 		headers.Set("api-key", key)
@@ -241,6 +248,8 @@ func resolveFetchModelsURL(channelType int, baseURL string, customModelListURL s
 
 	baseURL = strings.TrimRight(baseURL, "/")
 	switch channelType {
+	case constant.ChannelTypeBilibili:
+		return bilibili.NormalizeBaseURL(baseURL) + "/v1/models"
 	case constant.ChannelTypeOpenRouter:
 		return openrouter.NormalizeBaseURL(baseURL) + "/v1/models?output_modalities=all"
 	case constant.ChannelTypeVLLM, constant.ChannelTypeLiteLLM:
@@ -428,6 +437,11 @@ func fetchCohereModelIDs(channel *model.Channel, baseURL string, key string) ([]
 func fetchChannelModelIDsWithKeyContext(ctx context.Context, channel *model.Channel, baseURL string, key string, customModelListURL string) ([]string, error) {
 	if channel == nil {
 		return nil, fmt.Errorf("channel is nil")
+	}
+	if channel.Type == constant.ChannelTypeBilibili && strings.TrimSpace(customModelListURL) == "" {
+		if err := bilibili.ValidateBaseURL(baseURL); err != nil {
+			return nil, err
+		}
 	}
 	if constant.IsSelfHostedChannel(channel.Type) && strings.TrimSpace(customModelListURL) == "" {
 		if err := selfhost.ValidateBaseURL(baseURL); err != nil {
@@ -819,6 +833,17 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 	if isAdd && channel.Type == constant.ChannelTypeMiMo && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
 		channel.TestModel = common.GetPointer(mimo.DefaultTestModel)
 	}
+	if channel.Type == constant.ChannelTypeBilibili {
+		if isAdd || channel.BaseURL != nil {
+			if err := bilibili.ValidateBaseURL(channel.GetBaseURL()); err != nil {
+				return err
+			}
+			channel.BaseURL = common.GetPointer(bilibili.NormalizeBaseURL(channel.GetBaseURL()))
+		}
+		if isAdd && (channel.TestModel == nil || strings.TrimSpace(*channel.TestModel) == "") {
+			channel.TestModel = common.GetPointer(bilibili.DefaultModel)
+		}
+	}
 	// 校验 channel settings
 	if err := channel.ValidateSettings(); err != nil {
 		return fmt.Errorf("渠道额外设置[channel setting] 格式错误：%s", err.Error())
@@ -832,7 +857,7 @@ func validateChannel(channel *model.Channel, isAdd bool) error {
 
 	// 如果是添加操作，检查 channel 和 key 是否为空
 	if isAdd {
-		if channel.Key == "" && !constant.IsSelfHostedChannel(channel.Type) && !(channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled) {
+		if channel.Key == "" && !constant.IsKeyOptionalChannel(channel.Type) && !(channel.Type == constant.ChannelTypeKilo && channel.GetOtherSettings().KiloAnonymousEnabled) {
 			return fmt.Errorf("channel cannot be empty")
 		}
 
@@ -1014,7 +1039,7 @@ func AddChannel(c *gin.Context) {
 		}
 	}
 
-	if ch := addChannelRequest.Channel; ch != nil && constant.IsSelfHostedChannel(ch.Type) {
+	if ch := addChannelRequest.Channel; ch != nil && constant.IsKeyOptionalChannel(ch.Type) {
 		ch.Key = strings.TrimSpace(ch.Key)
 		if ch.Key == "" && addChannelRequest.Mode != "single" {
 			common.ApiError(c, fmt.Errorf("无上游密钥时仅支持单渠道创建"))
@@ -1065,7 +1090,7 @@ func AddChannel(c *gin.Context) {
 					continue
 				}
 				key = strings.TrimSpace(key)
-				if key == "" && constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) {
+				if key == "" && constant.IsKeyOptionalChannel(addChannelRequest.Channel.Type) {
 					continue
 				}
 				cleanKeys = append(cleanKeys, key)
@@ -1100,10 +1125,10 @@ func AddChannel(c *gin.Context) {
 
 	channels := make([]model.Channel, 0, len(keys))
 	for _, key := range keys {
-		if constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) {
+		if constant.IsKeyOptionalChannel(addChannelRequest.Channel.Type) {
 			key = strings.TrimSpace(key)
 		}
-		allowEmptyKey := constant.IsSelfHostedChannel(addChannelRequest.Channel.Type) && addChannelRequest.Mode == "single"
+		allowEmptyKey := constant.IsKeyOptionalChannel(addChannelRequest.Channel.Type) && addChannelRequest.Mode == "single"
 		if key == "" && !allowEmptyKey && !(addChannelRequest.Channel.Type == constant.ChannelTypeKilo && addChannelRequest.Channel.GetOtherSettings().KiloAnonymousEnabled) {
 			continue
 		}
@@ -1362,9 +1387,29 @@ func UpdateChannel(c *gin.Context) {
 	if _, provided := rawBody["type"]; !provided {
 		effectiveType = originChannel.Type
 	}
-	if channel.ClearKey && (!constant.IsSelfHostedChannel(effectiveType) || originChannel.ChannelInfo.IsMultiKey || strings.TrimSpace(channel.Key) != "") {
-		common.ApiError(c, fmt.Errorf("仅 vLLM/LiteLLM 单密钥渠道支持清除密钥，且不能同时设置新密钥"))
+	if channel.ClearKey && (!constant.IsKeyOptionalChannel(effectiveType) || originChannel.ChannelInfo.IsMultiKey || strings.TrimSpace(channel.Key) != "") {
+		common.ApiError(c, fmt.Errorf("仅支持可选密钥的单密钥渠道清除密钥，且不能同时设置新密钥"))
 		return
+	}
+	if constant.IsKeyOptionalChannel(effectiveType) {
+		channel.Type = effectiveType
+		channel.Key = strings.TrimSpace(channel.Key)
+		if originChannel.ChannelInfo.IsMultiKey && channel.Key != "" {
+			keys := make([]string, 0)
+			for _, key := range strings.Split(channel.Key, "\n") {
+				if key = strings.TrimSpace(key); key != "" {
+					keys = append(keys, key)
+				}
+			}
+			channel.Key = strings.Join(keys, "\n")
+		}
+	}
+	if effectiveType == constant.ChannelTypeBilibili && channel.BaseURL != nil {
+		if err := bilibili.ValidateBaseURL(channel.GetBaseURL()); err != nil {
+			common.ApiError(c, err)
+			return
+		}
+		channel.BaseURL = common.GetPointer(bilibili.NormalizeBaseURL(channel.GetBaseURL()))
 	}
 	if constant.IsSelfHostedChannel(effectiveType) {
 		channel.Type = effectiveType

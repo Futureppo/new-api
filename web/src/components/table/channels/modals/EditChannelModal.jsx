@@ -141,6 +141,10 @@ const isSelfHostedChannel = (type) => [75, 76].includes(Number(type));
 const MIMO_TEST_MODEL = 'mimo-v2.6-pro-ultraspeed';
 const QIANWEN_CHANNEL_TYPE = 77;
 const QIANWEN_TEST_MODEL = 'qwen3.7-plus';
+const BILIBILI_CHANNEL_TYPE = 78;
+const BILIBILI_TEST_MODEL = 'Index-Translate-35B-A3B';
+const isKeyOptionalChannel = (type) =>
+  isSelfHostedChannel(type) || Number(type) === BILIBILI_CHANNEL_TYPE;
 
 const isVertexChannel = (type) => Number(type) === VERTEX_CHANNEL_TYPE;
 const isServiceAccountChannel = (type) =>
@@ -153,6 +157,7 @@ function type2secretPrompt(type) {
   switch (type) {
     case 75:
     case 76:
+    case BILIBILI_CHANNEL_TYPE:
       return '上游 API Key（可选）';
     case 15:
       return '按照如下格式输入：APIKey|SecretKey';
@@ -661,6 +666,7 @@ const EditChannelModal = (props) => {
       value.endsWith('/v1') &&
       inputs.type !== TYPESAFE_CHANNEL_TYPE &&
       inputs.type !== MIMO_CHANNEL_TYPE &&
+      inputs.type !== BILIBILI_CHANNEL_TYPE &&
       inputs.type !== CLINE_CHANNEL_TYPE
     ) {
       Modal.confirm({
@@ -677,6 +683,21 @@ const EditChannelModal = (props) => {
     if (name === 'type') {
       let localModels = [];
       switch (value) {
+        case BILIBILI_CHANNEL_TYPE:
+          localModels = getChannelModels(value);
+          if (!isEdit) {
+            const testModel = inputs.test_model || BILIBILI_TEST_MODEL;
+            setInputs((prev) => ({
+              ...prev,
+              base_url: '',
+              models: localModels,
+              test_model: testModel,
+            }));
+            formApiRef.current?.setValue('base_url', '');
+            formApiRef.current?.setValue('models', localModels);
+            formApiRef.current?.setValue('test_model', testModel);
+          }
+          break;
         case XFYUN_MAAS_CHANNEL_TYPE:
           localModels = getChannelModels(value);
           setInputs((prev) => ({
@@ -1278,7 +1299,7 @@ const EditChannelModal = (props) => {
     let err = false;
     let errorMessage = '';
 
-    if (isEdit && !(isSelfHostedChannel(inputs.type) && inputs.clear_key)) {
+    if (isEdit && !(isKeyOptionalChannel(inputs.type) && inputs.clear_key)) {
       // 如果是编辑模式，使用已有的 channelId 获取模型列表
       try {
         const res = await API.get('/api/channel/fetch_models/' + channelId, {
@@ -1313,7 +1334,7 @@ const EditChannelModal = (props) => {
     } else {
       // 如果是新建模式，通过后端代理获取模型列表
       let fetchKey =
-        isSelfHostedChannel(inputs.type) && inputs.clear_key
+        isKeyOptionalChannel(inputs.type) && inputs.clear_key
           ? ''
           : inputs?.['key'] || '';
       if (
@@ -1342,7 +1363,7 @@ const EditChannelModal = (props) => {
         }
       }
 
-      if (!fetchKey && !isKiloAnonymous && !isSelfHostedChannel(inputs.type)) {
+      if (!fetchKey && !isKiloAnonymous && !isKeyOptionalChannel(inputs.type)) {
         errorMessage = errorMessage || t('请填写密钥');
         err = true;
       } else {
@@ -1840,7 +1861,8 @@ const EditChannelModal = (props) => {
   const submit = async () => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
-    if (isSelfHostedChannel(localInputs.type)) {
+    if (isKeyOptionalChannel(localInputs.type)) {
+      localInputs.key = (localInputs.key || '').trim();
       if (!isEdit && batch && !(localInputs.key || '').trim()) {
         showInfo(t('无上游密钥时仅支持单渠道创建'));
         return;
@@ -1969,7 +1991,7 @@ const EditChannelModal = (props) => {
     if (
       !isEdit &&
       (!localInputs.name ||
-        (!localInputs.key && !isSelfHostedChannel(localInputs.type)))
+        (!localInputs.key && !isKeyOptionalChannel(localInputs.type)))
     ) {
       showInfo(t('请填写渠道名称和渠道密钥！'));
       return;
@@ -3981,12 +4003,12 @@ const EditChannelModal = (props) => {
                             }
                             disabled={
                               isKiloAnonymous ||
-                              (isSelfHostedChannel(inputs.type) && inputs.clear_key)
+                              (isKeyOptionalChannel(inputs.type) && inputs.clear_key)
                             }
                             rules={
                               isEdit ||
                               isKiloAnonymous ||
-                              isSelfHostedChannel(inputs.type)
+                              isKeyOptionalChannel(inputs.type)
                                 ? []
                                 : [{ required: true, message: t('请输入密钥') }]
                             }
@@ -4140,7 +4162,7 @@ const EditChannelModal = (props) => {
                     )}
 
                     {isEdit &&
-                      isSelfHostedChannel(inputs.type) &&
+                      isKeyOptionalChannel(inputs.type) &&
                       !isMultiKeyChannel && (
                       <Form.Switch
                         field='clear_key'
@@ -4283,6 +4305,26 @@ const EditChannelModal = (props) => {
                         />
                       )}
 
+                      {inputs.type === BILIBILI_CHANNEL_TYPE && (
+                        <Banner
+                          type='info'
+                          description={
+                            <>
+                              {t(
+                                'Bilibili Index-Translate 支持文本和图片翻译，以及 Chat Completions、Responses 的普通和流式请求。官方接口当前无需密钥，模型可获取或手动配置，本站价格需由管理员配置。',
+                              )}{' '}
+                              <a
+                                href='https://github.com/bilibili/Index-Translate#inference'
+                                target='_blank'
+                                rel='noopener noreferrer'
+                              >
+                                {t('接入文档')}
+                              </a>
+                            </>
+                          }
+                          className='!rounded-lg'
+                        />
+                      )}
                       {isSelfHostedChannel(inputs.type) && (
                         <Banner
                           type='info'
@@ -4445,6 +4487,8 @@ const EditChannelModal = (props) => {
                                   ? 'https://api.xiaomimimo.com'
                                   : inputs.type === QIANWEN_CHANNEL_TYPE
                                   ? 'https://maas.qianwenaiapi.com'
+                                  : inputs.type === BILIBILI_CHANNEL_TYPE
+                                  ? 'https://index-translate.bilibili.com'
                                   : inputs.type === KILO_CHANNEL_TYPE
                                   ? 'https://api.kilo.ai/api/gateway'
                                   : inputs.type === MODAL_CHANNEL_TYPE

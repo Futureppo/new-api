@@ -479,8 +479,8 @@ func (channel *Channel) Update() error { return channel.UpdateWithKeyClear(false
 // credential is explicit and atomic with the rest of the channel update.
 func (channel *Channel) UpdateWithKeyClear(clearKey bool) error {
 	if clearKey {
-		if !constant.IsSelfHostedChannel(channel.Type) || channel.ChannelInfo.IsMultiKey {
-			return errors.New("key clearing requires a single-key vLLM/LiteLLM channel")
+		if !constant.IsKeyOptionalChannel(channel.Type) || channel.ChannelInfo.IsMultiKey {
+			return errors.New("key clearing requires a single-key channel with optional authentication")
 		}
 		channel.Key = ""
 		channel.Keys = nil

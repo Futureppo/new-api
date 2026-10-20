@@ -75,7 +75,8 @@ const (
 	ChannelTypeVLLM           = 75
 	ChannelTypeLiteLLM        = 76
 	ChannelTypeQianwenAI      = 77
-	ChannelTypeDummy          = ChannelTypeQianwenAI + 1 // this one is only for count, do not add any channel after this
+	ChannelTypeBilibili       = 78
+	ChannelTypeDummy          = ChannelTypeBilibili + 1 // this one is only for count, do not add any channel after this
 
 )
 
@@ -155,9 +156,10 @@ var ChannelBaseURLs = []string{
 	"https://api.xiaomimimo.com",                //72
 	"https://api.cline.bot/api",                 //73
 	"https://maas-api.cn-huabei-1.xf-yun.com",   //74
-	"",                              //75, vLLM deployments use custom base URLs
-	"",                              //76, LiteLLM proxies use custom base URLs
-	"https://maas.qianwenaiapi.com", //77
+	"",                                     //75, vLLM deployments use custom base URLs
+	"",                                     //76, LiteLLM proxies use custom base URLs
+	"https://maas.qianwenaiapi.com",        //77
+	"https://index-translate.bilibili.com", //78
 }
 
 var ChannelTypeNames = map[int]string{
@@ -235,10 +237,17 @@ var ChannelTypeNames = map[int]string{
 	ChannelTypeVLLM:           "vLLM",
 	ChannelTypeLiteLLM:        "LiteLLM",
 	ChannelTypeQianwenAI:      "QianwenAI",
+	ChannelTypeBilibili:       "Bilibili",
 }
 
 func IsSelfHostedChannel(channelType int) bool {
 	return channelType == ChannelTypeVLLM || channelType == ChannelTypeLiteLLM
+}
+
+// IsKeyOptionalChannel identifies channels that accept an empty upstream key.
+// Mode-dependent anonymous authentication (such as Kilo) is handled separately.
+func IsKeyOptionalChannel(channelType int) bool {
+	return IsSelfHostedChannel(channelType) || channelType == ChannelTypeBilibili
 }
 
 func GetChannelTypeName(channelType int) string {
