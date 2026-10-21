@@ -1,4 +1,4 @@
-name: Release (Linux, macOS, Windows)
+name: Release (Linux, Windows)
 permissions:
   contents: write
 
@@ -65,6 +65,7 @@ jobs:
 
   macos:
     name: macOS Release
+    if: ${{ false }} # macOS builds are disabled for this fork.
     runs-on: macos-latest
     steps:
       - name: Checkout
