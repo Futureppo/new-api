@@ -1,5 +1,9 @@
 {
   "translation": {
+    "临时凭证（STS）": "臨時憑證（STS）",
+    "临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。": "臨時憑證需要 AccessKey、SecretAccessKey 和 SessionToken；過期後需手動更新。Region 為 Bedrock 呼叫區域。",
+    "请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region": "請輸入臨時憑證，每行一組，格式：AccessKey|SecretAccessKey|SessionToken|Region",
+    "按照如下格式输入：AccessKey|SecretAccessKey|SessionToken|Region": "請依下列格式輸入：AccessKey|SecretAccessKey|SessionToken|Region",
     "Bilibili Web：Homura 和 Nailong 支持文本 Chat/Responses（含流式）；Echo 仅支持非流式音频 Chat、10 秒内 WAV/MP3 输入和原音色 WAV 输出，需配置按次价格。Key 可留空。获取模型返回预设目录，不代表实时可用；音频测试使用内置英语样例译为中文。": "Bilibili Web：Homura 和 Nailong 支援文字 Chat/Responses（含串流）；Echo 僅支援非串流音訊 Chat、10 秒內 WAV/MP3 輸入和原音色 WAV 輸出，需設定按次價格。Key 可留空。取得模型會回傳預設目錄，不代表即時可用；音訊測試使用內建英語範例翻譯為中文。",
     "Echo 默认源语言": "Echo 預設來源語言",
     "Echo 默认目标语言": "Echo 預設目標語言",

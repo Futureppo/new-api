@@ -27,6 +27,7 @@ type awsCredential struct {
 	apiKey          string
 	accessKeyID     string
 	secretAccessKey string
+	sessionToken    string
 	region          string
 }
 
@@ -44,6 +45,8 @@ func parseAwsCredential(rawKey string, keyType dto.AwsKeyType) (awsCredential, e
 			keyType = dto.AwsKeyTypeApiKey
 		case 3:
 			keyType = dto.AwsKeyTypeAKSK
+		case 4:
+			keyType = dto.AwsKeyTypeSTS
 		}
 	}
 
@@ -67,6 +70,17 @@ func parseAwsCredential(rawKey string, keyType dto.AwsKeyType) (awsCredential, e
 			accessKeyID:     parts[0],
 			secretAccessKey: parts[1],
 			region:          parts[2],
+		}
+	case dto.AwsKeyTypeSTS:
+		if len(parts) != 4 || parts[0] == "" || parts[1] == "" || parts[2] == "" || parts[3] == "" {
+			return credential, fmt.Errorf("invalid AWS temporary credentials, expected AccessKey|SecretAccessKey|SessionToken|Region")
+		}
+		credential = awsCredential{
+			mode:            awsCredentialModeAKSK,
+			accessKeyID:     parts[0],
+			secretAccessKey: parts[1],
+			sessionToken:    parts[2],
+			region:          parts[3],
 		}
 	default:
 		return credential, fmt.Errorf("unsupported AWS key type %q", keyType)
@@ -106,7 +120,7 @@ func newAwsRuntimeClient(credential awsCredential, httpClient *http.Client, opti
 		options.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
 			credential.accessKeyID,
 			credential.secretAccessKey,
-			"",
+			credential.sessionToken,
 		))
 	}
 	for _, optionFn := range optionFns {
@@ -128,7 +142,7 @@ func newAwsBedrockClient(credential awsCredential, httpClient *http.Client, opti
 		options.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(
 			credential.accessKeyID,
 			credential.secretAccessKey,
-			"",
+			credential.sessionToken,
 		))
 	}
 	for _, optionFn := range optionFns {

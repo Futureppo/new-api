@@ -38,6 +38,17 @@ func TestParseAwsCredential(t *testing.T) {
 		require.Equal(t, awsCredentialModeAKSK, credential.mode)
 		require.Equal(t, "access", credential.accessKeyID)
 		require.Equal(t, "secret", credential.secretAccessKey)
+		require.Empty(t, credential.sessionToken)
+		require.Equal(t, "us-west-2", credential.region)
+	})
+
+	t.Run("temporary credentials", func(t *testing.T) {
+		credential, err := parseAwsCredential(" access | secret | session/token+with=padding | us-west-2 ", dto.AwsKeyTypeSTS)
+		require.NoError(t, err)
+		require.Equal(t, awsCredentialModeAKSK, credential.mode)
+		require.Equal(t, "access", credential.accessKeyID)
+		require.Equal(t, "secret", credential.secretAccessKey)
+		require.Equal(t, "session/token+with=padding", credential.sessionToken)
 		require.Equal(t, "us-west-2", credential.region)
 	})
 
@@ -49,6 +60,11 @@ func TestParseAwsCredential(t *testing.T) {
 		akskCredential, err := parseAwsCredential("access|secret|ap-southeast-1", "")
 		require.NoError(t, err)
 		require.Equal(t, awsCredentialModeAKSK, akskCredential.mode)
+
+		stsCredential, err := parseAwsCredential("access|secret|session-token|ap-southeast-1", "")
+		require.NoError(t, err)
+		require.Equal(t, awsCredentialModeAKSK, stsCredential.mode)
+		require.Equal(t, "session-token", stsCredential.sessionToken)
 	})
 
 	t.Run("invalid values", func(t *testing.T) {
@@ -60,6 +76,25 @@ func TestParseAwsCredential(t *testing.T) {
 
 		_, err = parseAwsCredential("token|us-east-1", dto.AwsKeyTypeAKSK)
 		require.EqualError(t, err, "invalid AWS access key, expected AccessKey|SecretAccessKey|Region")
+
+		_, err = parseAwsCredential("access|secret|session-token|us-east-1", dto.AwsKeyTypeAKSK)
+		require.EqualError(t, err, "invalid AWS access key, expected AccessKey|SecretAccessKey|Region")
+
+		_, err = parseAwsCredential("access|secret|session-token|not-a-region", dto.AwsKeyTypeSTS)
+		require.EqualError(t, err, "invalid AWS region")
+
+		for _, rawKey := range []string{
+			"access|secret|us-east-1",
+			"access|secret|session-token|us-east-1|extra",
+			" |secret|session-token|us-east-1",
+			"access| |session-token|us-east-1",
+			"access|secret| |us-east-1",
+			"access|secret|session-token| ",
+		} {
+			credential, err := parseAwsCredential(rawKey, dto.AwsKeyTypeSTS)
+			require.EqualError(t, err, "invalid AWS temporary credentials, expected AccessKey|SecretAccessKey|SessionToken|Region")
+			require.Empty(t, credential)
+		}
 	})
 }
 
@@ -81,6 +116,7 @@ func TestNewAwsRuntimeClientUsesSelectedAuthentication(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "access", credentials.AccessKeyID)
 	require.Equal(t, "secret", credentials.SecretAccessKey)
+	require.Empty(t, credentials.SessionToken)
 	require.Nil(t, akskClient.Options().BearerAuthTokenProvider)
 }
 
@@ -158,4 +194,61 @@ func TestAwsSDKClientsSendExpectedAuthorization(t *testing.T) {
 		require.True(t, strings.HasPrefix(authorization, "AWS4-HMAC-SHA256 "))
 		require.Contains(t, authorization, "Credential=access/")
 	})
+}
+
+func TestAwsTemporaryCredentialsSignRequests(t *testing.T) {
+	t.Parallel()
+
+	// AWS requires X-Amz-Security-Token alongside SigV4 for temporary credentials:
+	// https://docs.aws.amazon.com/IAM/latest/UserGuide/id_credentials_temp_use-resources.html
+	for _, operation := range []string{"models", "invoke", "stream"} {
+		t.Run(operation, func(t *testing.T) {
+			t.Parallel()
+			credential, err := parseAwsCredential("access|secret|session/token+with=padding|us-east-1", dto.AwsKeyTypeSTS)
+			require.NoError(t, err)
+			var headers http.Header
+			httpClient := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+				headers = request.Header.Clone()
+				contentType, body := "application/json", `{}`
+				if operation == "models" {
+					body = `{"modelSummaries":[]}`
+				} else if operation == "stream" {
+					contentType, body = "application/vnd.amazon.eventstream", ""
+				}
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{contentType}},
+					Body:       io.NopCloser(strings.NewReader(body)),
+					Request:    request,
+				}, nil
+			})}
+
+			if operation == "models" {
+				client := newAwsBedrockClient(credential, httpClient)
+				_, err = client.ListFoundationModels(context.Background(), &bedrock.ListFoundationModelsInput{})
+				require.NoError(t, err)
+			} else {
+				client := newAwsRuntimeClient(credential, httpClient)
+				modelID := aws.String("us.anthropic.claude-sonnet-4-6")
+				if operation == "stream" {
+					output, err := client.InvokeModelWithResponseStream(context.Background(), &bedrockruntime.InvokeModelWithResponseStreamInput{
+						ModelId: modelID, ContentType: aws.String("application/json"), Body: []byte(`{}`),
+					})
+					require.NoError(t, err)
+					require.NoError(t, output.GetStream().Close())
+				} else {
+					_, err = client.InvokeModel(context.Background(), &bedrockruntime.InvokeModelInput{
+						ModelId: modelID, ContentType: aws.String("application/json"), Body: []byte(`{}`),
+					})
+					require.NoError(t, err)
+				}
+			}
+
+			require.Equal(t, "session/token+with=padding", headers.Get("X-Amz-Security-Token"))
+			authorization := headers.Get("Authorization")
+			require.True(t, strings.HasPrefix(authorization, "AWS4-HMAC-SHA256 "))
+			require.Contains(t, authorization, "Credential=access/")
+			require.Contains(t, authorization, "x-amz-security-token")
+		})
+	}
 }

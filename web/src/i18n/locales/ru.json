@@ -1,5 +1,9 @@
 {
   "translation": {
+    "临时凭证（STS）": "Временные учётные данные (STS)",
+    "临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。": "Для временных учётных данных нужны AccessKey, SecretAccessKey и SessionToken. Обновляйте их вручную после истечения срока действия. Region — регион запросов Bedrock.",
+    "请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region": "Введите временные учётные данные, по одному набору в строке, в формате: AccessKey|SecretAccessKey|SessionToken|Region",
+    "按照如下格式输入：AccessKey|SecretAccessKey|SessionToken|Region": "Введите в формате: AccessKey|SecretAccessKey|SessionToken|Region",
     "Bilibili Web：Homura 和 Nailong 支持文本 Chat/Responses（含流式）；Echo 仅支持非流式音频 Chat、10 秒内 WAV/MP3 输入和原音色 WAV 输出，需配置按次价格。Key 可留空。获取模型返回预设目录，不代表实时可用；音频测试使用内置英语样例译为中文。": "Bilibili Web: Homura и Nailong поддерживают текстовые Chat/Responses, включая потоковый режим. Echo поддерживает только аудио Chat без потоковой передачи: вход WAV/MP3 до 10 секунд и выход WAV с исходным голосом. Настройте цену за запрос. Ключ необязателен. Список моделей задан заранее и не подтверждает их текущую доступность. Аудиотест переводит встроенный английский пример на китайский.",
     "Echo 默认源语言": "Исходный язык Echo по умолчанию",
     "Echo 默认目标语言": "Целевой язык Echo по умолчанию",

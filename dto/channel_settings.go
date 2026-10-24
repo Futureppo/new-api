@@ -53,6 +53,7 @@ type AwsKeyType string
 const (
 	AwsKeyTypeAKSK   AwsKeyType = "ak_sk" // 默认
 	AwsKeyTypeApiKey AwsKeyType = "api_key"
+	AwsKeyTypeSTS    AwsKeyType = "sts"
 )
 
 const ModalKeepaliveDefaultIntervalSeconds = 30

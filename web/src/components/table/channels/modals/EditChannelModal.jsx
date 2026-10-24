@@ -3617,6 +3617,7 @@ const EditChannelModal = (props) => {
                               value: 'ak_sk',
                             },
                             { label: 'API Key', value: 'api_key' },
+                            { label: t('临时凭证（STS）'), value: 'sts' },
                           ]}
                           style={{ width: '100%' }}
                           value={inputs.aws_key_type || 'ak_sk'}
@@ -3626,9 +3627,15 @@ const EditChannelModal = (props) => {
                               value,
                             );
                           }}
-                          extraText={t(
-                            'AK/SK 模式：使用 AccessKey 和 SecretAccessKey；API Key 模式：使用 API Key',
-                          )}
+                          extraText={
+                            inputs.aws_key_type === 'sts'
+                              ? t(
+                                  '临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。',
+                                )
+                              : t(
+                                  'AK/SK 模式：使用 AccessKey 和 SecretAccessKey；API Key 模式：使用 API Key',
+                                )
+                          }
                         />
                       </>
                     )}
@@ -3710,9 +3717,13 @@ const EditChannelModal = (props) => {
                                 ? t(
                                     '请输入 API Key，一行一个，格式：APIKey|Region',
                                   )
-                                : t(
-                                    '请输入密钥，一行一个，格式：AccessKey|SecretAccessKey|Region',
-                                  )
+                                : inputs.aws_key_type === 'sts'
+                                  ? t(
+                                      '请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region',
+                                    )
+                                  : t(
+                                      '请输入密钥，一行一个，格式：AccessKey|SecretAccessKey|Region',
+                                    )
                               : t('请输入密钥，一行一个')
                           }
                           rules={
@@ -4009,9 +4020,13 @@ const EditChannelModal = (props) => {
                               inputs.type === 33
                                 ? inputs.aws_key_type === 'api_key'
                                   ? t('请输入 API Key，格式：APIKey|Region')
-                                  : t(
-                                      '按照如下格式输入：AccessKey|SecretAccessKey|Region',
-                                    )
+                                  : inputs.aws_key_type === 'sts'
+                                    ? t(
+                                        '按照如下格式输入：AccessKey|SecretAccessKey|SessionToken|Region',
+                                      )
+                                    : t(
+                                        '按照如下格式输入：AccessKey|SecretAccessKey|Region',
+                                      )
                                 : t(type2secretPrompt(inputs.type))
                             }
                             disabled={

@@ -1,5 +1,9 @@
 {
   "translation": {
+    "临时凭证（STS）": "Thông tin xác thực tạm thời (STS)",
+    "临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。": "Thông tin xác thực tạm thời cần AccessKey, SecretAccessKey và SessionToken. Hãy cập nhật thủ công khi hết hạn. Region là vùng gọi Bedrock.",
+    "请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region": "Nhập thông tin xác thực tạm thời, mỗi dòng một bộ, theo định dạng: AccessKey|SecretAccessKey|SessionToken|Region",
+    "按照如下格式输入：AccessKey|SecretAccessKey|SessionToken|Region": "Nhập theo định dạng: AccessKey|SecretAccessKey|SessionToken|Region",
     "Bilibili Web：Homura 和 Nailong 支持文本 Chat/Responses（含流式）；Echo 仅支持非流式音频 Chat、10 秒内 WAV/MP3 输入和原音色 WAV 输出，需配置按次价格。Key 可留空。获取模型返回预设目录，不代表实时可用；音频测试使用内置英语样例译为中文。": "Bilibili Web: Homura và Nailong hỗ trợ Chat/Responses văn bản, bao gồm truyền luồng. Echo chỉ hỗ trợ Chat âm thanh không truyền luồng, đầu vào WAV/MP3 tối đa 10 giây và đầu ra WAV giữ giọng gốc; cần cấu hình giá theo yêu cầu. Có thể để trống khóa. Danh sách mô hình được định sẵn, không xác nhận khả năng sử dụng hiện tại. Kiểm thử âm thanh dịch mẫu tiếng Anh tích hợp sang tiếng Trung.",
     "Echo 默认源语言": "Ngôn ngữ nguồn mặc định của Echo",
     "Echo 默认目标语言": "Ngôn ngữ đích mặc định của Echo",
