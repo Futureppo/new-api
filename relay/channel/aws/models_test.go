@@ -8,6 +8,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	bedrockTypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
+	"github.com/aws/smithy-go"
 	"github.com/stretchr/testify/require"
 )
 
@@ -96,7 +97,46 @@ func TestFetchClaudeModelsPrefersActiveInferenceProfiles(t *testing.T) {
 	require.Equal(t, 2, client.profileCalls)
 	require.Equal(t, "Anthropic", aws.ToString(client.foundationRequest.ByProvider))
 	require.Equal(t, bedrockTypes.ModelModalityText, client.foundationRequest.ByOutputModality)
-	require.Equal(t, bedrockTypes.InferenceTypeOnDemand, client.foundationRequest.ByInferenceType)
+	require.Empty(t, client.foundationRequest.ByInferenceType)
+}
+
+func TestFetchClaudeModelsFallsBackWhenListingProfilesIsDenied(t *testing.T) {
+	t.Parallel()
+
+	denied := &bedrockTypes.AccessDeniedException{Message: aws.String("missing bedrock:ListInferenceProfiles")}
+	profileOnlyModel := activeClaudeFoundationModel("anthropic.claude-sonnet-4-6")
+	profileOnlyModel.InferenceTypesSupported = []bedrockTypes.InferenceType{"INFERENCE_PROFILE"}
+	provisionedOnlyModel := activeClaudeFoundationModel("anthropic.claude-provisioned-only")
+	provisionedOnlyModel.InferenceTypesSupported = []bedrockTypes.InferenceType{bedrockTypes.InferenceTypeProvisioned}
+	for name, profileErr := range map[string]error{
+		"direct": denied,
+		"SDK wrapped": &smithy.OperationError{
+			ServiceID: "Bedrock", OperationName: "ListInferenceProfiles", Err: denied,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &mockBedrockModelLister{
+				profileErr: profileErr,
+				foundationOutput: &bedrock.ListFoundationModelsOutput{
+					ModelSummaries: []bedrockTypes.FoundationModelSummary{
+						profileOnlyModel,
+						provisionedOnlyModel,
+						activeClaudeFoundationModel("anthropic.claude-3-haiku-20240307-v1:0"),
+						legacyClaudeFoundationModel("anthropic.claude-2-v1:0"),
+					},
+				},
+			}
+			models, err := fetchClaudeModels(context.Background(), client)
+			require.NoError(t, err)
+			require.Equal(t, []string{
+				"anthropic.claude-3-haiku-20240307-v1:0",
+				"anthropic.claude-sonnet-4-6",
+			}, models)
+			require.NotNil(t, client.foundationRequest)
+			require.Equal(t, "Anthropic", aws.ToString(client.foundationRequest.ByProvider))
+			require.Empty(t, client.foundationRequest.ByInferenceType)
+		})
+	}
 }
 
 func TestFetchClaudeModelsReturnsControlPlaneErrors(t *testing.T) {
@@ -110,6 +150,37 @@ func TestFetchClaudeModelsReturnsControlPlaneErrors(t *testing.T) {
 		foundationErr: errors.New("throttled"),
 	})
 	require.EqualError(t, err, "fetch AWS Claude foundation models failed: throttled")
+}
+
+func TestFetchClaudeModelsDoesNotSuppressOtherProfileErrors(t *testing.T) {
+	t.Parallel()
+
+	for name, profileErr := range map[string]error{
+		"throttled":         &bedrockTypes.ThrottlingException{Message: aws.String("rate limited")},
+		"expired token":     &smithy.GenericAPIError{Code: "ExpiredTokenException", Message: "expired"},
+		"invalid signature": &smithy.GenericAPIError{Code: "InvalidSignatureException", Message: "invalid signature"},
+		"timeout":           context.DeadlineExceeded,
+	} {
+		t.Run(name, func(t *testing.T) {
+			client := &mockBedrockModelLister{profileErr: profileErr}
+			_, err := fetchClaudeModels(context.Background(), client)
+			require.ErrorIs(t, err, profileErr)
+			require.Nil(t, client.foundationRequest)
+		})
+	}
+}
+
+func TestFetchClaudeModelsReturnsFoundationPermissionErrorAfterFallback(t *testing.T) {
+	t.Parallel()
+
+	foundationErr := &bedrockTypes.AccessDeniedException{Message: aws.String("missing bedrock:ListFoundationModels")}
+	client := &mockBedrockModelLister{
+		profileErr:    &bedrockTypes.AccessDeniedException{Message: aws.String("missing bedrock:ListInferenceProfiles")},
+		foundationErr: foundationErr,
+	}
+	_, err := fetchClaudeModels(context.Background(), client)
+	require.ErrorIs(t, err, foundationErr)
+	require.Contains(t, err.Error(), "fetch AWS Claude foundation models failed")
 }
 
 func TestFoundationModelIDFromARN(t *testing.T) {

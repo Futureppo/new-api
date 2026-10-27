@@ -2,11 +2,13 @@ package aws
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/bedrock"
 	bedrockTypes "github.com/aws/aws-sdk-go-v2/service/bedrock/types"
@@ -17,10 +19,11 @@ type bedrockModelLister interface {
 	ListInferenceProfiles(context.Context, *bedrock.ListInferenceProfilesInput, ...func(*bedrock.Options)) (*bedrock.ListInferenceProfilesOutput, error)
 }
 
-// FetchClaudeModels returns active Anthropic text models that can be invoked in
-// the credential's region. System-defined inference profiles are preferred over
+// FetchClaudeModels returns active Anthropic text model IDs advertised in the
+// credential's region. System-defined inference profiles are preferred over
 // their underlying foundation model IDs because newer Claude models often
-// require cross-region inference.
+// require cross-region inference. If listing profiles is denied, only foundation
+// models are returned; listing them does not verify model invocation permissions.
 func FetchClaudeModels(ctx context.Context, rawKey string, keyType dto.AwsKeyType, proxy string) ([]string, error) {
 	credential, err := parseAwsCredential(rawKey, keyType)
 	if err != nil {
@@ -36,13 +39,17 @@ func FetchClaudeModels(ctx context.Context, rawKey string, keyType dto.AwsKeyTyp
 func fetchClaudeModels(ctx context.Context, client bedrockModelLister) ([]string, error) {
 	profiles, coveredModels, err := fetchClaudeInferenceProfiles(ctx, client)
 	if err != nil {
-		return nil, fmt.Errorf("fetch AWS Claude inference profiles failed: %w", err)
+		var accessDenied *bedrockTypes.AccessDeniedException
+		if !errors.As(err, &accessDenied) {
+			return nil, fmt.Errorf("fetch AWS Claude inference profiles failed: %w", err)
+		}
+		logger.LogWarn(ctx, "AWS bedrock:ListInferenceProfiles permission denied; falling back to foundation models only")
 	}
 
 	foundationOutput, err := client.ListFoundationModels(ctx, &bedrock.ListFoundationModelsInput{
 		ByProvider:       aws.String("Anthropic"),
 		ByOutputModality: bedrockTypes.ModelModalityText,
-		ByInferenceType:  bedrockTypes.InferenceTypeOnDemand,
+		// Filtering by ON_DEMAND would omit models that require an inference profile.
 	})
 	if err != nil {
 		return nil, fmt.Errorf("fetch AWS Claude foundation models failed: %w", err)
@@ -119,7 +126,9 @@ func isActiveClaudeFoundationModel(summary bedrockTypes.FoundationModelSummary, 
 		return false
 	}
 	return containsModelModality(summary.OutputModalities, bedrockTypes.ModelModalityText) &&
-		containsInferenceType(summary.InferenceTypesSupported, bedrockTypes.InferenceTypeOnDemand)
+		(containsInferenceType(summary.InferenceTypesSupported, bedrockTypes.InferenceTypeOnDemand) ||
+			// The pinned SDK does not yet define the INFERENCE_PROFILE enum value.
+			containsInferenceType(summary.InferenceTypesSupported, "INFERENCE_PROFILE"))
 }
 
 func containsModelModality(values []bedrockTypes.ModelModality, expected bedrockTypes.ModelModality) bool {
