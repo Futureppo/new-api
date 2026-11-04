@@ -140,6 +140,7 @@ export const useApiRequest = (
       setMessage((prevMessage) => {
         const lastMessage = prevMessage[prevMessage.length - 1];
         if (
+          !lastMessage ||
           lastMessage.status === MESSAGE_STATUS.COMPLETE ||
           lastMessage.status === MESSAGE_STATUS.ERROR
         ) {
@@ -320,43 +321,92 @@ export const useApiRequest = (
         },
         method: 'POST',
         payload: JSON.stringify(payload),
+        start: false,
       });
 
       sseSourceRef.current = source;
 
       let responseData = '';
       let hasReceivedFirstResponse = false;
-      let isStreamComplete = false; // 添加标志位跟踪流是否正常完成
+      let isStreamFinished = false;
+
+      const finishStream = (error = null, response = null) => {
+        if (isStreamFinished) return;
+        const errorInfo = error && {
+          ...handleApiError(error, response),
+          readyState: source.readyState,
+        };
+        // Closing the connection can synchronously dispatch abort/closed events.
+        isStreamFinished = true;
+        if (sseSourceRef.current === source) {
+          sseSourceRef.current = null;
+        }
+        if (source.xhr) source.close();
+
+        setDebugData((prev) => ({
+          ...prev,
+          response: error
+            ? responseData +
+              '\n\nSSE Error:\n' +
+              JSON.stringify(errorInfo, null, 2)
+            : responseData,
+          isStreaming: false,
+        }));
+        setActiveDebugTab(DEBUG_TABS.RESPONSE);
+
+        if (error) {
+          setMessage((prevMessage) => {
+            const lastMessage = prevMessage[prevMessage.length - 1];
+            if (
+              !lastMessage ||
+              lastMessage.status === MESSAGE_STATUS.COMPLETE ||
+              lastMessage.status === MESSAGE_STATUS.ERROR
+            ) {
+              return prevMessage;
+            }
+            return [
+              ...prevMessage.slice(0, -1),
+              {
+                ...lastMessage,
+                content:
+                  (lastMessage.content ? lastMessage.content + '\n\n' : '') +
+                  error.message,
+                errorCode: error.errorCode ?? null,
+              },
+            ];
+          });
+        }
+        completeMessage(error ? MESSAGE_STATUS.ERROR : MESSAGE_STATUS.COMPLETE);
+      };
 
       source.addEventListener('message', (e) => {
-        if (e.data === '[DONE]') {
-          isStreamComplete = true; // 标记流正常完成
-          source.close();
-          sseSourceRef.current = null;
-          setDebugData((prev) => ({
-            ...prev,
-            response: responseData,
-            sseMessages: [...(prev.sseMessages || []), '[DONE]'], // 添加 DONE 标记
-            isStreaming: false,
-          }));
-          completeMessage();
+        // sse.js emits an empty message for comment-only keep-alive frames.
+        if (isStreamFinished || !e.data?.trim()) return;
+
+        setDebugData((prev) => ({
+          ...prev,
+          sseMessages: [...(prev.sseMessages || []), e.data],
+        }));
+        if (e.data.trim() === '[DONE]') {
+          finishStream();
           return;
         }
 
+        responseData += e.data + '\n';
         try {
           const payload = JSON.parse(e.data);
-          responseData += e.data + '\n';
+
+          if (payload?.error) {
+            const error = new Error(payload.error.message || t('请求发生错误'));
+            error.errorCode = payload.error.code ?? null;
+            finishStream(error);
+            return;
+          }
 
           if (!hasReceivedFirstResponse) {
             setActiveDebugTab(DEBUG_TABS.RESPONSE);
             hasReceivedFirstResponse = true;
           }
-
-          // 新增：将 SSE 消息添加到数组
-          setDebugData((prev) => ({
-            ...prev,
-            sseMessages: [...(prev.sseMessages || []), e.data],
-          }));
 
           const delta = payload.choices?.[0]?.delta;
           if (delta) {
@@ -372,94 +422,49 @@ export const useApiRequest = (
           }
         } catch (error) {
           console.error('Failed to parse SSE message:', error);
-          const errorInfo = `解析错误: ${error.message}`;
-
-          setDebugData((prev) => ({
-            ...prev,
-            response: responseData + `\n\nError: ${errorInfo}`,
-            sseMessages: [...(prev.sseMessages || []), e.data], // 即使解析失败也保存原始数据
-            isStreaming: false,
-          }));
-          setActiveDebugTab(DEBUG_TABS.RESPONSE);
-
-          streamMessageUpdate(t('解析响应数据时发生错误'), 'content');
-          completeMessage(MESSAGE_STATUS.ERROR);
+          finishStream(
+            new Error(`${t('解析响应数据时发生错误')}: ${error.message}`),
+          );
         }
       });
 
       source.addEventListener('error', (e) => {
-        // 只有在流没有正常完成且连接状态异常时才处理错误
-        if (!isStreamComplete && source.readyState !== 2) {
-          console.error('SSE Error:', e);
-          let errorMessage = e.data || t('请求发生错误');
-          let errorCode = null;
+        if (isStreamFinished) return;
+        let errorMessage = e.data || t('请求发生错误');
+        let errorCode = null;
 
-          if (e.data) {
-            try {
-              const errorJson = JSON.parse(e.data);
-              if (errorJson?.error) {
-                errorMessage = errorJson.error.message || errorMessage;
-                errorCode = errorJson.error.code || null;
-              }
-            } catch (_) {
-              // not JSON, use raw data as error message
+        if (e.data) {
+          try {
+            const errorJson = JSON.parse(e.data);
+            if (errorJson?.error) {
+              errorMessage = errorJson.error.message || errorMessage;
+              errorCode = errorJson.error.code ?? null;
             }
+          } catch (_) {
+            // Non-JSON HTTP errors retain their original message.
           }
-
-          const errorInfo = handleApiError(new Error(errorMessage));
-          errorInfo.readyState = source.readyState;
-
-          setDebugData((prev) => ({
-            ...prev,
-            response:
-              responseData +
-              '\n\nSSE Error:\n' +
-              JSON.stringify(errorInfo, null, 2),
-          }));
-          setActiveDebugTab(DEBUG_TABS.RESPONSE);
-
-          setMessage((prevMessage) => {
-            const newMessages = [...prevMessage];
-            const lastMessage = newMessages[newMessages.length - 1];
-            if (lastMessage && lastMessage.status !== MESSAGE_STATUS.COMPLETE && lastMessage.status !== MESSAGE_STATUS.ERROR) {
-              newMessages[newMessages.length - 1] = {
-                ...lastMessage,
-                content: (lastMessage.content || '') + errorMessage,
-                errorCode: errorCode,
-                status: MESSAGE_STATUS.ERROR,
-              };
-            }
-            return newMessages;
-          });
-          sseSourceRef.current = null;
-          source.close();
         }
+        const error = new Error(errorMessage);
+        error.errorCode = errorCode;
+        finishStream(error, { status: e.responseCode });
+      });
+
+      source.addEventListener('abort', () => {
+        if (isStreamFinished) return;
+        isStreamFinished = true;
+        if (sseSourceRef.current === source) {
+          sseSourceRef.current = null;
+        }
+        setDebugData((prev) => ({
+          ...prev,
+          response: responseData,
+          isStreaming: false,
+        }));
       });
 
       source.addEventListener('readystatechange', (e) => {
-        // 检查 HTTP 状态错误，但避免与正常关闭重复处理
-        if (
-          e.readyState >= 2 &&
-          source.status !== undefined &&
-          source.status !== 200 &&
-          !isStreamComplete
-        ) {
-          const errorInfo = handleApiError(new Error('HTTP状态错误'));
-          errorInfo.status = source.status;
-          errorInfo.readyState = source.readyState;
-
-          setDebugData((prev) => ({
-            ...prev,
-            response:
-              responseData +
-              '\n\nHTTP Error:\n' +
-              JSON.stringify(errorInfo, null, 2),
-          }));
-          setActiveDebugTab(DEBUG_TABS.RESPONSE);
-
-          source.close();
-          streamMessageUpdate(t('连接已断开'), 'content');
-          completeMessage(MESSAGE_STATUS.ERROR);
+        if (e.readyState === SSE.CLOSED && !isStreamFinished) {
+          finishStream(new Error(t('连接已断开')));
         }
       });
 
@@ -467,16 +472,7 @@ export const useApiRequest = (
         source.stream();
       } catch (error) {
         console.error('Failed to start SSE stream:', error);
-        const errorInfo = handleApiError(error);
-
-        setDebugData((prev) => ({
-          ...prev,
-          response: 'Stream启动失败:\n' + JSON.stringify(errorInfo, null, 2),
-        }));
-        setActiveDebugTab(DEBUG_TABS.RESPONSE);
-
-        streamMessageUpdate(t('建立连接时发生错误'), 'content');
-        completeMessage(MESSAGE_STATUS.ERROR);
+        finishStream(new Error(`${t('建立连接时发生错误')}: ${error.message}`));
       }
     },
     [
@@ -486,7 +482,7 @@ export const useApiRequest = (
       streamMessageUpdate,
       completeMessage,
       t,
-      applyAutoCollapseLogic,
+      sseSourceRef,
     ],
   );
 

@@ -3,12 +3,14 @@ package openai
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -215,6 +217,43 @@ func TestOpenRouterStreamsPreserveFramesAndUsage(t *testing.T) {
 			require.Equal(t, tc.prompt, u.(*dto.Usage).PromptTokens)
 			require.Equal(t, tc.output, u.(*dto.Usage).CompletionTokens)
 			require.Equal(t, tc.body, w.Body.String())
+			require.False(t, info.StreamStatus.HasErrors())
+		})
+	}
+}
+
+func TestOpenRouterChatStreamKeepAlivesAndMultilineData(t *testing.T) {
+	body := strings.Repeat(": OPENROUTER PROCESSING\n\n", 3) + `id: gen-test
+data: {"choices":
+data: [{"delta":{"role":"assistant","content":"","reasoning":"thinking","reasoning_details":[{"type":"reasoning.summary","summary":"thinking"}]}}]}
+
+data: {"choices":[{"delta":{"content":"你好"}}]}
+
+: OPENROUTER PROCESSING
+
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[{"delta":{"role":"assistant","content":""},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5}}
+
+data: [DONE]
+
+`
+	for _, lineEnding := range []string{"\n", "\r\n"} {
+		t.Run(fmt.Sprintf("line_ending_%q", lineEnding), func(t *testing.T) {
+			c, w := openRouterTestContext("")
+			info := openRouterTestInfo(relayconstant.RelayModeChatCompletions, types.RelayFormatOpenAI)
+			upstream := strings.ReplaceAll(body, "\n", lineEnding)
+			usage, apiErr := (&Adaptor{}).DoResponse(c, &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": {"text/event-stream"}},
+				Body:       io.NopCloser(iotest.OneByteReader(strings.NewReader(upstream))),
+			}, info)
+			require.Nil(t, apiErr)
+			require.Equal(t, body, w.Body.String())
+			require.Equal(t, 3, usage.(*dto.Usage).PromptTokens)
+			require.Equal(t, 2, usage.(*dto.Usage).CompletionTokens)
+			require.Equal(t, 5, usage.(*dto.Usage).TotalTokens)
+			require.True(t, info.StreamStatus.IsNormalEnd())
 			require.False(t, info.StreamStatus.HasErrors())
 		})
 	}

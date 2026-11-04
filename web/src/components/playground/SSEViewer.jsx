@@ -53,12 +53,15 @@ const SSEViewer = ({ sseData }) => {
       return [];
     }
 
-    return sseData.map((item, index) => {
+    const messages = sseData.filter(
+      (item) => typeof item !== 'string' || item.trim() !== '',
+    );
+    return messages.map((item, index) => {
       let parsed = null;
       let error = null;
       let isDone = false;
 
-      if (item === '[DONE]') {
+      if (typeof item === 'string' && item.trim() === '[DONE]') {
         isDone = true;
       } else {
         try {
