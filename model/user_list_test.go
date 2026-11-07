@@ -29,7 +29,7 @@ func setupUserListTestDB(t *testing.T) *gorm.DB {
 	common.UsingPostgreSQL = false
 	initCol()
 
-	require.NoError(t, db.AutoMigrate(&User{}))
+	require.NoError(t, migrateWalletTestDB(db))
 
 	t.Cleanup(func() {
 		DB = oldDB

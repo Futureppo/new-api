@@ -1,11 +1,14 @@
 package service
 
 import (
+	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 )
 
@@ -34,6 +37,56 @@ func looksLikeBrowserUserAgent(ua string) bool {
 	return strings.Contains(ua, "mozilla/5.0")
 }
 
+func checkinSourceURL(value string) *url.URL {
+	u, err := url.Parse(strings.TrimSpace(value))
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Hostname() == "" || u.User != nil {
+		return nil
+	}
+	return u
+}
+
+func checkinOriginPort(u *url.URL) string {
+	if port := u.Port(); port != "" {
+		return port
+	}
+	if u.Scheme == "https" {
+		return "443"
+	}
+	return "80"
+}
+
+func checkinLoopbackHost(host string) bool {
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
+}
+
+func checkinSourceAllowed(c *gin.Context, value string) bool {
+	source := checkinSourceURL(value)
+	if source == nil {
+		return false
+	}
+	// These addresses are controlled by the deployment. Forwarded host headers
+	// alone do not establish trust: a direct client can supply them too.
+	for _, address := range []string{system_setting.ServerAddress, os.Getenv("FRONTEND_BASE_URL")} {
+		configured := checkinSourceURL(address)
+		if configured != nil && source.Scheme == configured.Scheme &&
+			strings.EqualFold(source.Hostname(), configured.Hostname()) && checkinOriginPort(source) == checkinOriginPort(configured) {
+			return true
+		}
+	}
+	request := checkinSourceURL(source.Scheme + "://" + c.Request.Host)
+	if request == nil {
+		return false
+	}
+	if strings.EqualFold(source.Hostname(), request.Hostname()) && checkinOriginPort(source) == checkinOriginPort(request) {
+		return true
+	}
+	// Vite's default local proxy rewrites Host to localhost:3000 while keeping
+	// the browser's localhost development port in Origin and Referer.
+	peer, _, err := net.SplitHostPort(c.Request.RemoteAddr)
+	return err == nil && net.ParseIP(peer).IsLoopback() &&
+		checkinLoopbackHost(request.Hostname()) && checkinLoopbackHost(source.Hostname())
+}
+
 // clientEnvironmentScore 计算环境一致性分，0-checkinHeaderMaxScore。
 func clientEnvironmentScore(c *gin.Context) int {
 	if c == nil || c.Request == nil {
@@ -51,6 +104,10 @@ func clientEnvironmentScore(c *gin.Context) int {
 		"Sec-Fetch-Dest": {"empty": true},
 	} {
 		if value := strings.ToLower(strings.TrimSpace(c.GetHeader(name))); value != "" && !allowed[value] {
+			// A configured separate frontend legitimately sends cross-site fetches.
+			if name == "Sec-Fetch-Site" && value == "cross-site" && checkinSourceAllowed(c, c.GetHeader("Origin")) {
+				continue
+			}
 			score -= 12
 		}
 	}
@@ -59,8 +116,7 @@ func clientEnvironmentScore(c *gin.Context) int {
 		if value == "" {
 			continue
 		}
-		u, err := url.Parse(value)
-		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || !strings.EqualFold(u.Host, c.Request.Host) {
+		if !checkinSourceAllowed(c, value) {
 			score -= 12
 		}
 	}

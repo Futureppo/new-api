@@ -34,9 +34,8 @@ func TestMain(m *testing.M) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := db.AutoMigrate(
+	if err := migrateWalletTestDB(db,
 		&Task{},
-		&User{},
 		&Token{},
 		&Log{},
 		&ConversationLog{},
@@ -48,8 +47,6 @@ func TestMain(m *testing.M) {
 		&UserSubscription{},
 		&IPBan{},
 		&ProbeIPAbuseState{},
-		&Checkin{},
-		&WalletCharge{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}

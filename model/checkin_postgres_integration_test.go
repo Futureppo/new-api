@@ -43,9 +43,9 @@ func TestCheckinWalletPostgresIntegration(t *testing.T) {
 	conn, err := db.DB()
 	require.NoError(t, err)
 	conn.SetMaxOpenConns(8)
-	require.NoError(t, db.AutoMigrate(&Task{}, &User{}, &Token{}, &Log{}, &ConversationLog{},
+	require.NoError(t, migrateWalletTestDB(db, &Task{}, &Token{}, &Log{}, &ConversationLog{},
 		&Channel{}, &Ability{}, &TopUp{}, &SubscriptionPlan{}, &SubscriptionOrder{},
-		&UserSubscription{}, &IPBan{}, &ProbeIPAbuseState{}, &Checkin{}, &WalletCharge{}))
+		&UserSubscription{}, &IPBan{}, &ProbeIPAbuseState{}))
 	for _, test := range []struct {
 		name string
 		fn   func(*testing.T)

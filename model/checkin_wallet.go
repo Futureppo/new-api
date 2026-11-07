@@ -45,6 +45,15 @@ type walletPart struct {
 }
 
 func lockWalletUser(tx *gorm.DB, userID int) (*User, error) {
+	if tx.Dialector.Name() == "sqlite" {
+		// SQLite omits SELECT FOR UPDATE. Acquire the writer reservation before
+		// reading a snapshot, so busy_timeout can wait for competing writers
+		// instead of failing a read-to-write upgrade with SQLITE_BUSY.
+		if err := tx.Model(&User{}).Where("id = ?", userID).
+			UpdateColumn("quota", gorm.Expr("quota")).Error; err != nil {
+			return nil, err
+		}
+	}
 	var user User
 	err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Select("id", "quota").First(&user, userID).Error
 	return &user, err

@@ -7,6 +7,7 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // Checkin 签到记录
@@ -35,8 +36,8 @@ type CheckinRecord struct {
 	QuotaAwarded int    `json:"quota_awarded"`
 }
 
-func (Checkin) TableName() string {
-	return "checkins"
+func (Checkin) TableName(namer schema.Namer) string {
+	return namer.TableName("Checkin")
 }
 
 // GetUserCheckinRecords 获取用户在指定日期范围内的签到记录

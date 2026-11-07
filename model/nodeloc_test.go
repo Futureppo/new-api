@@ -52,8 +52,8 @@ func forEachNodeLocDatabase(t *testing.T, test func(*testing.T, *gorm.DB)) {
 			DB, common.RedisEnabled = db, false
 			t.Cleanup(func() {
 				DB, common.RedisEnabled = previousDB, previousRedis
-				// Only this test's isolated table is removed on external databases.
-				require.NoError(t, db.Migrator().DropTable(&User{}))
+				// All models honor the test prefix on external databases.
+				require.NoError(t, db.Migrator().DropTable(&WalletCharge{}, &Checkin{}, &User{}))
 				require.NoError(t, sqlDB.Close())
 			})
 			test(t, db)
@@ -138,7 +138,7 @@ func testNodeLocExistingDatabaseMigration(t *testing.T, db *gorm.DB) {
 
 func TestNodeLocBindingPreservesAccountOnDatabase(t *testing.T) {
 	forEachNodeLocDatabase(t, func(t *testing.T, db *gorm.DB) {
-		require.NoError(t, db.AutoMigrate(&User{}))
+		require.NoError(t, migrateWalletTestDB(db))
 		user := seedAffQuotaUser(t, "binding", "")
 		other := seedAffQuotaUser(t, "other", "")
 		legacy := seedAffQuotaUser(t, "legacy", "")
@@ -179,7 +179,7 @@ func TestNodeLocBindingPreservesAccountOnDatabase(t *testing.T) {
 
 func TestNodeLocConcurrentQuotaTransfersOnDatabase(t *testing.T) {
 	forEachNodeLocDatabase(t, func(t *testing.T, db *gorm.DB) {
-		require.NoError(t, db.AutoMigrate(&User{}))
+		require.NoError(t, migrateWalletTestDB(db))
 		testTransferAffQuotaConcurrentRequests(t)
 	})
 }
