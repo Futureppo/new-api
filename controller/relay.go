@@ -39,7 +39,7 @@ func relayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIErro
 		return relay.VertexNativeHelper(c, info)
 	}
 	if info.RelayFormat == types.RelayFormatTypeSafe {
-		return relay.TypeSafeHelper(c, info)
+		return relay.NamedDecisionsHelper(c, info)
 	}
 	if info.RelayFormat == types.RelayFormatMistralNative || info.RelayFormat == types.RelayFormatMistralRealtime {
 		return relay.MistralNativeHelper(c, info)
@@ -95,16 +95,16 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 	}
-	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenRouter {
+	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && !constant.SupportsNamedDecisions(common.GetContextKeyInt(c, constant.ContextKeyChannelType)) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
-			Message: "/v1/decisions requires an OpenAI or OpenRouter channel", Type: "invalid_request_error",
+			Message: "/v1/decisions requires an OpenAI, OpenRouter, TypeSafe or QianwenAI channel", Type: "invalid_request_error",
 		}})
 		return
 	}
 	// Reject unsupported protocols before any WebSocket upgrade or pre-charge.
-	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeTypeSafe && relayFormat != types.RelayFormatTypeSafe {
+	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeTypeSafe && relayFormat != types.RelayFormatTypeSafe && relayFormat != types.RelayFormatOpenAIDecisions {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
-			Message: "TypeSafe only supports POST /v1/systemone",
+			Message: "TypeSafe only supports POST /v1/systemone or /v1/decisions with state and named questions",
 			Type:    "invalid_request_error", Code: types.ErrorCodeInvalidRequest,
 		}})
 		return
@@ -151,7 +151,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if c.GetBool("bilibili_web_response_committed") && c.Writer.Written() {
 				return
 			}
-			if relayFormat == types.RelayFormatTypeSafe && typesafe.WriteUpstreamError(c, newAPIError) {
+			if (relayFormat == types.RelayFormatTypeSafe || relayFormat == types.RelayFormatOpenAIDecisions) && typesafe.WriteUpstreamError(c, newAPIError) {
 				return
 			}
 			if (relayFormat == types.RelayFormatMistralNative || relayFormat == types.RelayFormatMistralRealtime || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi) && c.Writer.Written() {

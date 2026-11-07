@@ -20,7 +20,11 @@ func TestOpenRouterEndpointTypes(t *testing.T) {
 	for endpoint, models := range families {
 		for _, name := range models {
 			t.Run(name, func(t *testing.T) {
-				require.Equal(t, []constant.EndpointType{endpoint}, GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, name))
+				expected := []constant.EndpointType{endpoint}
+				if endpoint == constant.EndpointTypeOpenAIDecisions {
+					expected = append(expected, constant.EndpointTypeTypeSafeSystemOne)
+				}
+				require.Equal(t, expected, GetEndpointTypesByChannelType(constant.ChannelTypeOpenRouter, name))
 			})
 		}
 	}

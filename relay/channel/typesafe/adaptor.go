@@ -34,7 +34,7 @@ func (a *Adaptor) GetChannelName() string      { return "TypeSafe" }
 func (a *Adaptor) GetModelList() []string      { return ModelList }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
-	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeTypeSafe || info.RelayMode != relayconstant.RelayModeTypeSafeSystemOne {
+	if info == nil || info.ChannelMeta == nil || info.ChannelType != constant.ChannelTypeTypeSafe || !relayconstant.IsDecisionsMode(info.RelayMode) {
 		return "", unsupportedRequest()
 	}
 	return NormalizeBaseURL(info.ChannelBaseUrl) + SystemOnePath, nil
@@ -60,7 +60,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 }
 
 func unsupportedRequest() error {
-	return types.NewErrorWithStatusCode(errors.New("TypeSafe only supports synchronous POST /v1/systemone"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	return types.NewErrorWithStatusCode(errors.New("TypeSafe only supports synchronous POST /v1/systemone or /v1/decisions with state and named questions"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 }
 
 func (a *Adaptor) ConvertOpenAIRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeneralOpenAIRequest) (any, error) {

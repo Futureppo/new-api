@@ -4400,7 +4400,7 @@ const EditChannelModal = (props) => {
                         <Banner
                           type='info'
                           description={t(
-                            'TypeSafe 默认地址为 https://api.typesafe.ai，支持 /v1/systemone 原生评估和模型列表获取，不支持聊天或流式请求。',
+                            'TypeSafe 默认地址为 https://api.typesafe.ai，支持 /v1/systemone 和 /v1/decisions 决策评估及模型列表获取，不支持聊天或流式请求。',
                           )}
                           className='!rounded-lg'
                         />
@@ -4457,7 +4457,7 @@ const EditChannelModal = (props) => {
                               </div>
                               <div>
                                 {t(
-                                  '决策模型 decision-model-preview 使用 System One（/v1/systemone），请求需包含 state 和 questions，不支持流式。渠道测试可选择自动检测或 System One。',
+                                  '决策模型 decision-model-preview 支持 /v1/systemone 和 /v1/decisions，请求需包含 state 和命名 questions，不支持流式。渠道测试可选择自动检测、System One 或 Decisions。',
                                 )}
                               </div>
                             </>

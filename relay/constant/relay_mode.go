@@ -64,6 +64,10 @@ const (
 	RelayModeDecisions
 )
 
+func IsDecisionsMode(mode int) bool {
+	return mode == RelayModeDecisions || mode == RelayModeTypeSafeSystemOne
+}
+
 func Path2RelayMode(path string) int {
 	relayMode := RelayModeUnknown
 	if path == "/v1/systemone" {

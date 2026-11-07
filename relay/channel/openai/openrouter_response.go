@@ -111,7 +111,7 @@ func openRouterResponse(c *gin.Context, resp *http.Response, info *relaycommon.R
 	if info.RelayMode == relayconstant.RelayModeAudioSpeech {
 		return openRouterSpeechResponse(c, resp, info)
 	}
-	if info.RelayMode == relayconstant.RelayModeDecisions {
+	if relayconstant.IsDecisionsMode(info.RelayMode) {
 		return openRouterDecisionsResponse(c, resp, info)
 	}
 	// Explicit protocol conversions retain the existing conversion handlers.

@@ -59,7 +59,7 @@ export const CHANNEL_TEST_ENDPOINTS = [
   },
   {
     value: 'openai-decisions',
-    label: 'OpenAI Decisions (/v1/decisions)',
+    label: 'Decisions (/v1/decisions)',
     stream: false,
   },
   { value: 'anthropic', label: 'Anthropic (/v1/messages)', stream: true },

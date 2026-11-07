@@ -13,7 +13,7 @@ func TestTypeSafeRegistration(t *testing.T) {
 	apiType, ok := ChannelType2APIType(constant.ChannelTypeTypeSafe)
 	require.True(t, ok)
 	require.Equal(t, constant.APITypeTypeSafe, apiType)
-	require.Equal(t, []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne}, GetEndpointTypesByChannelType(constant.ChannelTypeTypeSafe, "jev-latest"))
+	require.Equal(t, []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions}, GetEndpointTypesByChannelType(constant.ChannelTypeTypeSafe, "jev-latest"))
 	endpoint, ok := GetDefaultEndpointInfo(constant.EndpointTypeTypeSafeSystemOne)
 	require.True(t, ok)
 	require.Equal(t, EndpointInfo{Path: "/v1/systemone", Method: "POST"}, endpoint)

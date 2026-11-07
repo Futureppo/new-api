@@ -18,17 +18,17 @@ import (
 )
 
 func DecisionsHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+	if relaycommon.IsNamedDecisionsRequest(info.Request) {
+		return NamedDecisionsHelper(c, info)
+	}
 	info.InitChannelMeta(c)
 	info.DisablePing = true
-	if info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeOpenRouter {
-		return types.NewErrorWithStatusCode(errors.New("/v1/decisions requires an OpenAI or OpenRouter channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	if info.ChannelType != constant.ChannelTypeOpenAI {
+		return types.NewErrorWithStatusCode(errors.New("OpenAI Decisions with input and a questions array requires an OpenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 	var request dto.Request
 	switch original := info.Request.(type) {
 	case *dto.OpenAIDecisionsRequest:
-		copy := *original
-		request = &copy
-	case *dto.OpenRouterDecisionsRequest:
 		copy := *original
 		request = &copy
 	default:

@@ -31,6 +31,8 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 		var r dto.Request = &dto.OpenAIDecisionsRequest{}
 		if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
 			r = &dto.OpenRouterDecisionsRequest{}
+		} else if constant.SupportsNamedDecisions(common.GetContextKeyInt(c, constant.ContextKeyChannelType)) {
+			r = &dto.TypeSafeRequest{}
 		}
 		err = common.UnmarshalBodyReusable(c, r)
 		if err != nil && !common.IsRequestBodyTooLargeError(err) {

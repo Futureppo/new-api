@@ -31,9 +31,9 @@ func channelForExplicitEndpointTest(source *model.Channel, endpoint constant.End
 	switch endpoint {
 	case constant.EndpointTypeTypeSafeSystemOne:
 		protocolType = constant.ChannelTypeTypeSafe
-		native = source.Type == constant.ChannelTypeTypeSafe || source.Type == constant.ChannelTypeQianwenAI
+		native = constant.SupportsNamedDecisions(source.Type)
 	case constant.EndpointTypeOpenAIDecisions:
-		native = source.Type == constant.ChannelTypeOpenAI || source.Type == constant.ChannelTypeOpenRouter
+		native = source.Type == constant.ChannelTypeOpenAI || constant.SupportsNamedDecisions(source.Type)
 	case constant.EndpointTypeOpenAIResponseCompact:
 		native = source.Type == constant.ChannelTypeOpenAI || source.Type == constant.ChannelTypeCodex
 	case constant.EndpointTypeCohereChat, constant.EndpointTypeCohereRerank, constant.EndpointTypeCohereEmbeddings:

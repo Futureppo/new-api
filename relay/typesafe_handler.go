@@ -15,39 +15,56 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
+// NamedDecisionsHelper handles both public entrances without changing the
+// client's RelayFormat or RelayMode, including when a retry changes channels.
+func NamedDecisionsHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIError {
 	info.InitChannelMeta(c)
 	info.DisablePing = true
-	if info.ChannelType != constant.ChannelTypeTypeSafe && info.ChannelType != constant.ChannelTypeQianwenAI {
-		return types.NewErrorWithStatusCode(errors.New("/v1/systemone requires a TypeSafe or QianwenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+	info.IsStream = false
+	if !constant.SupportsNamedDecisions(info.ChannelType) {
+		return types.NewErrorWithStatusCode(errors.New("named Decisions requires an OpenRouter, TypeSafe or QianwenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
-	original, ok := info.Request.(*dto.TypeSafeRequest)
-	if !ok {
-		return types.NewError(errors.New("invalid TypeSafe request"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	var request dto.Request
+	switch original := info.Request.(type) {
+	case *dto.TypeSafeRequest:
+		copy := *original
+		request = &copy
+	case *dto.OpenRouterDecisionsRequest:
+		copy := *original
+		request = &copy
+	default:
+		return types.NewError(errors.New("invalid named Decisions request"), types.ErrorCodeInvalidRequest, types.ErrOptionWithSkipRetry())
+	}
+	if info.ChannelType == constant.ChannelTypeOpenRouter {
+		service.StartConversationCapture(c, info)
 	}
 	// Mapping and overrides must start from the original payload on every attempt.
-	request := *original
-	if err := helper.ModelMappedHelper(c, info, &request); err != nil {
+	if err := helper.ModelMappedHelper(c, info, request); err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
-	body, err := common.Marshal(request)
+	var body []byte
+	var err error
+	if relaycommon.NamedDecisionsPassThrough(info) {
+		info.MarkModelMappingBypassed()
+		storage, storageErr := common.GetBodyStorage(c)
+		if storageErr != nil {
+			return types.NewError(storageErr, types.ErrorCodeReadRequestBodyFailed, types.ErrOptionWithSkipRetry())
+		}
+		body, err = storage.Bytes()
+	} else {
+		body, err = common.Marshal(request)
+	}
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeJsonMarshalFailed, types.ErrOptionWithSkipRetry())
 	}
-	if len(info.ParamOverride) > 0 {
-		body, err = relaycommon.ApplyParamOverrideWithRelayInfo(body, info)
-		if err != nil {
-			if fixed, ok := relaycommon.AsParamOverrideReturnError(err); ok {
-				return relaycommon.NewAPIErrorFromParamOverride(fixed)
-			}
-			return types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
+	body, err = relaycommon.PrepareNamedDecisionsRequest(info, body)
+	if err != nil {
+		if fixed, ok := relaycommon.AsParamOverrideReturnError(err); ok {
+			return relaycommon.NewAPIErrorFromParamOverride(fixed)
 		}
-	}
-	// Validate again so an override cannot enable an unsupported stream.
-	var effective dto.TypeSafeRequest
-	if err := common.Unmarshal(body, &effective); err != nil {
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
+	relaycommon.SetConversationUpstreamRequest(info, body)
 	a := GetAdaptor(info.ApiType)
 	a.Init(info)
 	response, err := doChannelRPMGuardedRequest(c, info, func() (any, error) {
@@ -61,13 +78,26 @@ func TypeSafeHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIEr
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeDoRequestFailed, http.StatusBadGateway)
 	}
 	httpResponse, ok := response.(*http.Response)
-	if !ok {
-		return types.NewErrorWithStatusCode(errors.New("invalid TypeSafe response"), types.ErrorCodeBadResponse, http.StatusBadGateway)
+	if !ok || httpResponse == nil {
+		return types.NewErrorWithStatusCode(errors.New("invalid Decisions response"), types.ErrorCodeBadResponse, http.StatusBadGateway)
 	}
-	usage, apiErr := a.DoResponse(c, httpResponse, info)
-	if apiErr != nil {
+	if info.ChannelType == constant.ChannelTypeOpenRouter && httpResponse.StatusCode != http.StatusOK {
+		apiErr := service.RelayErrorHandler(c.Request.Context(), httpResponse, false)
+		service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
 		return apiErr
 	}
-	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), []string{a.GetChannelName() + " System One"})
+	relaycommon.WrapConversationUpstreamResponse(info, httpResponse)
+	usage, apiErr := a.DoResponse(c, httpResponse, info)
+	if apiErr != nil {
+		if info.ChannelType == constant.ChannelTypeOpenRouter {
+			service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
+		}
+		return apiErr
+	}
+	var logContent []string
+	if info.ChannelType != constant.ChannelTypeOpenRouter {
+		logContent = []string{a.GetChannelName() + " System One"}
+	}
+	service.PostTextConsumeQuota(c, info, usage.(*dto.Usage), logContent)
 	return nil
 }

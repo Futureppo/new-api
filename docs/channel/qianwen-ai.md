@@ -10,7 +10,7 @@ Base URL 可填根地址、`/compatible-mode/v1`、`/apps/anthropic`、`/apps/an
 | --- | --- | --- |
 | `POST /v1/chat/completions` | `/compatible-mode/v1/chat/completions` | 原生 OpenAI Chat；JSON / SSE |
 | `POST /v1/chat/completions`，模型 `tongyi-intent-detect-v3` | 同上 | 意图分类、意图加工具调用、仅工具调用 |
-| `POST /v1/systemone`，模型 `decision-model-preview` | `/compatible-mode/v1/systemone` | 同步结构化决策：分类、是非判断、评分 |
+| `POST /v1/systemone` 或 `/v1/decisions`，模型 `decision-model-preview` | `/compatible-mode/v1/systemone` | 同步结构化决策：分类、是非判断、评分 |
 | `POST /v1/messages` | `/apps/anthropic/v1/messages` | 原生 Anthropic Messages；JSON / SSE |
 | `POST /v1/responses` | `/compatible-mode/v1/responses` | 原生 Responses；JSON / SSE |
 | `GET /v1/responses/{id}` | `/compatible-mode/v1/responses/{id}` | 查询已存储响应 |
@@ -35,7 +35,7 @@ Messages 使用渠道密钥生成 `x-api-key`，默认 `anthropic-version: 2023-
 
 ## 决策模型
 
-`decision-model-preview` 使用独立的 System One 协议，与下面的 `tongyi-intent-detect-v3` 不同。客户端调用 `POST /v1/systemone`，网关转发到官方的 `/compatible-mode/v1/systemone`，使用 Bearer 密钥认证。也支持版本模型及渠道模型别名。
+`decision-model-preview` 使用独立的 System One 协议，与下面的 `tongyi-intent-detect-v3` 不同。客户端调用 `POST /v1/systemone` 或 `POST /v1/decisions`，网关转发到官方的 `/compatible-mode/v1/systemone`，使用 Bearer 密钥认证。也支持版本模型及渠道模型别名。
 
 ```json
 {
@@ -49,9 +49,14 @@ Messages 使用渠道密钥生成 `x-api-key`，默认 `anthropic-version: 2023-
 }
 ```
 
-`state` 可为字符串、对象或数组，`questions` 为以问题 ID 为键的对象。返回的 `answers`、概率、置信度及零值保留原样。该模型不生成文本，不支持流式、Chat Completions、Messages 或 Responses。请求了不支持的协议时，网关提示改用 `/v1/systemone`。
+`state` 可为字符串、对象或数组，`questions` 为以问题 ID 为键的对象。返回的 `answers`、概率、置信度及零值保留原样。该模型不生成文本，不支持流式、Chat Completions、Messages 或 Responses。请求了不支持的协议时，网关提示改用 `/v1/systemone` 或 `/v1/decisions`。
 
-用量按官方 `usage.input_tokens` 结算，缺少 `output_tokens` 时计为 0，不根据结构化答案估算输出 Token。渠道测试使用 System One 样例；自动检测支持链式别名，即使开启测试流式开关也不会发送流式决策请求。Base URL 还可填写 TypeSafe SDK 使用的 `/compatible-mode` 地址或完整 `/compatible-mode/v1/systemone` 地址。
+两个入口也支持 TypeSafe 和普通 OpenRouter 决策渠道，使用相同的命名问题结构。
+发往千问或 TypeSafe 时，参数覆盖后自动删除顶层 `provider`、`trace`、`session_id`，透传模式也会清理；
+这些 OpenRouter 专有参数中的路由、追踪及隐私设置不生效。模型通过渠道映射配置，不自动添加或删除前缀。
+OpenAI 的 `input` 和问题数组协议不参与转换。
+
+用量按官方 `usage.input_tokens` 结算，缺少 `output_tokens` 时内部计为 0，响应不补造该字段，不根据结构化答案估算输出 Token。两个入口均使用原请求模型的站内价格，不附加 `-openai-decisions` 计费后缀。渠道测试默认使用 System One 样例，也支持手动选择 Decisions；自动检测支持链式别名，即使开启测试流式开关也不会发送流式决策请求。Base URL 还可填写 TypeSafe SDK 使用的 `/compatible-mode` 地址或完整 `/compatible-mode/v1/systemone` 地址。
 
 模型获取按钮已为千问渠道开放。获取仍请求真实的 `/compatible-mode/v1/models`，支持自定义模型列表地址；推荐模型与上游实际可用模型分别处理。`TestQianwenModelDiscoveryLive` 与 `TestQianwenDecisionLive` 需配置专用 `QIANWEN_API_KEY`，未配置时跳过，不代表真实连通验证通过。
 

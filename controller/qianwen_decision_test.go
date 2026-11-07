@@ -84,7 +84,7 @@ func TestQianwenDecisionChannelTest(t *testing.T) {
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"qianwen-test":1,"decision-model-preview":1}`))
 	for _, name := range []string{constant.QianwenDecisionModel, qianwenAlias} {
 		require.Equal(t, "typesafe-systemone", normalizeChannelTestEndpoint(ch, name, ""))
-		for _, endpoint := range []string{"", "typesafe-systemone"} {
+		for _, endpoint := range []string{"", "typesafe-systemone", "openai-decisions"} {
 			for _, stream := range []bool{false, true} {
 				result := testChannel(ch, name, endpoint, stream)
 				require.NoError(t, result.localErr)
@@ -95,7 +95,7 @@ func TestQianwenDecisionChannelTest(t *testing.T) {
 		}
 	}
 	for _, name := range []string{constant.QianwenDecisionModel, "decision-model-preview-2026-09-24"} {
-		require.Equal(t, []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne}, common.GetEndpointTypesByChannelType(constant.ChannelTypeQianwenAI, name))
+		require.Equal(t, []constant.EndpointType{constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions}, common.GetEndpointTypesByChannelType(constant.ChannelTypeQianwenAI, name))
 	}
 }
 

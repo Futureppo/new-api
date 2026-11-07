@@ -66,6 +66,9 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		service.ResetStatusCode(apiErr, c.GetString("status_code_mapping"))
 		return nil, apiErr
 	}
+	if strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+		return nil, badResponse("System One returned unexpected SSE")
+	}
 	var result struct {
 		Model   string                     `json:"model"`
 		Answers map[string]json.RawMessage `json:"answers"`

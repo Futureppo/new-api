@@ -107,6 +107,9 @@ func TestEveryExplicitEndpointReachesUpstreamRegardlessOfChannelType(t *testing.
 		for _, tc := range endpoints {
 			t.Run(fmt.Sprintf("%d/%s", channelType, tc.endpoint), func(t *testing.T) {
 				wantPath = tc.path
+				if channelType == constant.ChannelTypeTypeSafe && tc.endpoint == "openai-decisions" {
+					wantPath = "/v1/systemone" // Both entrances now use the native adapter.
+				}
 				name := "probe-model"
 				if strings.Contains(tc.path, "gemini-2.5-flash") {
 					name = "gemini-2.5-flash"

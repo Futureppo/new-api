@@ -609,6 +609,13 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 
+	var namedPassThroughBody []byte
+	if relaycommon.IsNamedDecisionsRequest(request) && relaycommon.NamedDecisionsPassThrough(info) {
+		namedPassThroughBody, err = common.Marshal(request)
+		if err != nil {
+			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
+		}
+	}
 	err = helper.ModelMappedHelper(c, info, request)
 	if err != nil {
 		return testResult{
@@ -835,7 +842,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	//}
 
 	isMultipart := strings.HasPrefix(c.GetHeader("Content-Type"), "multipart/form-data")
-	if len(info.ParamOverride) > 0 && !isMultipart && info.RelayMode != relayconstant.RelayModeDecisions {
+	if len(info.ParamOverride) > 0 && !isMultipart && !relayconstant.IsDecisionsMode(info.RelayMode) {
 		jsonData, err = relaycommon.ApplyParamOverrideWithRelayInfo(jsonData, info)
 		if err != nil {
 			if fixedErr, ok := relaycommon.AsParamOverrideReturnError(err); ok {
@@ -852,8 +859,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			}
 		}
 	}
-	if channel.Type == constant.ChannelTypeOpenAI || info.RelayMode == relayconstant.RelayModeDecisions {
-		if info.RelayMode == relayconstant.RelayModeDecisions {
+	if channel.Type == constant.ChannelTypeOpenAI || relayconstant.IsDecisionsMode(info.RelayMode) {
+		if relayconstant.IsDecisionsMode(info.RelayMode) {
+			if namedPassThroughBody != nil {
+				jsonData = namedPassThroughBody
+				info.MarkModelMappingBypassed()
+			}
 			jsonData, err = relaycommon.PrepareDecisionsRequest(info, jsonData)
 		} else if explicitEndpoint && info.RelayMode == relayconstant.RelayModeChatCompletions {
 			// An explicit endpoint must not be silently changed to /responses.
@@ -863,12 +874,6 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 		if err != nil {
 			return testResult{context: c, localErr: err, newAPIError: types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())}
-		}
-	}
-	if info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne {
-		var effective dto.TypeSafeRequest
-		if err := common.Unmarshal(jsonData, &effective); err != nil {
-			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeInvalidRequest)}
 		}
 	}
 	// Check the final body: channel overrides must not enable streaming for
@@ -1508,6 +1513,12 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 				return &dto.OpenRouterDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
 					"state":     json.RawMessage(`"Have a nice day."`),
 					"questions": json.RawMessage(`{"greeting":{"type":"noul","instructions":"Is this a friendly greeting?"}}`),
+				}}
+			}
+			if channel != nil && constant.SupportsNamedDecisions(channel.Type) {
+				return &dto.TypeSafeRequest{Model: model, Fields: map[string]json.RawMessage{
+					"state":     json.RawMessage(`"Please help urgently."`),
+					"questions": json.RawMessage(`{"urgent":{"type":"noul","instructions":"Does this message express urgency?"}}`),
 				}}
 			}
 			return &dto.OpenAIDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{

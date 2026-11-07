@@ -16,7 +16,7 @@
 | `/v1/images`、`/v1/images/generations`、`/v1/images/edits` | `/v1/images` | 生成、参考图片编辑；JSON 或 SSE |
 | `/v1/audio/speech` | `/v1/audio/speech` | 字符串或多说话人 turns，二进制 PCM/MP3 |
 | `/v1/audio/transcriptions` | `/v1/audio/transcriptions` | JSON 音频输入或 multipart 上传 |
-| `/v1/decisions` | `/alpha/decisions` | 原生 `state` 和命名 `questions`；非流式 |
+| `/v1/decisions`、`/v1/systemone` | `/alpha/decisions` | 原生 `state` 和命名 `questions`；非流式 |
 | `POST /v1/videos` | `/v1/videos` | 原生 JSON 视频生成、参考输入、编辑或续接；返回 202 |
 | `GET /v1/videos/{task_id}` | `/v1/videos/{job_id}` | 查询任务状态与结果 |
 | `GET /v1/videos/{task_id}/content?index=0` | `/v1/videos/{job_id}/content?index=0` | 使用原任务密钥下载，支持 Range |
@@ -88,8 +88,15 @@ Decisions 使用 OpenRouter 原生格式，问题类型支持 `noul`、`choice`�
 }
 ```
 
-回答按问题名称返回，保留原始答案、用量及扩展字段。OpenRouter 的协议与
-OpenAI Decisions 的 `input` / 问题数组不同；请按所选渠道使用对应格式。
+回答按问题名称返回，保留原始答案、用量及扩展字段。也可以用相同请求调用
+`/v1/systemone`；两个入口均支持普通 OpenRouter、TypeSafe 和千问决策渠道。
+上游路径由所选渠道决定，模型名称通过现有渠道模型映射配置，不自动增删提供商前缀。
+
+转到 TypeSafe 或千问时，网关在参数覆盖后自动删除顶层 `provider`、`trace`、
+`session_id`，透传开关不会跳过此清理；这些字段中的路由、追踪及隐私设置不生效。
+转到 OpenRouter 时保留这些字段。跨渠道重试从原始请求重新准备，不沿用前一次的删除或覆盖结果。
+
+OpenAI Decisions 的 `input` / 问题数组协议仍独立处理，不与上述命名问题协议互转。
 
 视频请求使用 JSON，例如：
 
@@ -125,7 +132,8 @@ OpenAI Decisions 的 `input` / 问题数组不同；请按所选渠道使用对�
 缺失用量采用本地估算，显式零用量保留为零。消费日志的 `usage_source`
 区分 `upstream`、`openrouter_native_messages`、`duration` 和 `local_estimate`。
 
-Decisions 按原模型的站内 token 倍率、固定价格或计费表达式结算。
+Decisions 的两个入口均按原模型的站内 token 倍率、固定价格或计费表达式结算，
+不使用 OpenAI 独立的 `-openai-decisions` 价格，也不按上游 `usage.cost` 扣费。
 视频沿用站内任务单价或倍率及分组倍率，每个任务结算一次；不按上游成本调价，
 也不自动按时长额外相乘。负数价格或倍率不受支持。生成失败、取消或超时使用
 既有任务退款流程；临时查询失败不会被当成生成失败。提交结果不明时不自动重试，

@@ -46,6 +46,9 @@ func openRouterEndpointTypes(model string) []constant.EndpointType {
 		endpoint = constant.EndpointTypeImageGeneration
 	}
 	if endpoint != "" {
+		if endpoint == constant.EndpointTypeOpenAIDecisions {
+			return []constant.EndpointType{endpoint, constant.EndpointTypeTypeSafeSystemOne}
+		}
 		return []constant.EndpointType{endpoint}
 	}
 	return []constant.EndpointType{constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAIResponse}

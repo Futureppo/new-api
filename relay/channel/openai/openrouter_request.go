@@ -30,7 +30,7 @@ func openRouterInvalid(message string) *types.NewAPIError {
 
 func openRouterRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	base := openrouter.NormalizeBaseURL(info.ChannelBaseUrl)
-	if info.RelayMode == relayconstant.RelayModeDecisions && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
+	if relayconstant.IsDecisionsMode(info.RelayMode) && info.ChannelOtherSettings.IsOpenRouterEnterprise() {
 		return "", openRouterInvalid("native Decisions requires a standard channel")
 	}
 	if !isOpenRouterNative(info) {
@@ -41,7 +41,7 @@ func openRouterRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		}
 		return base + info.RequestURLPath, nil
 	}
-	if info.RelayMode == relayconstant.RelayModeDecisions {
+	if relayconstant.IsDecisionsMode(info.RelayMode) {
 		return base + "/alpha/decisions", nil
 	}
 	var path string
@@ -148,7 +148,7 @@ func validateOpenRouterBody(info *relaycommon.RelayInfo, body []byte) ([]byte, e
 	if common.Unmarshal(fields["model"], &model) != nil || strings.TrimSpace(model) == "" {
 		return nil, openRouterInvalid("model is required")
 	}
-	if info.RelayMode == relayconstant.RelayModeDecisions {
+	if relayconstant.IsDecisionsMode(info.RelayMode) {
 		var request dto.OpenRouterDecisionsRequest
 		if err := common.Unmarshal(body, &request); err != nil {
 			return nil, openRouterInvalid(err.Error())

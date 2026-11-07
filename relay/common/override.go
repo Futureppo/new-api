@@ -1,6 +1,7 @@
 package common
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -658,14 +659,20 @@ func compareNumeric(jsonValue, targetValue gjson.Result, operator string) (bool,
 
 // applyOperationsLegacy 原参数覆盖方法
 func applyOperationsLegacy(jsonData []byte, paramOverride map[string]interface{}, auditRecorder *paramOverrideAuditRecorder) ([]byte, error) {
-	reqMap := make(map[string]interface{})
+	// Decode only fields being changed; unrelated numbers must not round-trip
+	// through float64 (e.g. decision state containing 64-bit identifiers).
+	reqMap := make(map[string]json.RawMessage)
 	err := common.Unmarshal(jsonData, &reqMap)
 	if err != nil {
 		return nil, err
 	}
 
 	for key, value := range paramOverride {
-		reqMap[key] = value
+		raw, err := common.Marshal(value)
+		if err != nil {
+			return nil, err
+		}
+		reqMap[key] = raw
 		auditRecorder.recordOperation("set", key, "", "", value)
 	}
 

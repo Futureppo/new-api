@@ -73,8 +73,8 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	if info.ChannelMeta != nil && constant.IsQianwenDecisionModel(info.UpstreamModelName) &&
-		(info.RelayFormat != types.RelayFormatTypeSafe || info.RelayMode != relayconstant.RelayModeTypeSafeSystemOne) {
-		return "", invalid("decision-model-preview uses POST /v1/systemone with state and questions; Chat Completions, Messages and Responses are not supported")
+		!relayconstant.IsDecisionsMode(info.RelayMode) {
+		return "", invalid("decision-model-preview uses POST /v1/systemone or /v1/decisions with state and named questions; Chat Completions, Messages and Responses are not supported")
 	}
 	if info.ChannelMeta != nil && constant.IsQianwenIntentModel(info.UpstreamModelName) &&
 		(info.RelayFormat != types.RelayFormatOpenAI || info.RelayMode != relayconstant.RelayModeChatCompletions) {
@@ -82,7 +82,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	var path string
 	switch {
-	case info.RelayFormat == types.RelayFormatTypeSafe && info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne:
+	case relayconstant.IsDecisionsMode(info.RelayMode):
 		path = "/compatible-mode/v1/systemone"
 	case info.RelayFormat == types.RelayFormatClaude:
 		path = "/apps/anthropic/v1/messages"
@@ -156,9 +156,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 	if _, err := a.GetRequestURL(info); err != nil {
 		return nil, err
 	}
-	if info.RelayMode == relayconstant.RelayModeTypeSafeSystemOne {
+	if relayconstant.IsDecisionsMode(info.RelayMode) {
 		if c.Request.Method != http.MethodPost || info.IsStream {
-			return nil, invalid("QianwenAI System One only supports synchronous POST /v1/systemone")
+			return nil, invalid("QianwenAI System One only supports synchronous POST /v1/systemone or /v1/decisions")
 		}
 		data, err := io.ReadAll(body)
 		if err != nil {
@@ -197,7 +197,7 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, body io
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (any, *types.NewAPIError) {
 	switch info.RelayMode {
-	case relayconstant.RelayModeTypeSafeSystemOne:
+	case relayconstant.RelayModeTypeSafeSystemOne, relayconstant.RelayModeDecisions:
 		return (&typesafe.Adaptor{}).DoResponse(c, resp, info)
 	case relayconstant.RelayModeImagesGenerations, relayconstant.RelayModeImagesEdits:
 		return imageResponse(c, resp, info)
