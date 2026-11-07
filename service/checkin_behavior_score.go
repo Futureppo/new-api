@@ -4,30 +4,15 @@ import (
 	"math"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 )
 
 const (
-	// 行为特征各项权重，合计 checkinBehaviorMaxScore。
-	behaviorWeightTimingSpread = 25 // 签到时刻的离散度
-	behaviorWeightMidnightRush = 10 // 是否紧贴零点触发
-	behaviorWeightRealUsage    = 10 // 是否真的在用这个站
-
-	checkinBehaviorMaxScore = behaviorWeightTimingSpread +
-		behaviorWeightMidnightRush + behaviorWeightRealUsage
-
-	// 少于这个次数就没有足够的历史可供分析，一律按满分处理，
-	// 避免误伤新注册用户。
-	behaviorMinSamples = 3
+	checkinBehaviorMaxScore = 45
+	// 足够历史且多个信号相互印证时才降低奖励。
+	behaviorMinSamples = 7
 	behaviorSampleSize = 14
-
-	// 圆周标准差低于该值视为定时任务，高于上限视为正常人类作息。
-	behaviorTimingScriptSeconds = 300.0  // 5 分钟
-	behaviorTimingHumanSeconds  = 3600.0 // 1 小时
-
-	// 距离本地零点多久之内算「掐点触发」。
-	behaviorMidnightScriptSeconds = 60.0
-	behaviorMidnightHumanSeconds  = 600.0
 
 	behaviorUsageLookbackDays = 7
 )
@@ -90,43 +75,42 @@ func gradedScore(value, scriptAt, humanAt float64, weight int) int {
 //
 // 历史不足时一律给满分，避免误伤新用户。
 func checkinBehaviorScore(userId int, now time.Time) int {
+	if !common.LogConsumeEnabled {
+		return checkinBehaviorMaxScore
+	}
 	timestamps, err := model.RecentCheckinTimestamps(userId, behaviorSampleSize)
 	if err != nil {
-		return checkinBehaviorMaxScore // 查询失败时不惩罚用户
+		return checkinBehaviorMaxScore
 	}
-
-	score := 0
-
-	// 1. 签到时刻离散度
+	cutoff := now.AddDate(0, 0, -behaviorSampleSize).Unix()
+	recent := timestamps[:0]
+	for _, ts := range timestamps {
+		if ts >= cutoff && ts <= now.Unix() {
+			recent = append(recent, ts)
+		}
+	}
+	timestamps = recent
 	if len(timestamps) < behaviorMinSamples {
-		score += behaviorWeightTimingSpread
-	} else {
-		secondsOfDay := make([]float64, 0, len(timestamps))
-		for _, ts := range timestamps {
-			secondsOfDay = append(secondsOfDay, secondsIntoLocalDay(ts))
-		}
-		score += gradedScore(circularStdDevSeconds(secondsOfDay),
-			behaviorTimingScriptSeconds, behaviorTimingHumanSeconds,
-			behaviorWeightTimingSpread)
+		return checkinBehaviorMaxScore
 	}
-
-	// 2. 本次是否掐着零点触发
-	score += gradedScore(secondsIntoLocalDay(now.Unix()),
-		behaviorMidnightScriptSeconds, behaviorMidnightHumanSeconds,
-		behaviorWeightMidnightRush)
-
-	// 3. 是否真的在使用这个站点。只签到从不消费正是要抑制的模式；
-	//    但没有签到历史的新账号不参与该项判定。
-	first, err := model.FirstCheckinTimestamp(userId)
-	if err != nil || first == 0 || now.Unix()-first < behaviorUsageLookbackDays*86400 {
-		score += behaviorWeightRealUsage
-	} else {
-		used, err := model.UserHasConsumptionSince(userId,
-			now.Add(-behaviorUsageLookbackDays*24*time.Hour).Unix())
-		if err != nil || used {
-			score += behaviorWeightRealUsage
-		}
+	usage, err := model.CheckinUsageSince(userId, now.Add(-behaviorUsageLookbackDays*24*time.Hour).Unix())
+	if err != nil {
+		return checkinBehaviorMaxScore
 	}
-
-	return score
+	// A real user's regular routine is not evidence of automation. A single token
+	// call or a zero-cost log cannot exempt an account from recurring timing evidence.
+	if usage.Days >= 2 && usage.Calls >= 3 {
+		return checkinBehaviorMaxScore
+	}
+	seconds := make([]float64, 0, len(timestamps))
+	for _, ts := range timestamps {
+		seconds = append(seconds, secondsIntoLocalDay(ts))
+	}
+	spread := circularStdDevSeconds(seconds)
+	// Minute-level routines are common; require second-level repetition for a penalty.
+	if spread >= 60 {
+		return checkinBehaviorMaxScore
+	}
+	penalty := checkinBehaviorMaxScore - gradedScore(spread, 2, 60, checkinBehaviorMaxScore)
+	return checkinBehaviorMaxScore - penalty
 }

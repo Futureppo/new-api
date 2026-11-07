@@ -8,7 +8,7 @@ import (
 func AttachDeferredMidjourneyBilling(task *model.Midjourney, info *relaycommon.RelayInfo, estimatedQuota int) {
 	task.Quota = info.FinalPreConsumedQuota
 	task.DeferredBilling = &model.TaskPrivateData{
-		BillingSource: info.BillingSource, SubscriptionId: info.SubscriptionId, TokenId: info.TokenId,
+		WalletChargeId: info.WalletChargeId, BillingSource: info.BillingSource, SubscriptionId: info.SubscriptionId, TokenId: info.TokenId,
 		BillingContext: &model.TaskBillingContext{DeferredSettlement: true, EstimatedQuota: estimatedQuota, PerCallBilling: true,
 			ModelPrice: info.PriceData.ModelPrice, ModelRatio: info.PriceData.ModelRatio,
 			GroupRatio: info.PriceData.GroupRatioInfo.GroupRatio, OriginModelName: info.OriginModelName},

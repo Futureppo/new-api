@@ -842,6 +842,7 @@ func RelayTask(c *gin.Context) {
 		}
 		task.PrivateData.UpstreamVideoID = relayInfo.UpstreamVideoID
 		task.PrivateData.BillingSource = relayInfo.BillingSource
+		task.PrivateData.WalletChargeId = relayInfo.WalletChargeId
 		task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 		task.PrivateData.TokenId = relayInfo.TokenId
 		task.PrivateData.BillingContext = &model.TaskBillingContext{

@@ -22,6 +22,7 @@ type Midjourney struct {
 	FailReason      string           `json:"fail_reason"`
 	ChannelId       int              `json:"channel_id"`
 	Quota           int              `json:"quota"`
+	WalletChargeId  int              `json:"-" gorm:"not null;default:0"`
 	Buttons         string           `json:"buttons"`
 	Properties      string           `json:"properties"`
 }

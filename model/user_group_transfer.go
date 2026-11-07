@@ -3,7 +3,8 @@ package model
 import (
 	"errors"
 	"math"
-	"strings"
+
+	"github.com/QuantumNous/new-api/common"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -14,8 +15,6 @@ const (
 	UserGroupBalanceModeSubtract = "subtract"
 	UserGroupBalanceModeOverride = "override"
 	UserGroupBalanceModeMultiply = "multiply"
-
-	userGroupBalanceUpdateBatchSize = 500
 )
 
 type UserGroupCount struct {
@@ -112,9 +111,20 @@ func UpdateActiveUsersGroupBalance(group string, mode string, quota int, factor 
 	}
 	defer tx.Rollback()
 
-	users, err := getActiveUserBalanceSnapshotsByGroup(tx, group)
+	users, err := getActiveUserBalanceSnapshotsByGroup(tx.Clauses(clause.Locking{Strength: "UPDATE"}), group)
 	if err != nil {
 		return UserGroupBalancePreview{}, nil, err
+	}
+	var expired []Checkin
+	now := common.GetTimestamp()
+	for i := range users {
+		user := &User{Id: users[i].Id, Quota: users[i].Quota}
+		rows, err := expireCheckinWalletTx(tx, user, now)
+		if err != nil {
+			return UserGroupBalancePreview{}, nil, err
+		}
+		expired = append(expired, rows...)
+		users[i].Quota = user.Quota
 	}
 
 	preview, err := buildUserGroupBalancePreview(group, mode, quota, factor, users)
@@ -134,22 +144,23 @@ func UpdateActiveUsersGroupBalance(group string, mode string, quota int, factor 
 		return preview, userIDs, nil
 	}
 
-	if mode == UserGroupBalanceModeMultiply {
-		if factor == nil {
-			return UserGroupBalancePreview{}, nil, errors.New("invalid balance factor")
+	for _, snapshot := range users {
+		user := &User{Id: snapshot.Id, Quota: snapshot.Quota}
+		target := user.Quota
+		switch mode {
+		case UserGroupBalanceModeAdd:
+			target += quota
+		case UserGroupBalanceModeSubtract:
+			target = max(0, target-quota)
+		case UserGroupBalanceModeOverride:
+			target = quota
+		case UserGroupBalanceModeMultiply:
+			target, err = multiplyUserQuota(target, *factor)
+			if err != nil {
+				return UserGroupBalancePreview{}, nil, err
+			}
 		}
-		if err := updateUserGroupBalanceByFactor(tx, users, *factor); err != nil {
-			return UserGroupBalancePreview{}, nil, err
-		}
-	} else {
-		updates, err := buildUserGroupBalanceUpdates(mode, quota)
-		if err != nil {
-			return UserGroupBalancePreview{}, nil, err
-		}
-
-		if err := tx.Model(&User{}).
-			Where("id IN ?", userIDs).
-			Updates(updates).Error; err != nil {
+		if err := setWalletQuotaTx(tx, user, target, now); err != nil {
 			return UserGroupBalancePreview{}, nil, err
 		}
 	}
@@ -162,6 +173,8 @@ func UpdateActiveUsersGroupBalance(group string, mode string, quota int, factor 
 		_ = InvalidateUserCache(userID)
 	}
 
+	recordExpiredCheckinQuota(expired)
+
 	return preview, userIDs, nil
 }
 
@@ -170,6 +183,7 @@ func getActiveUserBalanceSnapshotsByGroup(db *gorm.DB, group string) ([]userGrou
 	err := db.Model(&User{}).
 		Select("id", "quota").
 		Where(commonGroupCol+" = ?", group).
+		Order("id asc").
 		Find(&users).Error
 	return users, err
 }
@@ -213,56 +227,6 @@ func buildUserGroupBalancePreview(group string, mode string, quota int, factor *
 	}
 
 	return preview, nil
-}
-
-func buildUserGroupBalanceUpdates(mode string, quota int) (map[string]interface{}, error) {
-	switch mode {
-	case UserGroupBalanceModeAdd:
-		return map[string]interface{}{
-			"quota": gorm.Expr("quota + ?", quota),
-		}, nil
-	case UserGroupBalanceModeSubtract:
-		return map[string]interface{}{
-			"quota": gorm.Expr("CASE WHEN quota > ? THEN quota - ? ELSE 0 END", quota, quota),
-		}, nil
-	case UserGroupBalanceModeOverride:
-		return map[string]interface{}{
-			"quota": quota,
-		}, nil
-	default:
-		return nil, errors.New("invalid balance mode")
-	}
-}
-
-func updateUserGroupBalanceByFactor(tx *gorm.DB, users []userGroupBalanceSnapshot, factor float64) error {
-	for start := 0; start < len(users); start += userGroupBalanceUpdateBatchSize {
-		end := start + userGroupBalanceUpdateBatchSize
-		if end > len(users) {
-			end = len(users)
-		}
-		batch := users[start:end]
-		ids := make([]int, 0, len(batch))
-		args := make([]interface{}, 0, len(batch)*2)
-		var builder strings.Builder
-		builder.WriteString("CASE id")
-		for _, user := range batch {
-			newQuota, err := multiplyUserQuota(user.Quota, factor)
-			if err != nil {
-				return err
-			}
-			builder.WriteString(" WHEN ? THEN ?")
-			args = append(args, user.Id, newQuota)
-			ids = append(ids, user.Id)
-		}
-		builder.WriteString(" ELSE quota END")
-
-		if err := tx.Model(&User{}).
-			Where("id IN ?", ids).
-			Update("quota", gorm.Expr(builder.String(), args...)).Error; err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 func multiplyUserQuota(quota int, factor float64) (int, error) {

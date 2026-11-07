@@ -27,7 +27,9 @@ func CompleteDeferredTask(task *Task, fromStatus TaskStatus, actualQuota int) (b
 	delta := actualQuota - task.Quota
 	won := false
 	var tokenKey string
+	var expiryLogs []Checkin
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		tx = withWalletExpiryLogs(tx, &expiryLogs)
 		result := tx.Model(&Task{}).Where("id = ? AND status = ?", task.ID, fromStatus).
 			Select("*").Updates(&completed)
 		if result.Error != nil || result.RowsAffected == 0 {
@@ -44,6 +46,7 @@ func CompleteDeferredTask(task *Task, fromStatus TaskStatus, actualQuota int) (b
 	if !won {
 		return false, nil
 	}
+	recordExpiredCheckinQuota(expiryLogs)
 	task.Quota = actualQuota
 	syncDeferredTaskFundingCache(task, delta, tokenKey)
 	return true, nil
@@ -65,7 +68,25 @@ func applyDeferredTaskFunding(tx *gorm.DB, task *Task, actualQuota, delta int) (
 			return "", err
 		}
 	} else {
-		userChanges["quota"] = gorm.Expr("quota - ?", delta)
+		user, err := lockWalletUser(tx, task.UserId)
+		if err != nil {
+			return "", err
+		}
+		now := common.GetTimestamp()
+		if _, err := expireCheckinWalletTx(tx, user, now); err != nil {
+			return "", err
+		}
+		if task.PrivateData.WalletChargeId > 0 {
+			if err := changeWalletChargeTx(tx, user, task.PrivateData.WalletChargeId, actualQuota, true, task.Status == TaskStatusFailure, now); err != nil {
+				return "", err
+			}
+		} else if delta > 0 {
+			if _, _, err := debitCheckinWalletTx(tx, user, delta, true, now); err != nil {
+				return "", err
+			}
+		} else {
+			userChanges["quota"] = gorm.Expr("quota - ?", delta)
+		}
 	}
 	if task.Status == TaskStatusSuccess {
 		userChanges["used_quota"] = gorm.Expr("used_quota + ?", actualQuota)
@@ -110,14 +131,8 @@ func applyDeferredTaskFunding(tx *gorm.DB, task *Task, actualQuota, delta int) (
 }
 
 func syncDeferredTaskFundingCache(task *Task, delta int, tokenKey string) {
-	// Apply the committed delta to caches as well, preserving any outstanding
-	// reservations in the batch updater instead of reloading an older DB balance.
-	if task.PrivateData.BillingSource != "subscription" && delta != 0 {
-		if err := cacheIncrUserQuota(task.UserId, -int64(delta)); err != nil {
-			common.SysError(fmt.Sprintf("deferred task user cache update: %v", err))
-			_ = InvalidateUserCache(task.UserId)
-		}
-	}
+	// Source-aware refunds can expire instead of crediting the signed delta.
+	_ = InvalidateUserCache(task.UserId)
 	if common.RedisEnabled && tokenKey != "" {
 		if err := cacheIncrTokenQuota(tokenKey, -int64(delta)); err != nil {
 			common.SysError(fmt.Sprintf("deferred task token cache update: %v", err))

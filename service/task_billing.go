@@ -90,6 +90,12 @@ func taskAdjustFunding(task *model.Task, delta int) error {
 	if taskIsSubscription(task) {
 		return model.PostConsumeUserSubscriptionDelta(task.PrivateData.SubscriptionId, int64(delta))
 	}
+	if task.PrivateData.WalletChargeId > 0 {
+		if task.Quota+delta == 0 {
+			return model.RefundWalletCharge(task.UserId, task.PrivateData.WalletChargeId)
+		}
+		return model.SetWalletChargeQuota(task.UserId, task.PrivateData.WalletChargeId, task.Quota+delta, true)
+	}
 	if delta > 0 {
 		return model.DecreaseUserQuota(task.UserId, delta, false)
 	}

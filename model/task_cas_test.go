@@ -34,9 +34,8 @@ func TestMain(m *testing.M) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 
-	if err := db.AutoMigrate(
+	if err := migrateWalletTestDB(db,
 		&Task{},
-		&User{},
 		&Token{},
 		&Log{},
 		&ConversationLog{},
@@ -48,7 +47,6 @@ func TestMain(m *testing.M) {
 		&UserSubscription{},
 		&IPBan{},
 		&ProbeIPAbuseState{},
-		&Checkin{},
 	); err != nil {
 		panic("failed to migrate: " + err.Error())
 	}
@@ -73,6 +71,7 @@ func truncateTables(t *testing.T) {
 		DB.Exec("DELETE FROM ip_bans")
 		DB.Exec("DELETE FROM probe_ip_abuse_states")
 		DB.Exec("DELETE FROM checkins")
+		DB.Exec("DELETE FROM wallet_charges")
 	})
 }
 

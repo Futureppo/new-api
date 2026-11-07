@@ -304,7 +304,7 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 		}
 		return &mjResp.Response
 	}
-	defer func() {
+	func() {
 		if !deferredBilling && mjResp.StatusCode == 200 && mjResp.Response.Code == 1 {
 			err := service.PostConsumeQuota(info, priceData.Quota, 0, true)
 			if err != nil {
@@ -331,23 +331,24 @@ func RelaySwapFace(c *gin.Context, info *relaycommon.RelayInfo) *dto.MidjourneyR
 	midjResponse := &mjResp.Response
 	dailySuccess = isMidjourneySubmitSuccess(mjResp.StatusCode, midjResponse.Code)
 	midjourneyTask := &model.Midjourney{
-		UserId:      info.UserId,
-		Code:        midjResponse.Code,
-		Action:      constant.MjActionSwapFace,
-		MjId:        midjResponse.Result,
-		Prompt:      "InsightFace",
-		PromptEn:    "",
-		Description: midjResponse.Description,
-		State:       "",
-		SubmitTime:  info.StartTime.UnixNano() / int64(time.Millisecond),
-		StartTime:   time.Now().UnixNano() / int64(time.Millisecond),
-		FinishTime:  0,
-		ImageUrl:    "",
-		Status:      "",
-		Progress:    "0%",
-		FailReason:  "",
-		ChannelId:   c.GetInt("channel_id"),
-		Quota:       priceData.Quota,
+		UserId:         info.UserId,
+		WalletChargeId: info.WalletChargeId,
+		Code:           midjResponse.Code,
+		Action:         constant.MjActionSwapFace,
+		MjId:           midjResponse.Result,
+		Prompt:         "InsightFace",
+		PromptEn:       "",
+		Description:    midjResponse.Description,
+		State:          "",
+		SubmitTime:     info.StartTime.UnixNano() / int64(time.Millisecond),
+		StartTime:      time.Now().UnixNano() / int64(time.Millisecond),
+		FinishTime:     0,
+		ImageUrl:       "",
+		Status:         "",
+		Progress:       "0%",
+		FailReason:     "",
+		ChannelId:      c.GetInt("channel_id"),
+		Quota:          priceData.Quota,
 	}
 	completedOnSubmit := midjourneyTask.Status == "SUCCESS"
 	if deferredBilling {
@@ -670,30 +671,6 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 	}
 	midjResponse := &midjResponseWithStatus.Response
 
-	defer func() {
-		if !deferredBilling && consumeQuota && midjResponseWithStatus.StatusCode == 200 {
-			err := service.PostConsumeQuota(relayInfo, priceData.Quota, 0, true)
-			if err != nil {
-				common.SysLog("error consuming token remain quota: " + err.Error())
-			}
-			tokenName := c.GetString("token_name")
-			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
-			other := service.GenerateMjOtherInfo(relayInfo, priceData)
-			model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
-				ChannelId: relayInfo.ChannelId,
-				ModelName: modelName,
-				TokenName: tokenName,
-				Quota:     priceData.Quota,
-				Content:   logContent,
-				TokenId:   relayInfo.TokenId,
-				Group:     relayInfo.UsingGroup,
-				Other:     other,
-			})
-			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
-			model.UpdateChannelUsedQuota(relayInfo.ChannelId, priceData.Quota)
-		}
-	}()
-
 	// 文档：https://github.com/novicezk/midjourney-proxy/blob/main/docs/api.md
 	//1-提交成功
 	// 21-任务已存在（处理中或者有结果了） {"code":21,"description":"任务已存在","result":"0741798445574458","properties":{"status":"SUCCESS","imageUrl":"https://xxxx"}}
@@ -765,6 +742,31 @@ func RelayMidjourneySubmit(c *gin.Context, relayInfo *relaycommon.RelayInfo) *dt
 		midjourneyTask.Progress = "100%"
 		midjourneyTask.Status = "SUCCESS"
 	}
+	func() {
+		if !deferredBilling && consumeQuota && midjResponseWithStatus.StatusCode == 200 {
+			err := service.PostConsumeQuota(relayInfo, priceData.Quota, 0, true)
+			if err != nil {
+				common.SysLog("error consuming token remain quota: " + err.Error())
+			}
+			tokenName := c.GetString("token_name")
+			logContent := fmt.Sprintf("模型固定价格 %.2f，分组倍率 %.2f，操作 %s，ID %s", priceData.ModelPrice, priceData.GroupRatioInfo.GroupRatio, midjRequest.Action, midjResponse.Result)
+			other := service.GenerateMjOtherInfo(relayInfo, priceData)
+			model.RecordConsumeLog(c, relayInfo.UserId, model.RecordConsumeLogParams{
+				ChannelId: relayInfo.ChannelId,
+				ModelName: modelName,
+				TokenName: tokenName,
+				Quota:     priceData.Quota,
+				Content:   logContent,
+				TokenId:   relayInfo.TokenId,
+				Group:     relayInfo.UsingGroup,
+				Other:     other,
+			})
+			model.UpdateUserUsedQuotaAndRequestCount(relayInfo.UserId, priceData.Quota)
+			model.UpdateChannelUsedQuota(relayInfo.ChannelId, priceData.Quota)
+		}
+	}()
+
+	midjourneyTask.WalletChargeId = relayInfo.WalletChargeId
 	completedOnSubmit := midjourneyTask.Status == "SUCCESS"
 	if deferredBilling {
 		midjourneyTask.Quota = 0

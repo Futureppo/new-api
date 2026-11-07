@@ -222,7 +222,11 @@ func UpdateMidjourneyTaskBulk() {
 				if err != nil {
 					logger.LogError(ctx, "UpdateMidjourneyTask task error: "+err.Error())
 				} else if won && shouldReturnQuota {
-					err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
+					if task.WalletChargeId > 0 {
+						err = model.RefundWalletCharge(task.UserId, task.WalletChargeId)
+					} else {
+						err = model.IncreaseUserQuota(task.UserId, task.Quota, false)
+					}
 					if err != nil {
 						logger.LogError(ctx, "fail to increase user quota: "+err.Error())
 					}

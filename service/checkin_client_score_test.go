@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
+	"github.com/QuantumNous/new-api/setting/system_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/require"
@@ -78,6 +79,44 @@ func TestClientEnvironmentScoreBrowserHitsHeaderCeiling(t *testing.T) {
 		clientEnvironmentScore(contextWithHeaders(browserHeaders())))
 }
 
+func TestClientEnvironmentScoreProxyAndFrontendOrigins(t *testing.T) {
+	oldAddress := system_setting.ServerAddress
+	t.Cleanup(func() { system_setting.ServerAddress = oldAddress })
+	for _, tc := range []struct {
+		name, host, peer, source, server, frontend, fetchSite, forwarded string
+		want                                                             int
+	}{
+		{name: "default_vite_proxy", host: "localhost:3000", peer: "127.0.0.1:12345", source: "http://localhost:5173", want: 55},
+		{name: "ipv6_vite_proxy", host: "localhost:3000", peer: "[::1]:12345", source: "http://localhost:5174", want: 55},
+		{name: "configured_public_proxy", host: "backend:3000", source: "https://gateway.example", server: "https://gateway.example", want: 55},
+		{name: "separate_frontend", host: "api.example.net", source: "https://ui.example.org", frontend: "https://ui.example.org/app", fetchSite: "cross-site", want: 55},
+		{name: "default_https_port", host: "backend:3000", source: "https://UI.example.org:443", frontend: "https://ui.example.org", fetchSite: "cross-site", want: 55},
+		{name: "unexpected_origin", host: "api.example.net", source: "https://unconfigured.example", frontend: "https://ui.example.org", want: 31},
+		{name: "untrusted_forwarded_host", host: "backend:3000", source: "https://unconfigured.example", forwarded: "unconfigured.example", want: 31},
+		{name: "nonlocal_peer_is_not_vite", host: "localhost:3000", peer: "192.0.2.1:12345", source: "http://localhost:5173", want: 31},
+		{name: "wrong_frontend_port", host: "backend:3000", source: "https://ui.example.org:8443", frontend: "https://ui.example.org", want: 31},
+		{name: "wrong_frontend_scheme", host: "backend:3000", source: "http://ui.example.org", frontend: "https://ui.example.org", want: 31},
+		{name: "hostname_suffix", host: "backend:3000", source: "https://ui.example.org.other.example", frontend: "https://ui.example.org", want: 31},
+		{name: "malformed_origin", host: "backend:3000", source: "https://%", want: 31},
+		{name: "opaque_origin", host: "backend:3000", source: "null", want: 31},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			system_setting.ServerAddress = tc.server
+			t.Setenv("FRONTEND_BASE_URL", tc.frontend)
+			headers := browserHeaders()
+			headers["Origin"], headers["Referer"] = tc.source, tc.source+"/personal"
+			if tc.fetchSite != "" {
+				headers["Sec-Fetch-Site"] = tc.fetchSite
+			}
+			headers["X-Forwarded-Host"] = tc.forwarded
+			headers["Forwarded"] = "host=" + tc.forwarded
+			c := contextWithHeaders(headers)
+			c.Request.Host, c.Request.RemoteAddr = tc.host, tc.peer
+			require.Equal(t, tc.want, clientEnvironmentScore(c))
+		})
+	}
+}
+
 func TestClientEnvironmentScoreBareScriptScoresZero(t *testing.T) {
 	c := contextWithHeaders(map[string]string{
 		"User-Agent":      "python-requests/2.32.3",
@@ -99,7 +138,7 @@ func TestClientEnvironmentScoreSpoofedUserAgentStillLow(t *testing.T) {
 	require.Less(t, score, checkinHeaderMaxScore/3, "伪造 UA 不应接近浏览器分数")
 }
 
-func TestClientEnvironmentScoreHasNoSingleDecisiveSignal(t *testing.T) {
+func TestClientEnvironmentScoreOptionalHeadersDoNotDetermineTrust(t *testing.T) {
 	// 逐个删除信号，确认没有任何单一请求头能独自决定结果，
 	// 否则攻击者可以用二分法定位到那条规则。
 	for _, name := range []string{
@@ -110,6 +149,10 @@ func TestClientEnvironmentScoreHasNoSingleDecisiveSignal(t *testing.T) {
 		h := browserHeaders()
 		delete(h, name)
 		score := clientEnvironmentScore(contextWithHeaders(h))
+		if name == "User-Agent" {
+			require.Zero(t, score)
+			continue
+		}
 		require.Greater(t, score, checkinHeaderMaxScore*4/5,
 			"删除单个请求头 %s 不应让分数崩塌，否则该头就是可被定位的判定点", name)
 	}

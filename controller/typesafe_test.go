@@ -59,7 +59,7 @@ func setupTypeSafeGateway(t *testing.T, baseURL, upstreamKey string) (*gorm.DB, 
 		_ = ratio_setting.UpdateModelPriceByJSONString(oldPrices)
 		require.NoError(t, sqlDB.Close())
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}, &model.ConversationLog{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Checkin{}, &model.WalletCharge{}, &model.Token{}, &model.Channel{}, &model.Ability{}, &model.Log{}, &model.ConversationLog{}))
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{}`))
 	require.NoError(t, ratio_setting.UpdateCompletionRatioByJSONString(`{}`))
 	require.NoError(t, ratio_setting.UpdateModelPriceByJSONString(`{}`))

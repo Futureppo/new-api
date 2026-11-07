@@ -21,6 +21,9 @@ func GetCheckinStatus(c *gin.Context) {
 		return
 	}
 	userId := c.GetInt("id")
+	if setting.ClientCheckEnabled {
+		service.EnsureCheckinRiskDevice(c)
+	}
 	// 获取月份参数，默认为当前月份
 	month := c.DefaultQuery("month", time.Now().Format("2006-01"))
 
@@ -56,8 +59,16 @@ func DoCheckin(c *gin.Context) {
 
 	// 非浏览器环境只会拿到区间下沿的奖励，而不是被拒绝：
 	// 拒绝等于告诉对方风控命中了，压低额度则不提供任何可用于验证绕过的反馈。
-	clientScore := service.CheckinClientScore(c, userId)
-	checkin, err := model.UserCheckinWithClientScore(userId, clientScore)
+	if checked, err := model.HasCheckedInToday(userId); err != nil {
+		common.ApiError(c, err)
+		return
+	} else if checked {
+		common.ApiErrorMsg(c, "今日已签到")
+		return
+	}
+	risk := service.AssessCheckinRisk(c, userId)
+	clientScore := risk.Score
+	checkin, err := model.UserCheckinWithRisk(userId, clientScore, risk.Evidence)
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
