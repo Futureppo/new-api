@@ -452,6 +452,10 @@ func GetAffCode(c *gin.Context) {
 }
 
 func GetSelf(c *gin.Context) {
+	if err := model.ExpireUserCheckinQuota(c.GetInt("id")); err != nil {
+		common.ApiError(c, err)
+		return
+	}
 	id := c.GetInt("id")
 	userRole := c.GetInt("role")
 	user, err := model.GetUserById(id, false)
@@ -1180,7 +1184,7 @@ func ManageUser(c *gin.Context) {
 				fmt.Sprintf("管理员减少用户额度 %s", logger.LogQuota(req.Value)), adminInfo)
 		case "override":
 			oldQuota := user.Quota
-			if err := model.DB.Model(&model.User{}).Where("id = ?", user.Id).Update("quota", req.Value).Error; err != nil {
+			if err := model.SetWalletQuota(user.Id, req.Value); err != nil {
 				common.ApiError(c, err)
 				return
 			}

@@ -62,7 +62,7 @@ func setupSiteControllerTestDB(t *testing.T) *gorm.DB {
 	model.DB = db
 	model.LOG_DB = db
 
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Log{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.Checkin{}, &model.WalletCharge{}, &model.Log{}))
 
 	originalGroupRatio := ratio_setting.GroupRatio2JSONString()
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))

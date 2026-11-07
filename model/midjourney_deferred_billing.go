@@ -89,7 +89,9 @@ func CompleteDeferredMidjourney(m *Midjourney, fromStatus string) (bool, error) 
 	accounting := &Task{UserId: m.UserId, ChannelId: m.ChannelId, Status: TaskStatus(m.Status), PrivateData: *m.DeferredBilling}
 	won := false
 	var tokenKey string
+	var expiryLogs []Checkin
 	err = DB.Transaction(func(tx *gorm.DB) error {
+		tx = withWalletExpiryLogs(tx, &expiryLogs)
 		result := tx.Model(stored).Where("status = ?", fromStatus).Select("*").Updates(stored)
 		if result.Error != nil || result.RowsAffected == 0 {
 			return result.Error
@@ -105,6 +107,7 @@ func CompleteDeferredMidjourney(m *Midjourney, fromStatus string) (bool, error) 
 	if !won {
 		return false, nil
 	}
+	recordExpiredCheckinQuota(expiryLogs)
 	m.Quota = actual
 	syncDeferredTaskFundingCache(accounting, delta, tokenKey)
 	return true, nil

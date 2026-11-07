@@ -201,7 +201,11 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		return false
 	}
 
-	if err := PostConsumeQuota(relayInfo, feeQuota, 0, true); err != nil {
+	// This fee is a separate debit even if the original request was refunded.
+	feeInfo := *relayInfo
+	feeInfo.WalletChargeId = 0
+	feeInfo.FinalPreConsumedQuota = 0
+	if err := PostConsumeQuota(&feeInfo, feeQuota, 0, true); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("failed to charge violation fee: %s", err.Error()))
 		return false
 	}
@@ -286,7 +290,9 @@ func ChargeTaskViolationFeeIfNeeded(ctx context.Context, task *model.Task, chann
 		return false
 	}
 
-	if err := taskAdjustFunding(task, feeQuota); err != nil {
+	feeTask := *task
+	feeTask.PrivateData.WalletChargeId = 0
+	if err := taskAdjustFunding(&feeTask, feeQuota); err != nil {
 		logger.LogError(ctx, fmt.Sprintf("failed to charge task violation fee: %s", err.Error()))
 		return false
 	}

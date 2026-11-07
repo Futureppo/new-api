@@ -54,3 +54,19 @@ func TestUserCheckinSpecialWeekdayUpdatesQuotaAndPreventsRepeat(t *testing.T) {
 	require.NoError(t, DB.Model(&Checkin{}).Where("user_id = ?", user.Id).Count(&count).Error)
 	require.Equal(t, int64(1), count)
 }
+
+func TestUserCheckinPersistsZeroRiskScore(t *testing.T) {
+	truncateTables(t)
+	setting := operation_setting.GetCheckinSetting()
+	old := *setting
+	t.Cleanup(func() { *setting = old })
+	setting.Enabled, setting.MinQuota, setting.MaxQuota, setting.SpecialEnabled = true, 10, 100, false
+	user := seedCheckinUser(t, 517, 100)
+	row, err := UserCheckinWithRisk(user.Id, 0, CheckinRiskEvidence{Detail: `{"version":2}`})
+	require.NoError(t, err)
+	var stored Checkin
+	require.NoError(t, DB.First(&stored, row.Id).Error)
+	require.NotNil(t, stored.RiskScore)
+	require.Zero(t, *stored.RiskScore)
+	require.Equal(t, 10, stored.QuotaAwarded)
+}

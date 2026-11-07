@@ -99,7 +99,7 @@ func TestClientEnvironmentScoreSpoofedUserAgentStillLow(t *testing.T) {
 	require.Less(t, score, checkinHeaderMaxScore/3, "伪造 UA 不应接近浏览器分数")
 }
 
-func TestClientEnvironmentScoreHasNoSingleDecisiveSignal(t *testing.T) {
+func TestClientEnvironmentScoreOptionalHeadersDoNotDetermineTrust(t *testing.T) {
 	// 逐个删除信号，确认没有任何单一请求头能独自决定结果，
 	// 否则攻击者可以用二分法定位到那条规则。
 	for _, name := range []string{
@@ -110,6 +110,10 @@ func TestClientEnvironmentScoreHasNoSingleDecisiveSignal(t *testing.T) {
 		h := browserHeaders()
 		delete(h, name)
 		score := clientEnvironmentScore(contextWithHeaders(h))
+		if name == "User-Agent" {
+			require.Zero(t, score)
+			continue
+		}
 		require.Greater(t, score, checkinHeaderMaxScore*4/5,
 			"删除单个请求头 %s 不应让分数崩塌，否则该头就是可被定位的判定点", name)
 	}

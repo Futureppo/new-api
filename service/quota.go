@@ -442,12 +442,16 @@ func PostConsumeQuota(relayInfo *relaycommon.RelayInfo, quota int, preConsumedQu
 			relayInfo.SubscriptionPostDelta += delta
 		}
 	} else {
-		// Wallet
-		if quota > 0 {
-			err = model.DecreaseUserQuota(relayInfo.UserId, quota, false)
-		} else {
-			err = model.IncreaseUserQuota(relayInfo.UserId, -quota, false)
+		// Persistent source allocation also covers the compatibility/realtime path.
+		if relayInfo.WalletChargeId == 0 {
+			var charge *model.WalletCharge
+			charge, err = model.ReserveWalletCharge(relayInfo.UserId, 0)
+			if err != nil {
+				return err
+			}
+			relayInfo.WalletChargeId = charge.Id
 		}
+		err = model.SetWalletChargeQuota(relayInfo.UserId, relayInfo.WalletChargeId, relayInfo.FinalPreConsumedQuota+quota, true)
 		if err != nil {
 			return err
 		}
