@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
@@ -316,6 +317,35 @@ func TestCalculateTextQuotaSummaryKeepsPrePRClaudeOpenRouterBilling(t *testing.T
 	require.True(t, summary.IsClaudeUsageSemantic)
 	require.Equal(t, 172, summary.PromptTokens)
 	require.Equal(t, 798, summary.Quota)
+	require.Equal(t, 2604, textQuotaInputTokensTotal(relayInfo, usage, summary))
+}
+
+func TestTextQuotaInputTokensTotal(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		format types.RelayFormat
+		usage  dto.Usage
+		want   int
+	}{
+		{"claude native", types.RelayFormatClaude, dto.Usage{PromptTokens: 100, InputTokens: 100, UsageSemantic: "anthropic", UsageSource: "native", PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900}}, 1000},
+		{"claude cache only", types.RelayFormatClaude, dto.Usage{UsageSemantic: "anthropic", PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900}}, 900},
+		{"openai cache included", types.RelayFormatOpenAI, dto.Usage{PromptTokens: 1000, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900}}, 1000},
+		{"converted openai", types.RelayFormatClaude, dto.Usage{PromptTokens: 1000, InputTokens: 1000, UsageSemantic: "openai", UsageSource: "anthropic", PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900}, ClaudeCacheCreation5mTokens: 50}, 1000},
+		{"explicit normalized total", types.RelayFormatOpenAI, dto.Usage{PromptTokens: 100, InputTokens: 1000, UsageSource: "converted", PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900}}, 1000},
+		{"unmarked input is not a total", types.RelayFormatOpenAI, dto.Usage{PromptTokens: 1000, InputTokens: 100}, 1000},
+		{"legacy claude conversion", types.RelayFormatOpenAI, dto.Usage{PromptTokens: 62, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 3544}, ClaudeCacheCreation5mTokens: 586}, 4192},
+		{"TTL remainder", types.RelayFormatClaude, dto.Usage{PromptTokens: 100, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900, CachedCreationTokens: 80}, ClaudeCacheCreation5mTokens: 40, ClaudeCacheCreation1hTokens: 20}, 1080},
+		{"official write alias", types.RelayFormatOpenAI, dto.Usage{PromptTokens: 1000, PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 900, CacheWriteTokens: common.GetPointer(50)}}, 1000},
+		{"zero", types.RelayFormatOpenAI, dto.Usage{}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{FinalRequestRelayFormat: tc.format, StartTime: time.Now()}
+			summary := calculateTextQuotaSummary(ctx, info, &tc.usage)
+			require.Equal(t, tc.want, textQuotaInputTokensTotal(info, &tc.usage, summary))
+		})
+	}
+	require.Equal(t, 12, textQuotaInputTokensTotal(nil, nil, textQuotaSummary{PromptTokens: 12}))
 }
 
 func TestComposeTieredTextQuotaKeepsToolCallSurcharges(t *testing.T) {

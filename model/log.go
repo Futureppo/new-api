@@ -436,8 +436,9 @@ func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams)
 		logger.LogError(c, "failed to record log: "+err.Error())
 	}
 	if common.DataExportEnabled {
+		inputTokens, outputTokens := logTokenCounts(log.PromptTokens, log.CompletionTokens, log.Other)
 		gopool.Go(func() {
-			LogQuotaData(userId, username, params.ModelName, params.Quota, common.GetTimestamp(), params.PromptTokens+params.CompletionTokens)
+			LogQuotaData(userId, username, params.ModelName, params.Quota, log.CreatedAt, inputTokens+outputTokens)
 		})
 	}
 }
@@ -634,18 +635,17 @@ type Stat struct {
 	RpmTotal       int     `json:"rpm_total"`
 	RpmSuccessRate float64 `json:"rpm_success_rate"`
 	Tpm            int     `json:"tpm"`
+	InputTpm       int     `json:"input_tpm"`
+	OutputTpm      int     `json:"output_tpm"`
 }
 
 func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string, ip string, userAgent string, sessionFilters ...LogSessionFilter) (stat Stat, err error) {
 	tx := LOG_DB.Table("logs").Select("sum(quota) quota")
 
-	// 为 RPM 和 TPM 创建单独的查询。RPM 总数同时包含成功与失败请求，
-	// TPM 只统计成功请求中的 token。CASE/COALESCE 语法兼容 SQLite、MySQL 和 PostgreSQL。
+	// Read only the recent window and normalize cache counts in Go so all three
+	// databases share the same semantics without database-specific JSON functions.
 	rpmTpmQuery := LOG_DB.Table("logs").Select(
-		"COALESCE(SUM(CASE WHEN type = ? THEN 1 ELSE 0 END), 0) rpm, COUNT(*) rpm_total, "+
-			"COALESCE(SUM(CASE WHEN type = ? THEN prompt_tokens + completion_tokens ELSE 0 END), 0) tpm",
-		LogTypeConsume,
-		LogTypeConsume,
+		"type, COALESCE(prompt_tokens, 0), COALESCE(completion_tokens, 0), COALESCE(other, '')",
 	)
 
 	if username != "" {
@@ -691,17 +691,40 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	rpmTpmQuery = rpmTpmQuery.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
 
 	// 只统计最近60秒的rpm和tpm
-	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
+	now := time.Now().Unix()
+	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ? AND created_at <= ?", now-60, now)
 
 	// 执行查询
 	if err := tx.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
-	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
+	rows, err := rpmTpmQuery.Rows()
+	if err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
+	defer rows.Close()
+	for rows.Next() {
+		var logType, promptTokens, completionTokens int
+		var other string
+		if err := rows.Scan(&logType, &promptTokens, &completionTokens, &other); err != nil {
+			common.SysError("failed to scan rpm/tpm stat: " + err.Error())
+			return Stat{}, errors.New("查询统计数据失败")
+		}
+		stat.RpmTotal++
+		if logType == LogTypeConsume {
+			stat.Rpm++
+			input, output := logTokenCounts(promptTokens, completionTokens, other)
+			stat.InputTpm += input
+			stat.OutputTpm += output
+		}
+	}
+	if err := rows.Err(); err != nil {
+		common.SysError("failed to read rpm/tpm stat: " + err.Error())
+		return Stat{}, errors.New("查询统计数据失败")
+	}
+	stat.Tpm = stat.InputTpm + stat.OutputTpm
 	if stat.RpmTotal > 0 {
 		stat.RpmSuccessRate = float64(stat.Rpm) / float64(stat.RpmTotal) * 100
 	}

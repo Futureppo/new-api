@@ -112,6 +112,8 @@ export const useLogsData = ({
     rpm_total: 0,
     rpm_success_rate: 0,
     tpm: 0,
+    input_tpm: 0,
+    output_tpm: 0,
   });
 
   // Form state
@@ -383,6 +385,8 @@ export const useLogsData = ({
         rpm_total: 0,
         rpm_success_rate: 0,
         tpm: 0,
+        input_tpm: 0,
+        output_tpm: 0,
       });
       setShowStat(true);
       setLoadingStat(false);

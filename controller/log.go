@@ -131,6 +131,8 @@ func GetLogsStat(c *gin.Context) {
 			"rpm_total":        stat.RpmTotal,
 			"rpm_success_rate": stat.RpmSuccessRate,
 			"tpm":              stat.Tpm,
+			"input_tpm":        stat.InputTpm,
+			"output_tpm":       stat.OutputTpm,
 		},
 	})
 	return
@@ -162,6 +164,8 @@ func GetLogsSelfStat(c *gin.Context) {
 			"rpm_total":        quotaNum.RpmTotal,
 			"rpm_success_rate": quotaNum.RpmSuccessRate,
 			"tpm":              quotaNum.Tpm,
+			"input_tpm":        quotaNum.InputTpm,
+			"output_tpm":       quotaNum.OutputTpm,
 			//"token": tokenNum,
 		},
 	})

@@ -83,6 +83,19 @@ func isLegacyClaudeDerivedOpenAIUsage(relayInfo *relaycommon.RelayInfo, usage *d
 	return usage.ClaudeCacheCreation5mTokens > 0 || usage.ClaudeCacheCreation1hTokens > 0
 }
 
+// textQuotaInputTokensTotal records full input for statistics without changing
+// the prompt count used by billing. Anthropic InputTokens is not a total.
+func textQuotaInputTokensTotal(relayInfo *relaycommon.RelayInfo, usage *dto.Usage, summary textQuotaSummary) int {
+	if !summary.IsClaudeUsageSemantic && usage != nil && usage.UsageSource != "" && usage.InputTokens > 0 {
+		return usage.InputTokens
+	}
+	input := max(0, summary.PromptTokens)
+	if summary.IsClaudeUsageSemantic || isLegacyClaudeDerivedOpenAIUsage(relayInfo, usage) {
+		input += max(0, summary.CacheTokens) + max(0, cacheWriteTokensTotal(summary))
+	}
+	return input
+}
+
 func calculateTextToolCallSurcharge(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, summary *textQuotaSummary) decimal.Decimal {
 	dGroupRatio := decimal.NewFromFloat(summary.GroupRatio)
 	dQuotaPerUnit := decimal.NewFromFloat(common.QuotaPerUnit)
@@ -488,17 +501,10 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 	cacheWriteTokens := cacheWriteTokensTotal(summary)
 	if cacheWriteTokens > 0 {
 		// cache_write_tokens: normalized cache creation total for UI display.
-		// If split 5m/1h values are present, this is their sum; otherwise it falls back
-		// to cache_creation_tokens.
+		// The aggregate and TTL split overlap, so use the larger total.
 		other["cache_write_tokens"] = cacheWriteTokens
 	}
-	if relayInfo.GetFinalRequestRelayFormat() != types.RelayFormatClaude && usage != nil && usage.UsageSource != "" && usage.InputTokens > 0 {
-		// input_tokens_total: explicit normalized total input used by the usage log UI.
-		// Only write this field when upstream/current conversion has already provided a
-		// reliable total input value and tagged the usage source. Do not infer it from
-		// prompt/cache fields here, otherwise old upstream payloads may be double-counted.
-		other["input_tokens_total"] = usage.InputTokens
-	}
+	other["input_tokens_total"] = textQuotaInputTokensTotal(relayInfo, usage, summary)
 	if tieredBillingApplied {
 		InjectTieredBillingInfo(other, relayInfo, tieredResult)
 	}
