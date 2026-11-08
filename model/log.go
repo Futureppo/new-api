@@ -101,14 +101,14 @@ func errorCodeFromLogOther(otherMap map[string]interface{}) string {
 			continue
 		}
 		code := strings.TrimSpace(fmt.Sprint(value))
-		if code != "" && code != "<nil>" {
+		if common.IsPublicErrorCode(code) {
 			return code
 		}
 	}
 	return hiddenUpstreamErrorCode
 }
 
-func sanitizeErrorLogForNonRoot(log *Log) {
+func sanitizeErrorLogForUser(log *Log) {
 	if log == nil || log.Type != LogTypeError {
 		return
 	}
@@ -121,42 +121,53 @@ func sanitizeErrorLogForNonRoot(log *Log) {
 	log.Content = errorCodeFromLogOther(otherMap)
 	safeOther := make(map[string]interface{}, 3)
 	for _, key := range []string{"error_code", "error_type", "status_code"} {
-		if value, ok := otherMap[key]; ok {
+		if value, ok := otherMap[key]; ok && common.IsPublicErrorCode(strings.TrimSpace(fmt.Sprint(value))) {
 			safeOther[key] = value
 		}
 	}
 	log.Other = common.MapToJsonStr(safeOther)
 }
 
-// SanitizeLogsForNonRoot returns response-only copies with upstream error
-// details removed. The original records remain unchanged for root users and
+// SanitizeLogsForUser returns response-only copies with channel and error
+// details removed. The original records remain unchanged for administrators and
 // database-backed diagnostics.
-func SanitizeLogsForNonRoot(logs []*Log) []*Log {
+func SanitizeLogsForUser(logs []*Log) []*Log {
 	result := make([]*Log, len(logs))
 	for i, log := range logs {
 		if log == nil {
 			continue
 		}
 		clientLog := *log
-		sanitizeErrorLogForNonRoot(&clientLog)
+		sanitizeUserLog(&clientLog)
 		result[i] = &clientLog
 	}
 	return result
 }
 
+func sanitizeUserLog(log *Log) {
+	sanitizeErrorLogForUser(log)
+	channelLog := log.ChannelId > 0
+	log.ChannelId = 0
+	log.ChannelName = ""
+	otherMap, _ := common.StrToMap(log.Other)
+	if log.Type == LogTypeRefund && strings.TrimSpace(log.Content) != "" {
+		log.Content = errorCodeFromLogOther(otherMap)
+	}
+	if otherMap != nil {
+		if _, hasReason := otherMap["reason"]; hasReason && (channelLog || log.Type == LogTypeRefund) {
+			otherMap["reason"] = errorCodeFromLogOther(otherMap)
+		}
+		// Remove admin-only debug fields.
+		for _, key := range []string{"admin_info", "reject_reason", "stream_status", "po", "upstream_model_name", "is_model_mapped", "channel_type", "channel_id", "channel_name"} {
+			delete(otherMap, key)
+		}
+	}
+	log.Other = common.MapToJsonStr(otherMap)
+}
+
 func formatUserLogs(logs []*Log, startIdx int) {
 	for i := range logs {
-		sanitizeErrorLogForNonRoot(logs[i])
-		logs[i].ChannelName = ""
-		var otherMap map[string]interface{}
-		otherMap, _ = common.StrToMap(logs[i].Other)
-		if otherMap != nil {
-			// Remove admin-only debug fields.
-			delete(otherMap, "admin_info")
-			// delete(otherMap, "reject_reason")
-			delete(otherMap, "stream_status")
-		}
-		logs[i].Other = common.MapToJsonStr(otherMap)
+		sanitizeUserLog(logs[i])
 		logs[i].Id = startIdx + i + 1
 	}
 }

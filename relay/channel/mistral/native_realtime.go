@@ -65,7 +65,7 @@ func (a *Adaptor) NativeRealtime(c *gin.Context, info *relaycommon.RelayInfo) (*
 		info.SetFirstResponseTime()
 		terminal, failed := result.observe(data)
 		_ = client.SetWriteDeadline(time.Now().Add(timeout))
-		if err := client.WriteMessage(kind, data); err != nil {
+		if err := client.WriteMessage(kind, relaycommon.RewriteClientResponseBytes(c, data)); err != nil {
 			info.StreamStatus.SetEndReason(relaycommon.StreamEndReasonClientGone, err)
 			return result, badResponse(err)
 		}

@@ -323,7 +323,7 @@ func GetAllMidjourney(c *gin.Context) {
 			items[i] = midjourney
 		}
 	}
-	items = midjourneyTasksForViewer(items, c.GetInt("role") >= common.RoleRootUser)
+	items = midjourneyTasksForViewer(items, c.GetInt("role") >= common.RoleAdminUser)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)
@@ -350,6 +350,11 @@ func GetUserMidjourney(c *gin.Context) {
 		}
 	}
 	items = midjourneyTasksForViewer(items, false)
+	for _, task := range items {
+		if task != nil {
+			task.ChannelId = 0
+		}
+	}
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(items)
 	common.ApiSuccess(c, pageInfo)

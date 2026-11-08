@@ -11,10 +11,10 @@ import (
 )
 
 func logsForViewer(logs []*model.Log, role int) []*model.Log {
-	if role >= common.RoleRootUser {
+	if role >= common.RoleAdminUser {
 		return logs
 	}
-	return model.SanitizeLogsForNonRoot(logs)
+	return model.SanitizeLogsForUser(logs)
 }
 
 func GetAllLogs(c *gin.Context) {

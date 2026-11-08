@@ -88,6 +88,38 @@ func TestUpdateChannelClearsRetryTimes(t *testing.T) {
 	require.Nil(t, reloaded.RetryTimes)
 }
 
+func TestUpdateChannelPersistsErrorVisibilityAndRefreshesCache(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+	channel := model.Channel{Type: constant.ChannelTypeOpenAI, Key: "test-key", Status: common.ChannelStatusEnabled, Name: "privacy-test", Models: "gpt-test", Group: "default"}
+	channel.SetSetting(dto.ChannelSettings{ShowErrorDetails: true})
+	require.NoError(t, db.Create(&channel).Error)
+	require.NoError(t, db.Create(&model.Ability{ChannelId: channel.Id, Group: "default", Model: "gpt-test", Enabled: true}).Error)
+	common.MemoryCacheEnabled = true
+	t.Cleanup(func() { common.MemoryCacheEnabled = false })
+	model.InitChannelCache()
+	require.True(t, model.ShouldShowChannelErrorDetails(channel.Id))
+	for _, enabled := range []bool{false, true, false} {
+		channel.SetSetting(dto.ChannelSettings{ShowErrorDetails: enabled})
+		body, err := common.Marshal(channel)
+		require.NoError(t, err)
+		recorder := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(recorder)
+		c.Set("role", common.RoleAdminUser)
+		c.Request = httptest.NewRequest(http.MethodPut, "/api/channel/", strings.NewReader(string(body)))
+		c.Request.Header.Set("Content-Type", "application/json")
+		UpdateChannel(c)
+		var response struct {
+			Success bool `json:"success"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+		require.True(t, response.Success, recorder.Body.String())
+		var saved model.Channel
+		require.NoError(t, db.First(&saved, channel.Id).Error)
+		require.Equal(t, enabled, saved.GetSetting().ShowErrorDetails)
+		require.Equal(t, enabled, model.ShouldShowChannelErrorDetails(channel.Id))
+	}
+}
+
 func TestUpdateChannelClearsDailySuccessLimit(t *testing.T) {
 	db := openChannelRetryControllerTestDB(t)
 
@@ -414,7 +446,7 @@ func TestFetchUpstreamModelsUsesSavedCustomModelListURL(t *testing.T) {
 	require.Equal(t, []string{"custom/model-a", "custom/model-b"}, resp.Data)
 }
 
-func TestDashboardTaskViewsExposeErrorDetailsOnlyToRoot(t *testing.T) {
+func TestDashboardTaskViewsRespectErrorVisibility(t *testing.T) {
 	db := openChannelRetryControllerTestDB(t)
 
 	hiddenChannel := model.Channel{Name: "hidden-errors", Key: "key", Models: "task-model", Group: "default"}
@@ -431,6 +463,7 @@ func TestDashboardTaskViewsExposeErrorDetailsOnlyToRoot(t *testing.T) {
 	}
 	nonRootTasks := tasksToDto(tasks, false, false)
 	for _, task := range nonRootTasks {
+		require.Zero(t, task.ChannelId)
 		require.Equal(t, dto.TaskFailureCode, task.FailReason)
 		require.Nil(t, task.Data)
 	}
@@ -476,7 +509,7 @@ func TestDashboardTaskViewsExposeErrorDetailsOnlyToRoot(t *testing.T) {
 	require.Equal(t, successMidjourneyTask.ImageUrl, nonRootSuccessMidjourneyTask.ImageUrl)
 }
 
-func TestLogViewsExposeErrorDetailsOnlyToRoot(t *testing.T) {
+func TestLogViewsExposeErrorDetailsToAdministrators(t *testing.T) {
 	logs := []*model.Log{{
 		Type:    model.LogTypeError,
 		Content: "provider endpoint and account leaked",
@@ -486,13 +519,64 @@ func TestLogViewsExposeErrorDetailsOnlyToRoot(t *testing.T) {
 		Content: "normal usage detail",
 	}}
 
-	nonRootLogs := logsForViewer(logs, common.RoleAdminUser)
+	nonRootLogs := logsForViewer(logs, common.RoleCommonUser)
 	require.Equal(t, "invalid_api_key", nonRootLogs[0].Content)
 	require.NotContains(t, nonRootLogs[0].Other, "admin_info")
 	require.Equal(t, "provider endpoint and account leaked", logs[0].Content)
 	require.Equal(t, "normal usage detail", nonRootLogs[1].Content)
 
-	rootLogs := logsForViewer(logs, common.RoleRootUser)
-	require.Equal(t, "provider endpoint and account leaked", rootLogs[0].Content)
-	require.Contains(t, rootLogs[0].Other, "admin_info")
+	for _, role := range []int{common.RoleAdminUser, common.RoleRootUser} {
+		adminLogs := logsForViewer(logs, role)
+		require.Equal(t, "provider endpoint and account leaked", adminLogs[0].Content)
+		require.Contains(t, adminLogs[0].Other, "admin_info")
+	}
+}
+
+func TestTaskEndpointsHideChannelsFromUsers(t *testing.T) {
+	db := openChannelRetryControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Task{}, &model.Midjourney{}, &model.User{}))
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "task-viewer"}).Error)
+	require.NoError(t, db.Create(&model.Task{TaskID: "task_public", UserId: 1, ChannelId: 42, Status: model.TaskStatusFailure, FailReason: "private provider detail"}).Error)
+	require.NoError(t, db.Create(&model.Midjourney{MjId: "mj_public", UserId: 1, ChannelId: 42, Status: "FAILURE", FailReason: "private provider detail"}).Error)
+	for _, role := range []int{common.RoleCommonUser, common.RoleAdminUser, common.RoleRootUser} {
+		for _, tc := range []struct {
+			name      string
+			handler   gin.HandlerFunc
+			channelID int
+		}{
+			{"user tasks", GetUserTask, 0},
+			{"user midjourney", GetUserMidjourney, 0},
+			{"admin tasks", GetAllTask, 42},
+			{"admin midjourney", GetAllMidjourney, 42},
+		} {
+			if role < common.RoleAdminUser && tc.channelID != 0 {
+				continue // Admin endpoints are guarded by AdminAuth.
+			}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/?page_size=10", nil)
+			c.Set("id", 1)
+			c.Set("role", role)
+			tc.handler(c)
+			var response struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Items []struct {
+						ChannelID  int    `json:"channel_id"`
+						FailReason string `json:"fail_reason"`
+					} `json:"items"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+			require.True(t, response.Success)
+			require.Len(t, response.Data.Items, 1)
+			// Even a root session's self-service endpoint follows user visibility.
+			require.Equal(t, tc.channelID, response.Data.Items[0].ChannelID, tc.name)
+			if tc.channelID == 0 {
+				require.Equal(t, dto.TaskFailureCode, response.Data.Items[0].FailReason)
+			} else {
+				require.Equal(t, "private provider detail", response.Data.Items[0].FailReason)
+			}
+		}
+	}
 }

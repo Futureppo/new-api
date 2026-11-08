@@ -205,6 +205,11 @@ func coverMidjourneyTaskDto(c *gin.Context, originTask *model.Midjourney) (midjo
 		midjourneyTask.FailReason = dto.TaskFailureCode
 		midjourneyTask.Description = dto.TaskFailureCode
 		midjourneyTask.Properties = nil
+		midjourneyTask.State = ""
+		midjourneyTask.ImageUrl = ""
+		midjourneyTask.VideoUrl = ""
+		midjourneyTask.VideoUrls = nil
+		midjourneyTask.Buttons = nil
 	}
 	return
 }

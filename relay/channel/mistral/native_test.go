@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
+	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
@@ -255,4 +257,49 @@ func TestMistralNativeRealtimeHandshakeError(t *testing.T) {
 	require.NotNil(t, apiErr)
 	require.Equal(t, 403, w.Code)
 	require.Equal(t, `{"message":"tier restricted","type":"tier_not_allowed"}`, w.Body.String())
+}
+
+func TestMistralNativeRealtimeRespectsErrorPrivacy(t *testing.T) {
+	for _, showDetails := range []bool{false, true} {
+		event := `{"type":"error","error":{"code":"authentication_error","message":"private account detail","provider":"private"}}`
+		upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			conn, err := (&websocket.Upgrader{}).Upgrade(w, r, nil)
+			if err != nil {
+				return
+			}
+			defer conn.Close()
+			_ = conn.WriteMessage(websocket.TextMessage, []byte(event))
+		}))
+		finished := make(chan struct{})
+		gateway := httptest.NewServer(newNativeTestRouter(func(c *gin.Context) {
+			defer close(finished)
+			common.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{ShowErrorDetails: showDetails})
+			relaycommon.InstallRelayResponseWriter(c)
+			info := testInfo(relayconstant.RelayModeRealtime)
+			info.ChannelBaseUrl, info.ApiKey = upstream.URL, "test-key"
+			info.UpstreamModelName, info.RequestURLPath = "test-model", c.Request.URL.String()
+			_, _ = (&Adaptor{nativePath: RealtimePath}).NativeRealtime(c, info)
+		}))
+		func() {
+			defer upstream.Close()
+			defer gateway.Close()
+			conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(gateway.URL, "http")+RealtimePath+"?model=alias", nil)
+			require.NoError(t, err)
+			defer conn.Close()
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(3*time.Second)))
+			_, data, err := conn.ReadMessage()
+			require.NoError(t, err)
+			if showDetails {
+				require.JSONEq(t, event, string(data))
+			} else {
+				require.NotContains(t, string(data), "private")
+				require.Contains(t, string(data), "authentication_error")
+			}
+			select {
+			case <-finished:
+			case <-time.After(3 * time.Second):
+				t.Fatal("realtime handler did not exit")
+			}
+		}()
+	}
 }

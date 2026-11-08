@@ -3,6 +3,8 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +19,7 @@ type relayResponseWriter struct {
 	gin.ResponseWriter
 	context       *gin.Context
 	sseEventError bool
+	ssePending    []byte
 }
 
 func SetRelayInfo(c *gin.Context, info *RelayInfo) {
@@ -51,48 +54,69 @@ func InstallModelMappingResponseWriter(c *gin.Context) {
 	InstallRelayResponseWriter(c)
 }
 
-func (w *relayResponseWriter) WriteHeader(code int) {
+func (w *relayResponseWriter) removeContentLengthForRewrite(code int) {
 	info := GetRelayInfo(w.context)
-	if (info != nil && info.IsModelMappingFullActive()) || (code >= 400 && shouldHideChannelErrorDetails(w.context)) {
+	privacyRewrite := shouldHideChannelErrorDetails(w.context) &&
+		(code >= 400 || strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream"))
+	if (info != nil && info.IsModelMappingFullActive()) || privacyRewrite {
 		w.Header().Del("Content-Length")
 	}
+}
+
+func (w *relayResponseWriter) WriteHeader(code int) {
+	w.removeContentLengthForRewrite(code)
 	w.ResponseWriter.WriteHeader(code)
 }
 
 func (w *relayResponseWriter) WriteHeaderNow() {
-	info := GetRelayInfo(w.context)
-	if (info != nil && info.IsModelMappingFullActive()) ||
-		(w.ResponseWriter.Status() >= 400 && shouldHideChannelErrorDetails(w.context)) {
-		w.Header().Del("Content-Length")
-	}
+	w.removeContentLengthForRewrite(w.ResponseWriter.Status())
 	w.ResponseWriter.WriteHeaderNow()
 }
 
 func (w *relayResponseWriter) Flush() {
-	info := GetRelayInfo(w.context)
-	if (info != nil && info.IsModelMappingFullActive()) ||
-		(w.ResponseWriter.Status() >= 400 && shouldHideChannelErrorDetails(w.context)) {
-		w.Header().Del("Content-Length")
-	}
+	w.removeContentLengthForRewrite(w.ResponseWriter.Status())
 	w.ResponseWriter.Flush()
 }
 
 func (w *relayResponseWriter) Write(data []byte) (int, error) {
+	inputLen := len(data)
+	if shouldHideChannelErrorDetails(w.context) && strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
+		// Writes are transport chunks, not complete events. Wait for the SSE
+		// delimiter so split JSON and multiline data cannot escape filtering.
+		if len(w.ssePending)+len(data) > 64<<20 {
+			w.ssePending = nil
+			return 0, errors.New("relay SSE event exceeds privacy buffer limit")
+		}
+		w.ssePending = append(w.ssePending, data...)
+		end := bytes.LastIndex(w.ssePending, []byte("\n\n"))
+		if end >= 0 {
+			end += 2
+		}
+		if crlfEnd := bytes.LastIndex(w.ssePending, []byte("\r\n\r\n")); crlfEnd >= 0 && crlfEnd+4 > end {
+			end = crlfEnd + 4
+		}
+		if end < 0 {
+			return inputLen, nil
+		}
+		data = w.ssePending[:end]
+		w.ssePending = bytes.Clone(w.ssePending[end:])
+	}
 	rewritten := rewriteClientResponseBytes(w.context, data, &w.sseEventError)
+	if !bytes.Equal(data, rewritten) {
+		w.Header().Del("Content-Length")
+	}
 	n, err := w.ResponseWriter.Write(rewritten)
 	if err == nil && n == len(rewritten) {
-		return len(data), nil
+		return inputLen, nil
 	}
-	return n, err
+	if err == nil {
+		err = io.ErrShortWrite
+	}
+	return 0, err
 }
 
 func (w *relayResponseWriter) WriteString(data string) (int, error) {
-	rewritten := string(rewriteClientResponseBytes(w.context, []byte(data), &w.sseEventError))
-	n, err := w.ResponseWriter.WriteString(rewritten)
-	if err == nil && n == len(rewritten) {
-		return len(data), nil
-	}
-	return n, err
+	return w.Write([]byte(data))
 }
 
 func RewriteClientResponseBytes(c *gin.Context, data []byte) []byte {
@@ -149,6 +173,9 @@ func shouldHideChannelErrorDetails(c *gin.Context) bool {
 
 func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallbackCode string, depth int) ([]byte, bool, error) {
 	if depth > 64 {
+		if forceError || insideError {
+			return []byte(`"upstream_error"`), true, nil
+		}
 		return data, false, nil
 	}
 	trimmed := bytes.TrimSpace(data)
@@ -164,17 +191,20 @@ func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallb
 		}
 		objectIsError := forceError || insideError || isErrorEventObject(object)
 		code := errorCodeForObject(object, fallbackCode)
+		hasCode := hasExplicitErrorCode(object)
 		changed := false
 
 		for key, raw := range object {
 			normalized := normalizeModelKey(key)
-			if objectIsError && isErrorDetailContainerKey(normalized) {
+			// Only retain protocol fields in an error. A denylist cannot cover
+			// every provider's channel, account, endpoint and diagnostic fields.
+			if objectIsError && !isPublicErrorField(normalized) {
 				delete(object, key)
 				changed = true
 				continue
 			}
 
-			childInsideError := false
+			childInsideError := objectIsError && normalized == "response"
 			if normalized == "error" || normalized == "errors" {
 				if isJSONNull(raw) {
 					continue
@@ -184,7 +214,19 @@ func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallb
 
 			if objectIsError {
 				switch {
-				case normalized == "code" && rawScalarString(raw) == "":
+				case normalized == "success":
+					if !bytes.Equal(bytes.TrimSpace(raw), []byte("false")) {
+						delete(object, key)
+						changed = true
+					}
+					continue
+				case normalized == "id" || normalized == "eventid" || normalized == "requestid" || normalized == "sequencenumber":
+					if !basecommon.IsPublicErrorCode(rawScalarString(raw)) {
+						delete(object, key)
+						changed = true
+					}
+					continue
+				case (normalized == "code" || normalized == "status" || normalized == "type" || normalized == "event" || normalized == "object") && !basecommon.IsPublicErrorCode(rawScalarString(raw)):
 					replacement, err := basecommon.Marshal(code)
 					if err != nil {
 						return data, false, err
@@ -209,7 +251,7 @@ func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallb
 						changed = true
 					}
 					continue
-				case normalized == "type" && hasExplicitErrorCode(object) && !rawStringEquals(raw, "error"):
+				case normalized == "type" && hasCode && !rawStringEquals(raw, "error"):
 					replacement := json.RawMessage(`"upstream_error"`)
 					if !bytes.Equal(bytes.TrimSpace(raw), replacement) {
 						object[key] = replacement
@@ -272,20 +314,49 @@ func rewriteErrorJSONValue(data []byte, forceError bool, insideError bool, fallb
 
 func rewriteErrorSSEPayloads(data []byte, forceError bool, sseEventError *bool) []byte {
 	lines := bytes.SplitAfter(data, []byte("\n"))
+	eventIsError := forceError || (sseEventError != nil && *sseEventError)
+	var payloadLines []int
+	var payloads [][]byte
 	changed := false
-	eventIsError := forceError
-	if sseEventError != nil && *sseEventError {
-		eventIsError = true
+	flush := func() {
+		if len(payloads) == 0 {
+			return
+		}
+		payload := bytes.Join(payloads, []byte("\n"))
+		if bytes.Equal(bytes.TrimSpace(payload), []byte("[DONE]")) {
+			return
+		}
+		rewritten, payloadChanged, err := rewriteErrorJSONValue(payload, eventIsError, false, "", 0)
+		if err != nil || !looksLikeJSON(payload) {
+			if !eventIsError {
+				return
+			}
+			rewritten = []byte("upstream_error")
+			payloadChanged = !bytes.Equal(payload, rewritten)
+		}
+		if !payloadChanged {
+			return
+		}
+		first := payloadLines[0]
+		ending := []byte("\n")
+		if bytes.HasSuffix(lines[first], []byte("\r\n")) {
+			ending = []byte("\r\n")
+		} else if !bytes.HasSuffix(lines[first], []byte("\n")) {
+			ending = nil
+		}
+		lines[first] = append(append([]byte("data: "), rewritten...), ending...)
+		for _, index := range payloadLines[1:] {
+			lines[index] = nil
+		}
+		changed = true
 	}
 	for i, line := range lines {
-		lineEnding := []byte{}
-		body := line
-		if bytes.HasSuffix(body, []byte("\n")) {
-			lineEnding = []byte("\n")
-			body = body[:len(body)-1]
-		}
-		trimmed := bytes.TrimLeft(body, " \t\r")
+		body := bytes.TrimSuffix(bytes.TrimSuffix(line, []byte("\n")), []byte("\r"))
+		trimmed := bytes.TrimLeft(body, " \t")
 		if len(trimmed) == 0 {
+			flush()
+			payloadLines = nil
+			payloads = nil
 			if len(line) > 0 {
 				eventIsError = forceError
 			}
@@ -296,44 +367,12 @@ func rewriteErrorSSEPayloads(data []byte, forceError bool, sseEventError *bool) 
 			eventIsError = forceError || isErrorEventType(eventType)
 			continue
 		}
-		if !bytes.HasPrefix(trimmed, []byte("data:")) {
-			continue
+		if bytes.HasPrefix(trimmed, []byte("data:")) {
+			payloadLines = append(payloadLines, i)
+			payloads = append(payloads, bytes.TrimPrefix(trimmed[len("data:"):], []byte(" ")))
 		}
-
-		prefixLen := len(body) - len(trimmed) + len("data:")
-		payloadStart := prefixLen
-		for payloadStart < len(body) && (body[payloadStart] == ' ' || body[payloadStart] == '\t') {
-			payloadStart++
-		}
-		payload := body[payloadStart:]
-		if len(payload) == 0 || bytes.Equal(payload, []byte("[DONE]")) {
-			continue
-		}
-
-		var rewritten []byte
-		payloadChanged := false
-		if looksLikeJSON(payload) {
-			var err error
-			rewritten, payloadChanged, err = rewriteErrorJSONValue(payload, eventIsError, false, "", 0)
-			if err == nil && !payloadChanged {
-				continue
-			}
-			if err != nil && !eventIsError {
-				continue
-			}
-		} else if !eventIsError {
-			continue
-		}
-		if !payloadChanged {
-			rewritten = []byte("upstream_error")
-			payloadChanged = !bytes.Equal(payload, rewritten)
-		}
-		if !payloadChanged {
-			continue
-		}
-		lines[i] = append(append(append([]byte{}, body[:payloadStart]...), rewritten...), lineEnding...)
-		changed = true
 	}
+	flush()
 	if sseEventError != nil {
 		*sseEventError = eventIsError
 	}
@@ -344,7 +383,7 @@ func rewriteErrorSSEPayloads(data []byte, forceError bool, sseEventError *bool) 
 }
 
 func isErrorEventObject(object map[string]json.RawMessage) bool {
-	for _, key := range []string{"type", "event"} {
+	for _, key := range []string{"type", "event", "object"} {
 		if value := rawScalarString(object[key]); isErrorEventType(value) {
 			return true
 		}
@@ -354,6 +393,12 @@ func isErrorEventObject(object map[string]json.RawMessage) bool {
 		return true
 	}
 	if raw, ok := object["error"]; ok && !isJSONNull(raw) {
+		return true
+	}
+	if raw, ok := object["errors"]; ok && !isJSONNull(raw) && string(bytes.TrimSpace(raw)) != "[]" {
+		return true
+	}
+	if bytes.Equal(bytes.TrimSpace(object["success"]), []byte("false")) {
 		return true
 	}
 	code := strings.ToLower(rawScalarString(object["code"]))
@@ -371,14 +416,14 @@ func isErrorEventType(value string) bool {
 
 func errorCodeForObject(object map[string]json.RawMessage, fallback string) string {
 	for _, key := range []string{"code", "status"} {
-		if value := rawScalarString(object[key]); value != "" {
+		if value := rawScalarString(object[key]); basecommon.IsPublicErrorCode(value) {
 			return value
 		}
 	}
-	if value := rawScalarString(object["type"]); value != "" && !strings.EqualFold(value, "error") {
+	if value := rawScalarString(object["type"]); basecommon.IsPublicErrorCode(value) && !strings.EqualFold(value, "error") {
 		return value
 	}
-	if fallback != "" {
+	if basecommon.IsPublicErrorCode(fallback) {
 		return fallback
 	}
 	return "upstream_error"
@@ -417,9 +462,11 @@ func isErrorMessageKey(key string) bool {
 	}
 }
 
-func isErrorDetailContainerKey(key string) bool {
+func isPublicErrorField(key string) bool {
 	switch key {
-	case "metadata", "details", "data", "properties", "result", "responsebody", "debug", "stack", "trace":
+	case "error", "errors", "response", "code", "status", "type", "event", "object", "param", "success",
+		"message", "description", "detail", "errormessage", "failreason", "failurereason",
+		"eventid", "requestid", "id", "sequencenumber":
 		return true
 	default:
 		return false

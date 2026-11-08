@@ -80,13 +80,63 @@ func TestGetUserLogsMasksErrorDetailsWithoutChangingStoredRecord(t *testing.T) {
 	require.Contains(t, stored.Other, "admin_info")
 }
 
-func TestSanitizeLogsForNonRootUsesStableFallbackAndCopiesRecords(t *testing.T) {
+func TestSanitizeLogsForUserUsesStableFallbackAndCopiesRecords(t *testing.T) {
 	raw := &Log{Type: LogTypeError, Content: "provider secret", Other: `{}`}
-	logs := SanitizeLogsForNonRoot([]*Log{raw})
+	logs := SanitizeLogsForUser([]*Log{raw})
 
 	require.Len(t, logs, 1)
 	require.Equal(t, hiddenUpstreamErrorCode, logs[0].Content)
 	require.Equal(t, "provider secret", raw.Content)
+}
+
+func TestUserLogViewsHideChannelMetadata(t *testing.T) {
+	truncateTables(t)
+	stored := Log{
+		UserId: 1, TokenId: 7, ChannelId: 42, Type: LogTypeConsume,
+		Other: `{"upstream_model_name":"private-model","is_model_mapped":true,"po":["private override"],"reject_reason":"private reason","admin_info":{"use_channel":[42]},"stream_status":{"end_error":"private error"},"model_ratio":1,"cache_tokens":10}`,
+	}
+	require.NoError(t, LOG_DB.Create(&stored).Error)
+	userLogs, _, err := GetUserLogs(1, LogTypeConsume, 0, 0, "", "", 0, 10, "", "", "", "")
+	require.NoError(t, err)
+	tokenLogs, err := GetLogByTokenId(7)
+	require.NoError(t, err)
+	for _, logs := range [][]*Log{userLogs, tokenLogs} {
+		require.Len(t, logs, 1)
+		require.Zero(t, logs[0].ChannelId)
+		require.Empty(t, logs[0].ChannelName)
+		require.NotContains(t, logs[0].Other, "private")
+		require.JSONEq(t, `{"model_ratio":1,"cache_tokens":10}`, logs[0].Other)
+	}
+	var original Log
+	require.NoError(t, LOG_DB.First(&original, stored.Id).Error)
+	require.Equal(t, 42, original.ChannelId)
+	require.Equal(t, stored.Other, original.Other)
+}
+
+func TestErrorLogViewsRejectNonCodeDetails(t *testing.T) {
+	logs := SanitizeLogsForUser([]*Log{{Type: LogTypeError, Content: "private detail", Other: `{"error_code":{"provider":"private"},"error_type":"private account disabled","status_code":502}`}})
+	require.Equal(t, "502", logs[0].Content)
+	require.JSONEq(t, `{"status_code":502}`, logs[0].Other)
+}
+
+func TestUserLogViewsHideRefundAndViolationFailureReasons(t *testing.T) {
+	for _, logType := range []int{LogTypeRefund, LogTypeConsume} {
+		original := &Log{
+			Type: logType, ChannelId: 42, Quota: 123,
+			Other: `{"task_id":"task_public","reason":"private provider failure","channel_type":42,"pre_consumed_quota":123,"actual_quota":0}`,
+		}
+		if logType == LogTypeRefund {
+			original.Content = "private provider failure"
+		}
+		got := SanitizeLogsForUser([]*Log{original})[0]
+		require.NotContains(t, got.Content, "private")
+		require.NotContains(t, got.Other, "private")
+		require.NotContains(t, got.Other, "channel_type")
+		require.Contains(t, got.Other, `"task_id":"task_public"`)
+		require.Contains(t, got.Other, `"pre_consumed_quota":123`)
+		require.Equal(t, original.Quota, got.Quota)
+		require.Contains(t, original.Other, "private provider failure")
+	}
 }
 
 func TestRecordLogWithContextRecordsIPAndTruncatedUserAgent(t *testing.T) {

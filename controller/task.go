@@ -39,7 +39,7 @@ func GetAllTask(c *gin.Context) {
 	items := model.TaskGetAllTasks(pageInfo.GetStartIdx(), pageInfo.GetPageSize(), queryParams)
 	total := model.TaskCountAllTasks(queryParams)
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role") >= common.RoleRootUser))
+	pageInfo.SetItems(tasksToDto(items, true, c.GetInt("role") >= common.RoleAdminUser))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -91,6 +91,9 @@ func tasksToDto(tasks []*model.Task, fillUser bool, showErrorDetails bool) []*dt
 			}
 		}
 		result[i] = relay.TaskModel2Dto(task, showErrorDetails)
+		if fillUser {
+			result[i].ChannelId = task.ChannelId
+		}
 	}
 	return result
 }

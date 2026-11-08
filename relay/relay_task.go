@@ -459,7 +459,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 	if isOpenAIVideoAPI {
 		adaptor := GetTaskAdaptor(originTask.Platform)
 		if adaptor == nil {
-			taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("invalid channel id: %d", originTask.ChannelId), "invalid_channel_id", http.StatusBadRequest)
+			taskResp = service.TaskErrorWrapperLocal(errors.New("task channel unavailable"), "invalid_channel_id", http.StatusBadRequest)
 			return
 		}
 		if converter, ok := adaptor.(channel.OpenAIVideoConverter); ok {
@@ -472,7 +472,7 @@ func videoFetchByIDRespBodyBuilder(c *gin.Context) (respBody []byte, taskResp *d
 			respBody = openAIVideoData
 			return
 		}
-		taskResp = service.TaskErrorWrapperLocal(fmt.Errorf("not_implemented:%s", originTask.Platform), "not_implemented", http.StatusNotImplemented)
+		taskResp = service.TaskErrorWrapperLocal(errors.New("task format not supported"), "not_implemented", http.StatusNotImplemented)
 		return
 	}
 
@@ -698,7 +698,6 @@ func TaskModel2Dto(task *model.Task, showErrorDetails ...bool) *dto.TaskDto {
 		Platform:   string(task.Platform),
 		UserId:     task.UserId,
 		Group:      task.Group,
-		ChannelId:  task.ChannelId,
 		Quota:      task.Quota,
 		Action:     task.Action,
 		Status:     string(task.Status),

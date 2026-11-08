@@ -117,6 +117,16 @@ func TestTaskModel2DtoHidesFailedTaskDetailsForClient(t *testing.T) {
 	require.Equal(t, task.PrivateData.ResultURL, visible.ResultURL)
 }
 
+func TestTaskModel2DtoNeverExposesChannelID(t *testing.T) {
+	for _, status := range []model.TaskStatus{model.TaskStatusSuccess, model.TaskStatusFailure} {
+		task := &model.Task{ChannelId: 42, Status: status}
+		for _, showDetails := range []bool{false, true} {
+			require.Zero(t, TaskModel2Dto(task, showDetails).ChannelId)
+			require.Equal(t, 42, task.ChannelId)
+		}
+	}
+}
+
 func TestInitTaskPersistsFullRedirectStateOnlyWhenActive(t *testing.T) {
 	info := &relaycommon.RelayInfo{
 		OriginModelName:        "video-alias",
