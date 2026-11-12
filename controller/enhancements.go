@@ -24,6 +24,7 @@ func RegisterEnhancementRoutes(r *gin.RouterGroup) {
 	{
 		dashboard.GET("/overview", enhancementDashboardOverview)
 		dashboard.GET("/usage", enhancementDashboardUsage)
+		dashboard.GET("/usage-stats", enhancementUsageStats)
 		dashboard.GET("/models", enhancementDashboardModels)
 		dashboard.GET("/trends/daily", enhancementDashboardDailyTrend)
 		dashboard.GET("/trends/hourly", enhancementDashboardHourlyTrend)

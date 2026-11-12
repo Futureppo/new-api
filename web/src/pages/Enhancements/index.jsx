@@ -98,10 +98,12 @@ import {
 } from './components/SiteGroupTools';
 
 import SessionRisk, { SessionRiskSettings } from './components/SessionRisk';
+import UsageStats from './components/UsageStats';
 
 const { Title, Text } = Typography;
 
 const SECTIONS = [
+  { id: 'usage-stats', label: '用量统计', icon: Activity },
   { id: 'redemptions', label: '兑换码管理', icon: Gift },
   { id: 'registration-codes', label: '注册码管理', icon: KeyRound },
   { id: 'users', label: '用户增强', icon: UserCog },
@@ -4437,6 +4439,10 @@ const ModelStatusCard = React.memo(function ModelStatusCard({ status }) {
 
         <ModelStatusTimeline status={status} />
 
+        <div className='text-xs text-semi-color-text-2'>
+          {t('性能指标取当前统计窗口内最近 10 次成功记录的有效样本。')}
+        </div>
+
         <div className='flex flex-col gap-1 text-base font-semibold text-semi-color-text-0 sm:flex-row sm:items-center sm:justify-between'>
           <div className='text-left'>
             {t('近期平均首字延迟')}：
@@ -5217,6 +5223,7 @@ export default function Enhancements() {
   const Icon = activeMeta.icon;
   const renderSectionContent = (sectionId) => {
     if (tabActiveKey !== sectionId) return null;
+    if (sectionId === 'usage-stats') return <UsageStats />;
 
     if (loading) {
       return (
@@ -5257,7 +5264,11 @@ export default function Enhancements() {
             <Text type='secondary'>{t(activeMeta.label)}</Text>
           </div>
         </div>
-        <Space>
+        <Space
+          style={{
+            display: activeSection === 'usage-stats' ? 'none' : undefined,
+          }}
+        >
           <Button
             icon={<RefreshCw size={16} />}
             onClick={loadData}

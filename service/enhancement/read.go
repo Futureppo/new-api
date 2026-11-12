@@ -1378,22 +1378,7 @@ func modelStatusOutputTokenSpeed(row model.Log, firstResponseMs float64) float64
 	return speed
 }
 
-func populateRecentModelStatusMetrics(status *ModelStatus, groupName string, modelName string) error {
-	var rows []model.Log
-	query := model.LOG_DB.Model(&model.Log{}).
-		Select("id, created_at, completion_tokens, use_time, is_stream, other").
-		Where("model_name = ? AND type = ?", modelName, model.LogTypeConsume)
-	if groupName != "" {
-		if common.UsingPostgreSQL {
-			query = query.Where(`"group" = ?`, groupName)
-		} else {
-			query = query.Where("`group` = ?", groupName)
-		}
-	}
-	if err := query.Order("created_at DESC, id DESC").Limit(recentModelStatusLogLimit).Find(&rows).Error; err != nil {
-		return err
-	}
-
+func applyRecentModelStatusMetrics(status *ModelStatus, rows []model.Log) {
 	var firstResponseTotal float64
 	var firstResponseCount int
 	var outputSpeedTotal float64
@@ -1415,16 +1400,6 @@ func populateRecentModelStatusMetrics(status *ModelStatus, groupName string, mod
 	if outputSpeedCount > 0 {
 		status.RecentAvgOutputTokenSpeed = outputSpeedTotal / float64(outputSpeedCount)
 	}
-	return nil
-}
-
-func modelStatusForTarget(target modelStatusTarget, window string, public bool) (ModelStatus, error) {
-	groupName := strings.TrimSpace(target.Group)
-	if groupName == "" {
-		groupName = "default"
-	}
-	modelName := strings.TrimSpace(target.Model)
-	return buildModelStatus(groupName, modelName, window, public)
 }
 
 func ModelStatusForWindow(modelName string, window string, public bool) (ModelStatus, error) {
@@ -1448,116 +1423,11 @@ func buildModelStatus(groupName string, modelName string, window string, public 
 	if public && !isPublicModelStatusGroupDisplayed(groupName) {
 		return ModelStatus{}, gorm.ErrRecordNotFound
 	}
-	modelName = strings.TrimSpace(modelName)
-
-	resolved := resolveModelStatusWindow(window)
-	status := ModelStatus{
-		ModelName:         modelName,
-		Group:             groupName,
-		GroupName:         groupName,
-		DisplayName:       modelName,
-		TimeWindow:        resolved.Key,
-		CurrentStatus:     "green",
-		Status:            "healthy",
-		TimeWindowMinutes: resolved.Minutes,
-		GeneratedAt:       common.GetTimestamp(),
+	statuses, err := modelStatusesForTargets([]modelStatusTarget{{Group: groupName, Model: strings.TrimSpace(modelName)}}, window)
+	if err != nil {
+		return ModelStatus{}, err
 	}
-	if modelName == "" {
-		return status, nil
-	}
-
-	slots := make([]ModelStatusSlot, resolved.SlotCount)
-	for i := range slots {
-		start := resolved.Start + int64(i)*resolved.SlotSeconds
-		end := start + resolved.SlotSeconds
-		if i == len(slots)-1 || end > resolved.End {
-			end = resolved.End
-		}
-		slots[i] = ModelStatusSlot{
-			Slot:      i,
-			StartTime: start,
-			EndTime:   end,
-			Status:    "green",
-		}
-	}
-
-	var rows []model.Log
-	query := model.LOG_DB.Model(&model.Log{}).
-		Where("model_name = ? AND created_at >= ? AND created_at <= ? AND type IN ?", modelName, resolved.Start, resolved.End, []int{model.LogTypeConsume, model.LogTypeError})
-	if groupName != "" {
-		query = query.Where("`group` = ?", groupName)
-		if common.UsingPostgreSQL {
-			query = model.LOG_DB.Model(&model.Log{}).
-				Where("model_name = ? AND created_at >= ? AND created_at <= ? AND type IN ?", modelName, resolved.Start, resolved.End, []int{model.LogTypeConsume, model.LogTypeError}).
-				Where(`"group" = ?`, groupName)
-		}
-	}
-	if err := query.Find(&rows).Error; err != nil {
-		return status, err
-	}
-
-	ignoredErrorKeywords := modelStatusIgnoredErrorKeywordsForMatch()
-	var useTimeTotal int64
-	for _, row := range rows {
-		if row.CreatedAt < resolved.Start || row.CreatedAt > resolved.End {
-			continue
-		}
-		if row.Type == model.LogTypeError && shouldIgnoreModelStatusError(row, ignoredErrorKeywords) {
-			continue
-		}
-		slotIndex := int((row.CreatedAt - resolved.Start) / resolved.SlotSeconds)
-		if slotIndex < 0 {
-			continue
-		}
-		if slotIndex >= len(slots) {
-			slotIndex = len(slots) - 1
-		}
-
-		slots[slotIndex].TotalRequests++
-		status.TotalRequests++
-		status.LastRequestAt = maxInt64(status.LastRequestAt, row.CreatedAt)
-		switch row.Type {
-		case model.LogTypeConsume:
-			slots[slotIndex].SuccessCount++
-			status.SuccessCount++
-			status.Quota += int64(row.Quota)
-			status.PromptTokens += int64(row.PromptTokens)
-			status.CompletionTokens += int64(row.CompletionTokens)
-			useTimeTotal += int64(row.UseTime)
-		case model.LogTypeError:
-			slots[slotIndex].ErrorCount++
-			status.ErrorCount++
-		}
-	}
-
-	if status.TotalRequests > 0 {
-		status.SuccessRate = roundedPercent(float64(status.SuccessCount) / float64(status.TotalRequests) * 100)
-		status.ErrorRate = roundedPercent(float64(status.ErrorCount) / float64(status.TotalRequests))
-	} else {
-		status.SuccessRate = 100
-	}
-	if status.SuccessCount > 0 {
-		status.AvgUseTime = roundedPercent(float64(useTimeTotal) / float64(status.SuccessCount))
-	}
-	status.CurrentStatus = modelStatusColor(status.SuccessRate, status.TotalRequests)
-	status.Status = legacyModelStatus(status.CurrentStatus)
-	status.Requests = status.SuccessCount
-
-	for i := range slots {
-		if slots[i].TotalRequests > 0 {
-			slots[i].SuccessRate = roundedPercent(float64(slots[i].SuccessCount) / float64(slots[i].TotalRequests) * 100)
-		} else {
-			slots[i].SuccessRate = 100
-		}
-		slots[i].Status = modelStatusColor(slots[i].SuccessRate, slots[i].TotalRequests)
-	}
-	status.SlotData = slots
-
-	if err := populateRecentModelStatusMetrics(&status, groupName, modelName); err != nil {
-		return status, err
-	}
-
-	return status, nil
+	return statuses[0], nil
 }
 
 func modelStatusIgnoredErrorKeywordsForMatch() []string {
@@ -1574,19 +1444,6 @@ func modelStatusIgnoredErrorKeywordsForMatch() []string {
 		matchers = append(matchers, strings.ToLower(keyword))
 	}
 	return matchers
-}
-
-func shouldIgnoreModelStatusError(row model.Log, keywords []string) bool {
-	if len(keywords) == 0 {
-		return false
-	}
-	haystack := strings.ToLower(row.Content + "\n" + row.Other)
-	for _, keyword := range keywords {
-		if keyword != "" && strings.Contains(haystack, keyword) {
-			return true
-		}
-	}
-	return false
 }
 
 func ModelStatusFor(modelName string, minutes int, public bool) (ModelStatus, error) {
@@ -1621,18 +1478,7 @@ func ModelStatusesForWindow(modelNames []string, window string, public bool) ([]
 		targets = filtered
 	}
 
-	out := make([]ModelStatus, 0, len(targets))
-	for _, target := range targets {
-		status, err := modelStatusForTarget(target, window, public)
-		if err != nil {
-			if public && err == gorm.ErrRecordNotFound {
-				continue
-			}
-			return nil, err
-		}
-		out = append(out, status)
-	}
-	return out, nil
+	return modelStatusesForTargets(targets, window)
 }
 
 func modelStatusMatchesQuery(item ModelStatus, query ListQuery) bool {

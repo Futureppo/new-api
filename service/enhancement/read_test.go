@@ -529,7 +529,7 @@ func TestModelStatusRecentPerformanceMetricsRespectGroupAndSkipInvalid(t *testin
 	require.InDelta(t, 100, vipStatus.RecentAvgOutputTokenSpeed, 0.001)
 }
 
-func TestModelStatusRecentPerformanceMetricsIgnoreStatusWindow(t *testing.T) {
+func TestModelStatusRecentPerformanceMetricsDoNotScanOutsideStatusWindow(t *testing.T) {
 	db := setupModelStatusTestDB(t)
 	now := common.GetTimestamp()
 	modelName := "zz-recent-window-independent-model"
@@ -547,8 +547,8 @@ func TestModelStatusRecentPerformanceMetricsIgnoreStatusWindow(t *testing.T) {
 	status, err := ModelStatusForGroupWindow("default", modelName, ModelStatusWindowToday, false)
 	require.NoError(t, err)
 	require.Equal(t, int64(0), status.TotalRequests)
-	require.InDelta(t, 1200, status.RecentAvgFirstResponseTime, 0.001)
-	require.InDelta(t, 4, status.RecentAvgOutputTokenSpeed, 0.001)
+	require.Zero(t, status.RecentAvgFirstResponseTime)
+	require.Zero(t, status.RecentAvgOutputTokenSpeed)
 }
 
 func TestModelStatusIgnoredErrorKeywordsDisabledCountsErrors(t *testing.T) {
