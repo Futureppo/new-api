@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useRef, useState } from 'react';
 import {
   API,
   getLogo,
@@ -31,11 +31,13 @@ import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
 import { IconMail } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { StatusContext } from '../../context/Status';
 
 const { Text, Title } = Typography;
 
 const PasswordResetForm = () => {
   const { t } = useTranslation();
+  const [statusState] = useContext(StatusContext);
   const [inputs, setInputs] = useState({
     email: '',
   });
@@ -45,6 +47,8 @@ const PasswordResetForm = () => {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  const submitting = useRef(false);
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
 
@@ -52,15 +56,11 @@ const PasswordResetForm = () => {
   const systemName = getSystemName();
 
   useEffect(() => {
-    let status = localStorage.getItem('status');
-    if (status) {
-      status = JSON.parse(status);
-      if (status.turnstile_check) {
-        setTurnstileEnabled(true);
-        setTurnstileSiteKey(status.turnstile_site_key);
-      }
-    }
-  }, []);
+    const status = statusState?.status;
+    if (!status) return;
+    setTurnstileEnabled(Boolean(status.turnstile_check));
+    setTurnstileSiteKey(status.turnstile_site_key || '');
+  }, [statusState?.status]);
 
   useEffect(() => {
     let countdownInterval = null;
@@ -80,6 +80,8 @@ const PasswordResetForm = () => {
   }
 
   async function handleSubmit(e) {
+    e?.preventDefault();
+    if (submitting.current || disableButton) return;
     if (!email) {
       showError(t('请输入邮箱地址'));
       return;
@@ -88,19 +90,29 @@ const PasswordResetForm = () => {
       showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
+    submitting.current = true;
+    const token = turnstileToken;
+    setTurnstileToken('');
     setDisableButton(true);
     setLoading(true);
-    const res = await API.get(
-      `/api/reset_password?email=${email}&turnstile=${turnstileToken}`,
-    );
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('重置邮件发送成功，请检查邮箱！'));
-      setInputs({ ...inputs, email: '' });
-    } else {
-      showError(message);
+    try {
+      const res = await API.get(
+        `/api/reset_password?email=${encodeURIComponent(email)}&turnstile=${encodeURIComponent(token)}`,
+      );
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('重置邮件发送成功，请检查邮箱！'));
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('操作失败，请重试'));
+    } finally {
+      submitting.current = false;
+      setTurnstileToken('');
+      setTurnstileWidgetKey((value) => value + 1);
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   return (
@@ -176,10 +188,15 @@ const PasswordResetForm = () => {
             {turnstileEnabled && (
               <div className='flex justify-center mt-6'>
                 <Turnstile
+                  key={turnstileWidgetKey}
                   sitekey={turnstileSiteKey}
+                  refreshExpired='auto'
                   onVerify={(token) => {
-                    setTurnstileToken(token);
+                    if (!submitting.current) setTurnstileToken(token);
                   }}
+                  onExpire={() => setTurnstileToken('')}
+                  onError={() => setTurnstileToken('')}
+                  onTimeout={() => setTurnstileToken('')}
                 />
               </div>
             )}

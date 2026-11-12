@@ -80,6 +80,9 @@ const PersonalSetting = () => {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [emailTurnstileToken, setEmailTurnstileToken] = useState('');
+  const [emailTurnstileWidgetKey, setEmailTurnstileWidgetKey] = useState(0);
+  const emailVerificationSubmitting = useRef(false);
   const [loading, setLoading] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
@@ -135,6 +138,10 @@ const PersonalSetting = () => {
           passkeyVerificationMethods.hasPasskey,
       }
     : passkeyVerificationMethods;
+
+  useEffect(() => {
+    setEmailTurnstileToken('');
+  }, [showEmailBindModal]);
 
   useEffect(() => {
     let saved = localStorage.getItem('status');
@@ -489,26 +496,38 @@ const PersonalSetting = () => {
   };
 
   const sendVerificationCode = async () => {
+    if (emailVerificationSubmitting.current || disableButton || loading) return;
     if (inputs.email === '') {
       showError(t('请输入邮箱！'));
       return;
     }
-    setDisableButton(true);
-    if (turnstileEnabled && turnstileToken === '') {
+    if (turnstileEnabled && emailTurnstileToken === '') {
       showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
       return;
     }
+    emailVerificationSubmitting.current = true;
+    const token = emailTurnstileToken;
+    setEmailTurnstileToken('');
+    setDisableButton(true);
     setLoading(true);
-    const res = await API.get(
-      `/api/verification?email=${inputs.email}&turnstile=${turnstileToken}`,
-    );
-    const { success, message } = res.data;
-    if (success) {
-      showSuccess(t('验证码发送成功，请检查邮箱！'));
-    } else {
-      showError(message);
+    try {
+      const res = await API.get(
+        `/api/verification?email=${encodeURIComponent(inputs.email)}&turnstile=${encodeURIComponent(token)}`,
+      );
+      const { success, message } = res.data;
+      if (success) {
+        showSuccess(t('验证码发送成功，请检查邮箱！'));
+      } else {
+        showError(message);
+      }
+    } catch (error) {
+      showError(t('操作失败，请重试'));
+    } finally {
+      emailVerificationSubmitting.current = false;
+      setEmailTurnstileToken('');
+      setEmailTurnstileWidgetKey((value) => value + 1);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const bindEmail = async () => {
@@ -666,7 +685,11 @@ const PersonalSetting = () => {
         countdown={countdown}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
-        setTurnstileToken={setTurnstileToken}
+        turnstileWidgetKey={emailTurnstileWidgetKey}
+        setTurnstileToken={(token) => {
+          if (!emailVerificationSubmitting.current)
+            setEmailTurnstileToken(token);
+        }}
       />
 
       <WeChatBindModal

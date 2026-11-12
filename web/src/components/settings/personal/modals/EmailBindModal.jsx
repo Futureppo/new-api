@@ -35,6 +35,7 @@ const EmailBindModal = ({
   countdown,
   turnstileEnabled,
   turnstileSiteKey,
+  turnstileWidgetKey,
   setTurnstileToken,
 }) => {
   return (
@@ -46,7 +47,10 @@ const EmailBindModal = ({
         </div>
       }
       visible={showEmailBindModal}
-      onCancel={() => setShowEmailBindModal(false)}
+      onCancel={() => {
+        setTurnstileToken('');
+        setShowEmailBindModal(false);
+      }}
       onOk={bindEmail}
       size={'small'}
       centered={true}
@@ -90,13 +94,18 @@ const EmailBindModal = ({
           prefix={<IconKey />}
         />
 
-        {turnstileEnabled && (
+        {showEmailBindModal && turnstileEnabled && (
           <div className='flex justify-center'>
             <Turnstile
+              key={turnstileWidgetKey}
               sitekey={turnstileSiteKey}
+              refreshExpired='auto'
               onVerify={(token) => {
                 setTurnstileToken(token);
               }}
+              onExpire={() => setTurnstileToken('')}
+              onError={() => setTurnstileToken('')}
+              onTimeout={() => setTurnstileToken('')}
             />
           </div>
         )}

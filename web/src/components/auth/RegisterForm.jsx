@@ -109,6 +109,8 @@ const RegisterForm = () => {
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  const verificationSubmitting = useRef(false);
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
@@ -329,15 +331,19 @@ const RegisterForm = () => {
   }
 
   const sendVerificationCode = async () => {
+    if (verificationSubmitting.current || disableButton) return;
     if (inputs.email === '') return;
     if (turnstileEnabled && turnstileToken === '') {
       showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
       return;
     }
+    verificationSubmitting.current = true;
+    const token = turnstileToken;
+    setTurnstileToken('');
     setVerificationCodeLoading(true);
     try {
       const res = await API.get(
-        `/api/verification?email=${encodeURIComponent(inputs.email)}&turnstile=${turnstileToken}`,
+        `/api/verification?email=${encodeURIComponent(inputs.email)}&turnstile=${encodeURIComponent(token)}`,
       );
       const { success, message } = res.data;
       if (success) {
@@ -349,6 +355,9 @@ const RegisterForm = () => {
     } catch (error) {
       showError('发送验证码失败，请重试');
     } finally {
+      verificationSubmitting.current = false;
+      setTurnstileToken('');
+      setTurnstileWidgetKey((value) => value + 1);
       setVerificationCodeLoading(false);
     }
   };
@@ -966,10 +975,15 @@ const RegisterForm = () => {
         {turnstileEnabled && (
           <div className='flex justify-center mt-6'>
             <Turnstile
+              key={turnstileWidgetKey}
               sitekey={turnstileSiteKey}
+              refreshExpired='auto'
               onVerify={(token) => {
-                setTurnstileToken(token);
+                if (!verificationSubmitting.current) setTurnstileToken(token);
               }}
+              onExpire={() => setTurnstileToken('')}
+              onError={() => setTurnstileToken('')}
+              onTimeout={() => setTurnstileToken('')}
             />
           </div>
         )}
