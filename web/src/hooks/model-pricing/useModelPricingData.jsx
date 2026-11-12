@@ -27,7 +27,9 @@ import { sortPricingModels } from '../../helpers/modelPricing';
 
 export const useModelPricingData = () => {
   const { t } = useTranslation();
-  const [searchValue, setSearchValue] = useState('');
+  const [searchValue, setSearchValue] = useState(
+    () => new URLSearchParams(window.location.search).get('search') || '',
+  );
   const compositionRef = useRef({ isComposition: false });
   const [selectedRowKeys, setSelectedRowKeys] = useState([]);
   const [modalImageUrl, setModalImageUrl] = useState('');
@@ -37,7 +39,9 @@ export const useModelPricingData = () => {
   const [filterGroup, setFilterGroup] = useState('all'); // 用于 Table 的可用分组筛选，"all" 表示不过滤
   const [filterQuotaType, setFilterQuotaType] = useState('all'); // 计费类型筛选: 'all' | 0 | 1
   const [filterEndpointType, setFilterEndpointType] = useState('all'); // 端点类型筛选: 'all' | string
-  const [filterVendor, setFilterVendor] = useState('all'); // 供应商筛选: 'all' | 'unknown' | string
+  const [filterVendor, setFilterVendor] = useState(
+    () => new URLSearchParams(window.location.search).get('vendor') || 'all',
+  ); // 供应商筛选: 'all' | 'unknown' | string
   const [filterTag, setFilterTag] = useState('all'); // 模型标签筛选: 'all' | string
   const [sortBy, setSortBy] = useState('default');
   const [sortDirection, setSortDirection] = useState('asc');

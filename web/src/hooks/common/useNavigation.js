@@ -35,7 +35,7 @@ export const useNavigation = (t, docsLink, headerNavModules, serverAddress) => {
       console: true,
       pricing: true,
       status: true,
-      usage: true,
+      rankings: true,
       docs: true,
       about: true,
     };
@@ -66,9 +66,9 @@ export const useNavigation = (t, docsLink, headerNavModules, serverAddress) => {
         externalLink: getModelStatusLink(serverAddress),
       },
       {
-        text: t('用量统计'),
-        itemKey: 'usage',
-        to: '/usage',
+        text: t('排行榜'),
+        itemKey: 'rankings',
+        to: '/rankings',
       },
       ...(docsLink
         ? [
@@ -98,7 +98,10 @@ export const useNavigation = (t, docsLink, headerNavModules, serverAddress) => {
           ? modules.pricing.enabled
           : modules.pricing;
       }
-      if (link.itemKey === 'status' || link.itemKey === 'usage') {
+      if (link.itemKey === 'rankings') {
+        return (modules.rankings ?? modules.usage) !== false;
+      }
+      if (link.itemKey === 'status') {
         return modules[link.itemKey] !== false;
       }
       return modules[link.itemKey] === true;
