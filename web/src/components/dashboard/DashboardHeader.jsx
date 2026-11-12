@@ -43,12 +43,14 @@ const DashboardHeader = ({
         <Button
           type='tertiary'
           icon={<Search size={16} />}
+          aria-label={t('查询条件')}
           onClick={showSearchModal}
           className={`bg-green-500 hover:bg-green-600 ${ICON_BUTTON_CLASS}`}
         />
         <Button
           type='tertiary'
           icon={<RefreshCw size={16} />}
+          aria-label={t('刷新')}
           onClick={refresh}
           loading={loading}
           className={`bg-blue-500 hover:bg-blue-600 ${ICON_BUTTON_CLASS}`}

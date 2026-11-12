@@ -27,12 +27,7 @@ const getModelStatusLink = (serverAddress) => {
   return `${base || window.location.origin}/model-status`;
 };
 
-export const useNavigation = (
-  t,
-  docsLink,
-  headerNavModules,
-  serverAddress,
-) => {
+export const useNavigation = (t, docsLink, headerNavModules, serverAddress) => {
   const mainNavLinks = useMemo(() => {
     // 默认配置，如果没有传入配置则显示所有模块
     const defaultModules = {
@@ -40,6 +35,7 @@ export const useNavigation = (
       console: true,
       pricing: true,
       status: true,
+      usage: true,
       docs: true,
       about: true,
     };
@@ -69,6 +65,11 @@ export const useNavigation = (
         isExternal: true,
         externalLink: getModelStatusLink(serverAddress),
       },
+      {
+        text: t('用量统计'),
+        itemKey: 'usage',
+        to: '/usage',
+      },
       ...(docsLink
         ? [
             {
@@ -97,8 +98,8 @@ export const useNavigation = (
           ? modules.pricing.enabled
           : modules.pricing;
       }
-      if (link.itemKey === 'status') {
-        return modules.status !== false;
+      if (link.itemKey === 'status' || link.itemKey === 'usage') {
+        return modules[link.itemKey] !== false;
       }
       return modules[link.itemKey] === true;
     });

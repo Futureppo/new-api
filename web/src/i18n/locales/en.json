@@ -19,7 +19,6 @@
     "按小时汇总已记录的用量，包含当前未完成的小时；Token 为输入与输出合计。": "Recorded usage is grouped by hour, including the current partial hour. Tokens combine input and output.",
     "用量约每 {{minutes}} 分钟入库，页面结果最多缓存 1 分钟。": "Usage is saved about every {{minutes}} minutes; page results are cached for up to 1 minute.",
     "用量汇总已关闭，当前仅展示此前保存的数据。": "Usage aggregation is disabled. Only previously saved data is shown.",
-    "性能指标取当前统计窗口内最近 10 次成功记录的有效样本。": "Performance uses valid samples from the last 10 success records within the current window.",
     "临时凭证（STS）": "Temporary credentials (STS)",
     "临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。": "Temporary credentials require AccessKey, SecretAccessKey, and SessionToken. Update them manually after expiration. Region is the Bedrock request region.",
     "请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region": "Enter temporary credentials, one per line, format: AccessKey|SecretAccessKey|SessionToken|Region",
@@ -4644,7 +4643,10 @@
     "测活请求阈值（次）": "Probe request threshold",
     "按账号统计滚动窗口内命中规则的请求次数，所有密钥合并，同一模型重复测活也逐次计数。未达到阈值正常放行；修改窗口、阈值或试运行状态后重新累计。": "Count matching requests per account within a sliding window across all keys. Repeated probes of the same model each count. Requests below the threshold pass normally. Changing the window, threshold or dry-run mode starts a fresh count.",
     "每达到一次阈值记一次违规，第三次违规永久封禁。同批并发只处罚一次，封禁期间重试不追加处罚；解禁后重新累计测活请求。": "Each threshold crossing counts as one offense; the third offense permanently suspends the account. Concurrent requests in a batch trigger one penalty. Retries during suspension add no penalties. Probe requests start counting again after the suspension ends.",
-    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Reset offenses and requests accumulated in the window without lifting the current suspension. Use user management to lift a suspension."
+    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Reset offenses and requests accumulated in the window without lifting the current suspension. Use user management to lift a suspension.",
+    "用户统计": "User analytics",
+    "查询条件": "Filters",
+    "模型调用次数": "Requests by model"
   },
   "??": "Disable",
   "0.5h": "0.5h",

@@ -19,7 +19,6 @@
     "按小时汇总已记录的用量，包含当前未完成的小时；Token 为输入与输出合计。": "Mức sử dụng đã ghi nhận được tổng hợp theo giờ, gồm giờ hiện tại chưa kết thúc. Token là tổng đầu vào và đầu ra.",
     "用量约每 {{minutes}} 分钟入库，页面结果最多缓存 1 分钟。": "Mức sử dụng được lưu khoảng mỗi {{minutes}} phút; kết quả được lưu đệm tối đa 1 phút.",
     "用量汇总已关闭，当前仅展示此前保存的数据。": "Tổng hợp mức sử dụng đã tắt. Chỉ hiển thị dữ liệu đã lưu trước đó.",
-    "性能指标取当前统计窗口内最近 10 次成功记录的有效样本。": "Chỉ số hiệu năng dùng mẫu hợp lệ từ 10 bản ghi thành công gần nhất trong khoảng hiện tại.",
     "临时凭证（STS）": "Thông tin xác thực tạm thời (STS)",
     "临时凭证需要 AccessKey、SecretAccessKey 和 SessionToken；过期后需手动更新。Region 为 Bedrock 调用区域。": "Thông tin xác thực tạm thời cần AccessKey, SecretAccessKey và SessionToken. Hãy cập nhật thủ công khi hết hạn. Region là vùng gọi Bedrock.",
     "请输入临时凭证，一行一个，格式：AccessKey|SecretAccessKey|SessionToken|Region": "Nhập thông tin xác thực tạm thời, mỗi dòng một bộ, theo định dạng: AccessKey|SecretAccessKey|SessionToken|Region",
@@ -5055,7 +5054,10 @@
     "测活请求阈值（次）": "Ngưỡng số yêu cầu thăm dò",
     "按账号统计滚动窗口内命中规则的请求次数，所有密钥合并，同一模型重复测活也逐次计数。未达到阈值正常放行；修改窗口、阈值或试运行状态后重新累计。": "Đếm yêu cầu khớp quy tắc theo tài khoản trong cửa sổ trượt, gộp tất cả khóa. Mỗi lần thăm dò lặp lại cùng mô hình vẫn được tính. Dưới ngưỡng, yêu cầu được xử lý bình thường. Đổi cửa sổ, ngưỡng hoặc chế độ chạy thử sẽ bắt đầu đếm lại.",
     "每达到一次阈值记一次违规，第三次违规永久封禁。同批并发只处罚一次，封禁期间重试不追加处罚；解禁后重新累计测活请求。": "Mỗi lần đạt ngưỡng tính là một vi phạm; lần thứ ba khóa vĩnh viễn. Các yêu cầu đồng thời trong một đợt chỉ bị phạt một lần. Thử lại khi bị khóa không tăng mức phạt. Sau khi mở khóa, số yêu cầu thăm dò được đếm lại từ đầu.",
-    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Đặt lại số vi phạm và yêu cầu trong cửa sổ, giữ nguyên trạng thái khóa. Để mở khóa, hãy dùng phần quản lý người dùng."
+    "清零违规次数和窗口内累计请求，不解除当前封禁。需要解禁时请在用户管理中操作。": "Đặt lại số vi phạm và yêu cầu trong cửa sổ, giữ nguyên trạng thái khóa. Để mở khóa, hãy dùng phần quản lý người dùng.",
+    "用户统计": "Thống kê người dùng",
+    "查询条件": "Bộ lọc",
+    "模型调用次数": "Số lượt gọi theo mô hình"
   },
   "??": "T?t",
   "0.5h": "0.5h",

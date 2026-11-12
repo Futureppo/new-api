@@ -47,6 +47,7 @@ export default function SettingsHeaderNavModules(props) {
       requireAuth: false, // 默认不需要登录鉴权
     },
     status: true,
+    usage: true,
     docs: true,
     about: true,
   });
@@ -88,6 +89,7 @@ export default function SettingsHeaderNavModules(props) {
         requireAuth: false,
       },
       status: true,
+      usage: true,
       docs: true,
       about: true,
     };
@@ -146,6 +148,9 @@ export default function SettingsHeaderNavModules(props) {
         if (typeof modules.status !== 'boolean') {
           modules.status = true;
         }
+        if (typeof modules.usage !== 'boolean') {
+          modules.usage = true;
+        }
 
         setHeaderNavModules(modules);
       } catch (error) {
@@ -158,6 +163,7 @@ export default function SettingsHeaderNavModules(props) {
             requireAuth: false,
           },
           status: true,
+          usage: true,
           docs: true,
           about: true,
         };
@@ -188,6 +194,11 @@ export default function SettingsHeaderNavModules(props) {
       key: 'status',
       title: t('状态查看'),
       description: t('全站模型状态'),
+    },
+    {
+      key: 'usage',
+      title: t('用量统计'),
+      description: t('使用统计'),
     },
     {
       key: 'docs',

@@ -36,8 +36,23 @@ const ChartsPanel = ({
   CHART_CONFIG,
   FLEX_CENTER_GAP2,
   hasApiInfoPanel,
+  chartTabs,
+  title = '模型数据分析',
   t,
 }) => {
+  const tabs = chartTabs || [
+    { key: '1', label: '消耗分布', spec: spec_line },
+    { key: '2', label: '调用趋势', spec: spec_model_line },
+    { key: '3', label: '调用次数分布', spec: spec_pie },
+    { key: '4', label: '调用次数排行', spec: spec_rank_bar },
+    ...(isAdminUser
+      ? [
+          { key: '5', label: '用户消耗排行', spec: spec_user_rank },
+          { key: '6', label: '用户消耗趋势', spec: spec_user_trend },
+        ]
+      : []),
+  ];
+  const activeChart = tabs.find((tab) => tab.key === activeChartTab);
   return (
     <Card
       {...CARD_PROPS}
@@ -46,46 +61,32 @@ const ChartsPanel = ({
         <div className='flex flex-col lg:flex-row lg:items-center lg:justify-between w-full gap-3'>
           <div className={FLEX_CENTER_GAP2}>
             <PieChart size={16} />
-            {t('模型数据分析')}
+            {t(title)}
           </div>
           <Tabs
             type='slash'
             activeKey={activeChartTab}
             onChange={setActiveChartTab}
           >
-            <TabPane tab={<span>{t('消耗分布')}</span>} itemKey='1' />
-            <TabPane tab={<span>{t('调用趋势')}</span>} itemKey='2' />
-            <TabPane tab={<span>{t('调用次数分布')}</span>} itemKey='3' />
-            <TabPane tab={<span>{t('调用次数排行')}</span>} itemKey='4' />
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗排行')}</span>} itemKey='5' />
-            )}
-            {isAdminUser && (
-              <TabPane tab={<span>{t('用户消耗趋势')}</span>} itemKey='6' />
-            )}
+            {tabs.map((tab) => (
+              <TabPane
+                key={tab.key}
+                tab={<span>{t(tab.label)}</span>}
+                itemKey={tab.key}
+              />
+            ))}
           </Tabs>
         </div>
       }
       bodyStyle={{ padding: 0 }}
     >
       <div className='h-96 p-2'>
-        {activeChartTab === '1' && (
-          <VChart spec={spec_line} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '2' && (
-          <VChart spec={spec_model_line} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '3' && (
-          <VChart spec={spec_pie} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '4' && (
-          <VChart spec={spec_rank_bar} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '5' && isAdminUser && (
-          <VChart spec={spec_user_rank} option={CHART_CONFIG} />
-        )}
-        {activeChartTab === '6' && isAdminUser && (
-          <VChart spec={spec_user_trend} option={CHART_CONFIG} />
+        {activeChart && (
+          <VChart
+            key={activeChart.key}
+            spec={activeChart.spec}
+            option={CHART_CONFIG}
+          />
         )}
       </div>
     </Card>

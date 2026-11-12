@@ -54,6 +54,7 @@ import SetupCheck from './components/layout/SetupCheck';
 
 const Home = lazy(() => import('./pages/Home'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Usage = lazy(() => import('./pages/Usage'));
 const About = lazy(() => import('./pages/About'));
 const UserAgreement = lazy(() => import('./pages/UserAgreement'));
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
@@ -109,6 +110,16 @@ function App() {
           }
         />
         <Route path='/model-status' element={<ModelStatusPublicPage />} />
+        <Route
+          path='/usage'
+          element={
+            <PrivateRoute>
+              <Suspense fallback={<Loading />}>
+                <Usage />
+              </Suspense>
+            </PrivateRoute>
+          }
+        />
         <Route path='/forbidden' element={<Forbidden />} />
         <Route
           path='/console/models'
