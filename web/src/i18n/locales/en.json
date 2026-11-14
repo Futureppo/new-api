@@ -1,5 +1,15 @@
 {
   "translation": {
+    "规则必须是 JSON 对象": "Rules must be a JSON object",
+    "关键词不能为空": "Keywords cannot be empty",
+    "替换内容必须是字符串": "Replacement values must be strings",
+    "替换内容（留空表示删除）": "Replacement text (leave empty to delete)",
+    "请修正关键词重定向规则后再保存": "Correct the keyword redirect rules before saving",
+    "关键词重定向": "Keyword redirect",
+    "按精确文本替换回答和思考内容，英文区分大小写；关闭后保留规则。": "Replace exact text in answers and reasoning. Matching is case-sensitive; rules are kept when disabled.",
+    "关键词替换规则": "Keyword replacement rules",
+    "键为关键词，值为替换内容；留空表示删除。同一位置优先匹配最长关键词，替换结果不再匹配。": "Keys are keywords and values are replacements; an empty value deletes the match. The longest keyword at each position wins. Replacement text is not matched again.",
+    "支持 Chat Completions、Responses、Claude Messages 和 Gemini 的普通及流式响应。带签名的思考块保留原文；原生思考内容会等待签名状态确定后输出。": "Supports regular and streaming responses for Chat Completions, Responses, Claude Messages, and Gemini. Signed thinking blocks are preserved; native thinking is buffered until its signature status is known.",
     "用量统计": "Usage statistics",
     "全部用户": "All users",
     "总 Token": "Total tokens",

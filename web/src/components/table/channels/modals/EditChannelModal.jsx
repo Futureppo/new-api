@@ -64,6 +64,7 @@ import OllamaModelModal from './OllamaModelModal';
 import CodexOAuthModal from './CodexOAuthModal';
 import ParamOverrideEditorModal from './ParamOverrideEditorModal';
 import JSONEditor from '../../../common/ui/JSONEditor';
+import { parseStringMap } from '../../../../helpers/stringMap';
 import SecureVerificationModal from '../../../common/modals/SecureVerificationModal';
 import StatusCodeRiskGuardModal from './StatusCodeRiskGuardModal';
 import ChannelKeyDisplay from '../../../common/ui/ChannelKeyDisplay';
@@ -211,6 +212,8 @@ const EditChannelModal = (props) => {
     other: '',
     model_mapping: '',
     model_mapping_full_enabled: false,
+    keyword_redirect_enabled: false,
+    keyword_redirect_rules: '',
     param_override: '',
     status_code_mapping: '',
     models: [],
@@ -1025,9 +1028,18 @@ const EditChannelModal = (props) => {
         setMultiToSingle(false);
       }
       // 解析渠道额外设置并合并到data中
+      data.keyword_redirect_enabled = false;
+      data.keyword_redirect_rules = '';
       if (data.setting) {
         try {
           const parsedSettings = JSON.parse(data.setting);
+          data.keyword_redirect_enabled =
+            parsedSettings.keyword_redirect?.enabled === true;
+          data.keyword_redirect_rules = JSON.stringify(
+            parsedSettings.keyword_redirect?.rules || {},
+            null,
+            2,
+          );
           data.force_format = parsedSettings.force_format || false;
           data.thinking_to_content =
             parsedSettings.thinking_to_content || false;
@@ -1874,6 +1886,13 @@ const EditChannelModal = (props) => {
   const submit = async () => {
     const formValues = formApiRef.current ? formApiRef.current.getValues() : {};
     let localInputs = { ...formValues };
+    let keywordRedirectRules;
+    try {
+      keywordRedirectRules = parseStringMap(inputs.keyword_redirect_rules || '');
+    } catch {
+      showError(t('请修正关键词重定向规则后再保存'));
+      return;
+    }
     if (isKeyOptionalChannel(localInputs.type)) {
       localInputs.key = (localInputs.key || '').trim();
       if (!isEdit && batch && !(localInputs.key || '').trim()) {
@@ -2110,6 +2129,10 @@ const EditChannelModal = (props) => {
 
     // 生成渠道额外设置JSON
     const channelExtraSettings = {
+      keyword_redirect: {
+        enabled: localInputs.keyword_redirect_enabled === true,
+        rules: keywordRedirectRules,
+      },
       force_format: localInputs.force_format || false,
       thinking_to_content: localInputs.thinking_to_content || false,
       model_mapping_full_enabled:
@@ -2315,6 +2338,8 @@ const EditChannelModal = (props) => {
     delete localInputs.force_format;
     delete localInputs.thinking_to_content;
     delete localInputs.model_mapping_full_enabled;
+    delete localInputs.keyword_redirect_enabled;
+    delete localInputs.keyword_redirect_rules;
     delete localInputs.show_error_details;
     delete localInputs.proxy;
     delete localInputs.pass_through_body_enabled;
@@ -4871,6 +4896,40 @@ const EditChannelModal = (props) => {
                     extraText={t(
                       '开启后，响应体及所有对外日志中的模型名称将统一显示为重定向前的请求模型，真实上游模型仅用于内部请求和计费',
                     )}
+                  />
+
+                  <Form.Switch
+                    field='keyword_redirect_enabled'
+                    label={t('关键词重定向')}
+                    checkedText={t('开')}
+                    uncheckedText={t('关')}
+                    onChange={(value) =>
+                      handleInputChange('keyword_redirect_enabled', value)
+                    }
+                    extraText={t(
+                      '按精确文本替换回答和思考内容，英文区分大小写；关闭后保留规则。',
+                    )}
+                  />
+                  <JSONEditor
+                    key={`keyword-redirect-${channelId ?? 'new'}`}
+                    field='keyword_redirect_rules'
+                    label={t('关键词替换规则')}
+                    value={inputs.keyword_redirect_rules || ''}
+                    onChange={(value) =>
+                      handleInputChange('keyword_redirect_rules', value)
+                    }
+                    formApi={formApiRef.current}
+                    stringValuesOnly
+                    extraText={t(
+                      '键为关键词，值为替换内容；留空表示删除。同一位置优先匹配最长关键词，替换结果不再匹配。',
+                    )}
+                    extraFooter={
+                      <Text type='tertiary' size='small'>
+                        {t(
+                          '支持 Chat Completions、Responses、Claude Messages 和 Gemini 的普通及流式响应。带签名的思考块保留原文；原生思考内容会等待签名状态确定后输出。',
+                        )}
+                      </Text>
+                    }
                   />
 
                   {/* Auto Ban - Core Config */}

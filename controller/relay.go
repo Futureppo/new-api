@@ -84,6 +84,11 @@ func geminiRelayHandler(c *gin.Context, info *relaycommon.RelayInfo) *types.NewA
 }
 
 func Relay(c *gin.Context, relayFormat types.RelayFormat) {
+	defer func() {
+		if err := relaycommon.FinalizeRelayResponse(c); err != nil {
+			logger.LogError(c, "failed to finalize relay response: "+err.Error())
+		}
+	}()
 	if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi {
 		switch vertexmodel.NativeAction(c.Request.URL.Path) {
 		case "predictLongRunning":

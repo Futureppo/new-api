@@ -26,19 +26,23 @@ func (s *ChannelRPMProtectionSettings) Validate() error {
 }
 
 type ChannelSettings struct {
-	ForceFormat             bool                          `json:"force_format,omitempty"`
-	ThinkingToContent       bool                          `json:"thinking_to_content,omitempty"`
-	ModelMappingFullEnabled bool                          `json:"model_mapping_full_enabled,omitempty"`
-	ShowErrorDetails        bool                          `json:"show_error_details,omitempty"`
-	Proxy                   string                        `json:"proxy"`
-	PassThroughBodyEnabled  bool                          `json:"pass_through_body_enabled,omitempty"`
-	SystemPrompt            string                        `json:"system_prompt,omitempty"`
-	SystemPromptOverride    bool                          `json:"system_prompt_override,omitempty"`
-	RPMProtection           *ChannelRPMProtectionSettings `json:"rpm_protection,omitempty"`
+	ForceFormat             bool                            `json:"force_format,omitempty"`
+	ThinkingToContent       bool                            `json:"thinking_to_content,omitempty"`
+	ModelMappingFullEnabled bool                            `json:"model_mapping_full_enabled,omitempty"`
+	ShowErrorDetails        bool                            `json:"show_error_details,omitempty"`
+	Proxy                   string                          `json:"proxy"`
+	PassThroughBodyEnabled  bool                            `json:"pass_through_body_enabled,omitempty"`
+	SystemPrompt            string                          `json:"system_prompt,omitempty"`
+	SystemPromptOverride    bool                            `json:"system_prompt_override,omitempty"`
+	RPMProtection           *ChannelRPMProtectionSettings   `json:"rpm_protection,omitempty"`
+	KeywordRedirect         *ChannelKeywordRedirectSettings `json:"keyword_redirect,omitempty"`
 }
 
 func (s ChannelSettings) Validate() error {
-	return s.RPMProtection.Validate()
+	if err := s.RPMProtection.Validate(); err != nil {
+		return err
+	}
+	return s.KeywordRedirect.Validate()
 }
 
 type VertexKeyType string

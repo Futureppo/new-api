@@ -937,6 +937,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 	responseCapture := captureTestUpstreamResponse(info, httpResp)
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
+	if finishErr := relaycommon.FinalizeRelayResponse(c); finishErr != nil && respErr == nil {
+		respErr = types.NewError(finishErr, types.ErrorCodeBadResponseBody, types.ErrOptionWithSkipRetry())
+	}
 	if respErr != nil {
 		return testResult{
 			context:     c,

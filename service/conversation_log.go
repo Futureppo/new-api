@@ -55,6 +55,9 @@ func RecordConversationLogAfterConsume(ctx *gin.Context, relayInfo *relaycommon.
 	if ctx == nil || relayInfo == nil || relayInfo.ConversationCapture == nil {
 		return
 	}
+	if err := relaycommon.FinalizeRelayResponse(ctx); err != nil {
+		logger.LogError(ctx, "failed to finalize conversation response: "+err.Error())
+	}
 	snapshot := relayInfo.ConversationCapture.Snapshot()
 	if len(snapshot.ClientRequestBody) == 0 && len(snapshot.ClientResponseBody) == 0 {
 		return

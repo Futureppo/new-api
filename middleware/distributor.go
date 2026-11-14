@@ -168,6 +168,9 @@ func Distribute() func(c *gin.Context) {
 		SetupContextForSelectedChannel(c, channel, modelRequest.Model)
 		relaycommon.InstallRelayResponseWriter(c)
 		c.Next()
+		if err := relaycommon.FinalizeRelayResponse(c); err != nil {
+			common.SysError("failed to finalize relay response: " + err.Error())
+		}
 		if channel != nil && c.Writer != nil && c.Writer.Status() < http.StatusBadRequest {
 			service.RecordChannelAffinity(c, channel.Id)
 		}

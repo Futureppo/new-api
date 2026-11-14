@@ -37,6 +37,7 @@ import {
   Tooltip,
 } from '@douyinfe/semi-ui';
 import { IconPlus, IconDelete, IconAlertTriangle } from '@douyinfe/semi-icons';
+import { parseStringMap } from '../../../helpers/stringMap';
 
 const { Text } = Typography;
 
@@ -61,9 +62,26 @@ const JSONEditor = ({
   rules = [],
   formApi = null,
   renderStringValueSuffix,
+  stringValuesOnly = false,
   ...props
 }) => {
   const { t } = useTranslation();
+  const parseValue = useCallback(
+    (text) => (stringValuesOnly ? parseStringMap(text) : JSON.parse(text)),
+    [stringValuesOnly],
+  );
+  const validationMessage = (error) => {
+    switch (error.code) {
+      case 'object':
+        return t('规则必须是 JSON 对象');
+      case 'empty_key':
+        return t('关键词不能为空');
+      case 'string':
+        return t('替换内容必须是字符串');
+      default:
+        return error.message;
+    }
+  };
 
   // 将对象转换为键值对数组（包含唯一ID）
   const objectToKeyValueArray = useCallback((obj, prevPairs = []) => {
@@ -83,15 +101,18 @@ const JSONEditor = ({
   }, []);
 
   // 将键值对数组转换为对象（重复键时后面的会覆盖前面的）
-  const keyValueArrayToObject = useCallback((arr) => {
-    const result = {};
-    arr.forEach((item) => {
-      if (item.key) {
-        result[item.key] = item.value;
-      }
-    });
-    return result;
-  }, []);
+  const keyValueArrayToObject = useCallback(
+    (arr) => {
+      const result = stringValuesOnly ? Object.create(null) : {};
+      arr.forEach((item) => {
+        if (item.key || stringValuesOnly) {
+          result[item.key] = item.value;
+        }
+      });
+      return result;
+    },
+    [stringValuesOnly],
+  );
 
   // 初始化键值对数组
   const [keyValuePairs, setKeyValuePairs] = useState(() => {
@@ -135,7 +156,7 @@ const JSONEditor = ({
 
   // 计算重复的键
   const duplicateKeys = useMemo(() => {
-    const keyCount = {};
+    const keyCount = Object.create(null);
     const duplicates = new Set();
 
     keyValuePairs.forEach((pair) => {
@@ -155,7 +176,7 @@ const JSONEditor = ({
     try {
       let parsed = {};
       if (typeof value === 'string' && value.trim()) {
-        parsed = JSON.parse(value);
+        parsed = parseValue(value);
       } else if (typeof value === 'object' && value !== null) {
         parsed = value;
       }
@@ -167,20 +188,20 @@ const JSONEditor = ({
       }
       setJsonError('');
     } catch (error) {
-      console.log('JSON解析失败:', error.message);
-      setJsonError(error.message);
+      if (!stringValuesOnly) console.log('JSON解析失败:', error.message);
+      setJsonError(validationMessage(error));
     }
   }, [value]);
 
   // 外部 value 变化时，若不在手动模式，则同步手动文本
   useEffect(() => {
-    if (editMode !== 'manual') {
+    if (editMode !== 'manual' || stringValuesOnly) {
       if (typeof value === 'string') setManualText(value);
       else if (value && typeof value === 'object')
         setManualText(JSON.stringify(value, null, 2));
       else setManualText('');
     }
-  }, [value, editMode]);
+  }, [value, editMode, stringValuesOnly]);
 
   // 处理可视化编辑的数据变化
   const handleVisualChange = useCallback(
@@ -208,14 +229,20 @@ const JSONEditor = ({
   const handleManualChange = useCallback(
     (newValue) => {
       setManualText(newValue);
+      // This mode keeps the current draft in the parent even when invalid,
+      // so submitting cannot silently reuse an earlier valid mapping.
+      if (stringValuesOnly) {
+        formApi?.setValue(field, newValue);
+        onChange?.(newValue);
+      }
       if (newValue && newValue.trim()) {
         try {
-          const parsed = JSON.parse(newValue);
+          const parsed = parseValue(newValue);
           setKeyValuePairs(objectToKeyValueArray(parsed, keyValuePairs));
           setJsonError('');
-          onChange?.(newValue);
+          if (!stringValuesOnly) onChange?.(newValue);
         } catch (error) {
-          setJsonError(error.message);
+          setJsonError(validationMessage(error));
         }
       } else {
         setKeyValuePairs([]);
@@ -223,7 +250,16 @@ const JSONEditor = ({
         onChange?.('');
       }
     },
-    [onChange, objectToKeyValueArray, keyValuePairs],
+    [
+      onChange,
+      objectToKeyValueArray,
+      keyValuePairs,
+      stringValuesOnly,
+      formApi,
+      field,
+      parseValue,
+      t,
+    ],
   );
 
   // 切换编辑模式
@@ -240,9 +276,9 @@ const JSONEditor = ({
       try {
         let parsed = {};
         if (manualText && manualText.trim()) {
-          parsed = JSON.parse(manualText);
+          parsed = parseValue(manualText);
         } else if (typeof value === 'string' && value.trim()) {
-          parsed = JSON.parse(value);
+          parsed = parseValue(value);
         } else if (typeof value === 'object' && value !== null) {
           parsed = value;
         }
@@ -250,7 +286,7 @@ const JSONEditor = ({
         setJsonError('');
         setEditMode('visual');
       } catch (error) {
-        setJsonError(error.message);
+        setJsonError(validationMessage(error));
         return;
       }
     }
@@ -261,6 +297,8 @@ const JSONEditor = ({
     keyValuePairs,
     keyValueArrayToObject,
     objectToKeyValueArray,
+    parseValue,
+    t,
   ]);
 
   // 添加键值对
@@ -330,6 +368,17 @@ const JSONEditor = ({
 
   // 渲染值输入控件（支持嵌套）
   const renderValueInput = (pairId, pairKey, value) => {
+    if (stringValuesOnly) {
+      return (
+        <TextArea
+          rows={1}
+          autosize
+          placeholder={t('替换内容（留空表示删除）')}
+          value={String(value)}
+          onChange={(newValue) => updateValue(pairId, newValue)}
+        />
+      );
+    }
     const valueType = typeof value;
 
     if (valueType === 'boolean') {
@@ -431,6 +480,7 @@ const JSONEditor = ({
         )}
 
         {keyValuePairs.map((pair, index) => {
+          const KeyInput = stringValuesOnly ? TextArea : Input;
           const isDuplicate = duplicateKeys.has(pair.key);
           const isLastDuplicate =
             isDuplicate &&
@@ -440,7 +490,9 @@ const JSONEditor = ({
             <Row key={pair.id} gutter={8} align='middle'>
               <Col span={10}>
                 <div className='relative'>
-                  <Input
+                  <KeyInput
+                    rows={stringValuesOnly ? 1 : undefined}
+                    autosize={stringValuesOnly || undefined}
                     placeholder={t('键名')}
                     value={pair.key}
                     onChange={(newKey) => updateKey(pair.id, newKey)}

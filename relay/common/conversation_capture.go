@@ -114,6 +114,9 @@ func SetConversationUpstreamRequest(info *RelayInfo, data []byte) {
 }
 
 func AppendConversationClientResponse(c *gin.Context, data []byte) {
+	if capturesKeywordResponse(c) {
+		return
+	}
 	capture := GetConversationCapture(c)
 	if capture == nil {
 		return

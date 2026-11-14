@@ -1,5 +1,15 @@
 {
   "translation": {
+    "规则必须是 JSON 对象": "Quy tắc phải là một đối tượng JSON",
+    "关键词不能为空": "Từ khóa không được để trống",
+    "替换内容必须是字符串": "Nội dung thay thế phải là chuỗi",
+    "替换内容（留空表示删除）": "Nội dung thay thế (để trống để xóa)",
+    "请修正关键词重定向规则后再保存": "Vui lòng sửa quy tắc chuyển hướng từ khóa trước khi lưu",
+    "关键词重定向": "Chuyển hướng từ khóa",
+    "按精确文本替换回答和思考内容，英文区分大小写；关闭后保留规则。": "Thay thế văn bản khớp chính xác trong câu trả lời và suy luận, có phân biệt chữ hoa và chữ thường. Quy tắc được giữ lại khi tắt.",
+    "关键词替换规则": "Quy tắc thay thế từ khóa",
+    "键为关键词，值为替换内容；留空表示删除。同一位置优先匹配最长关键词，替换结果不再匹配。": "Khóa là từ khóa, giá trị là nội dung thay thế; giá trị trống sẽ xóa phần khớp. Tại cùng một vị trí, ưu tiên từ khóa dài nhất. Kết quả thay thế không được xử lý lại.",
+    "支持 Chat Completions、Responses、Claude Messages 和 Gemini 的普通及流式响应。带签名的思考块保留原文；原生思考内容会等待签名状态确定后输出。": "Hỗ trợ phản hồi thường và dạng luồng của Chat Completions, Responses, Claude Messages và Gemini. Giữ nguyên các khối suy nghĩ có chữ ký; nội dung suy nghĩ gốc được đệm đến khi xác định được trạng thái chữ ký.",
     "用量统计": "Thống kê sử dụng",
     "全部用户": "Tất cả người dùng",
     "总 Token": "Tổng token",

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	basecommon "github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -17,10 +18,15 @@ import (
 
 type relayResponseWriter struct {
 	gin.ResponseWriter
+	mu            sync.Mutex
 	context       *gin.Context
 	sseEventError bool
 	ssePending    []byte
+	keyword       *keywordWriterState
+	keywordErr    error
 }
+
+const relayResponseWriterContextKey = "relay_response_writer"
 
 func SetRelayInfo(c *gin.Context, info *RelayInfo) {
 	if c == nil {
@@ -41,10 +47,13 @@ func InstallRelayResponseWriter(c *gin.Context) {
 	if c == nil || c.Writer == nil {
 		return
 	}
-	if _, ok := c.Writer.(*relayResponseWriter); ok {
+	if installed := getRelayResponseWriter(c); installed != nil {
+		c.Set(relayResponseWriterContextKey, installed)
 		return
 	}
-	c.Writer = &relayResponseWriter{ResponseWriter: c.Writer, context: c}
+	w := &relayResponseWriter{ResponseWriter: c.Writer, context: c}
+	c.Writer = w
+	c.Set(relayResponseWriterContextKey, w)
 }
 
 // InstallModelMappingResponseWriter is kept as a compatibility alias for callers
@@ -58,7 +67,7 @@ func (w *relayResponseWriter) removeContentLengthForRewrite(code int) {
 	info := GetRelayInfo(w.context)
 	privacyRewrite := shouldHideChannelErrorDetails(w.context) &&
 		(code >= 400 || strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream"))
-	if (info != nil && info.IsModelMappingFullActive()) || privacyRewrite {
+	if (info != nil && info.IsModelMappingFullActive()) || privacyRewrite || keywordRedirectActive(w.context) {
 		w.Header().Del("Content-Length")
 	}
 }
@@ -74,12 +83,26 @@ func (w *relayResponseWriter) WriteHeaderNow() {
 }
 
 func (w *relayResponseWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 	w.removeContentLengthForRewrite(w.ResponseWriter.Status())
 	w.ResponseWriter.Flush()
 }
 
 func (w *relayResponseWriter) Write(data []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.keywordErr != nil {
+		return 0, w.keywordErr
+	}
 	inputLen := len(data)
+	if keywordRedirectActive(w.context) && !responseIsError(w.context) && keywordResponseContentType(w.Header().Get("Content-Type")) {
+		if err := w.writeKeywordResponse(data); err != nil {
+			w.keywordErr, w.keyword = err, nil
+			return 0, err
+		}
+		return inputLen, nil
+	}
 	if shouldHideChannelErrorDetails(w.context) && strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
 		// Writes are transport chunks, not complete events. Wait for the SSE
 		// delimiter so split JSON and multiline data cannot escape filtering.
@@ -105,7 +128,7 @@ func (w *relayResponseWriter) Write(data []byte) (int, error) {
 	if !bytes.Equal(data, rewritten) {
 		w.Header().Del("Content-Length")
 	}
-	n, err := w.ResponseWriter.Write(rewritten)
+	n, err := w.writeClientBytes(rewritten)
 	if err == nil && n == len(rewritten) {
 		return inputLen, nil
 	}
