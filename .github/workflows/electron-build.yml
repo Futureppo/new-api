@@ -4,12 +4,14 @@ on:
   push:
     tags:
       - '*'  # Triggers on version tags like v1.0.0
+      - '!alpha*'
+      - '!nightly*'
       - '!*-*'  # Ignore pre-release tags like v1.0.0-beta
       - '!*-alpha*' # Ignore alpha tags like v1.0.0-alpha
-  workflow_dispatch:  # Allows manual triggering
 
 jobs:
   build:
+    if: github.event.created
     strategy:
       matrix:
         # os: [macos-latest, windows-latest]
@@ -23,13 +25,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Determine Version
-        run: |
-          VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev.$(git rev-parse --short HEAD)")
-          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+        run: echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

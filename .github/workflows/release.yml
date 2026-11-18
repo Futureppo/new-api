@@ -3,29 +3,23 @@ permissions:
   contents: write
 
 on:
-  workflow_dispatch:
-    inputs:
-      name:
-        description: 'reason'
-        required: false
   push:
     tags:
       - '*'
+      - '!alpha*'
+      - '!nightly*'
       - '!*-alpha*'
 
 jobs:
   linux:
     name: Linux Release
+    if: github.event.created
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
       - name: Determine Version
-        run: |
-          VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev.$(git rev-parse --short HEAD)")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+        run: echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
@@ -70,12 +64,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
       - name: Determine Version
-        run: |
-          VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev.$(git rev-parse --short HEAD)")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+        run: echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
@@ -111,6 +101,7 @@ jobs:
 
   windows:
     name: Windows Release
+    if: github.event.created
     runs-on: windows-latest
     defaults:
       run:
@@ -118,12 +109,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-        with:
-          fetch-depth: 0
       - name: Determine Version
-        run: |
-          VERSION=$(git describe --tags 2>/dev/null || echo "0.0.0-dev.$(git rev-parse --short HEAD)")
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+        run: echo "VERSION=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
