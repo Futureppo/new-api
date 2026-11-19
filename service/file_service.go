@@ -100,7 +100,7 @@ func LoadFileSource(c *gin.Context, source types.FileSource, reason ...string) (
 				return data, nil
 			}
 		}
-		cachedData, err = loadFromBase64(s.Base64Data, s.MimeType)
+		cachedData, err = loadFromBase64(c, s.Base64Data, s.MimeType)
 	default:
 		return nil, fmt.Errorf("unsupported file source type: %T", source)
 	}
@@ -193,7 +193,7 @@ func loadFromURL(c *gin.Context, url string, reason ...string) (*types.CachedFil
 	base64Size := int64(len(base64Data))
 	var cachedData *types.CachedFileData
 
-	if shouldUseDiskCache(base64Size) {
+	if !common.IsPlaygroundRequest(c) && shouldUseDiskCache(base64Size) {
 		// 使用磁盘缓存
 		diskPath, err := writeToDiskCache(base64Data)
 		if err != nil {
@@ -316,7 +316,7 @@ func smartDetectMimeType(resp *http.Response, url string, fileBytes []byte) stri
 }
 
 // loadFromBase64 从 base64 字符串加载文件
-func loadFromBase64(base64String string, providedMimeType string) (*types.CachedFileData, error) {
+func loadFromBase64(c *gin.Context, base64String string, providedMimeType string) (*types.CachedFileData, error) {
 	var mimeType string
 	var cleanBase64 string
 
@@ -353,7 +353,7 @@ func loadFromBase64(base64String string, providedMimeType string) (*types.Cached
 	base64Size := int64(len(cleanBase64))
 	var cachedData *types.CachedFileData
 
-	if shouldUseDiskCache(base64Size) {
+	if !common.IsPlaygroundRequest(c) && shouldUseDiskCache(base64Size) {
 		diskPath, err := writeToDiskCache(cleanBase64)
 		if err != nil {
 			cachedData = types.NewMemoryCachedData(cleanBase64, mimeType, int64(len(decodedData)))

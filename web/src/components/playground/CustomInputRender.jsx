@@ -18,78 +18,58 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { Toast } from '@douyinfe/semi-ui';
+import { Button, Toast } from '@douyinfe/semi-ui';
+import { Paperclip } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { usePlayground } from '../../contexts/PlaygroundContext';
+import {
+  clipboardImages,
+  readImageDataURL,
+} from '../../helpers/playgroundImages';
 
 const CustomInputRender = (props) => {
   const { t } = useTranslation();
-  const { onPasteImage, imageEnabled } = usePlayground();
+  const {
+    onPasteImages,
+    onRemoveChatImage,
+    chatImages,
+    chatAttachmentsEnabled,
+  } = usePlayground();
   const { detailProps } = props;
-  const { clearContextNode, uploadNode, inputNode, sendNode, onClick } =
-    detailProps;
+  const { clearContextNode, inputNode, sendNode, onClick } = detailProps;
   const containerRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const readingImages = useRef(Promise.resolve());
+
+  const addFiles = useCallback(
+    (files) => {
+      if (!files.length || !chatAttachmentsEnabled) return;
+      readingImages.current = readingImages.current.then(async () => {
+        try {
+          const images = await Promise.all(
+            files.map(async (file) => ({
+              name: file.name,
+              url: await readImageDataURL(file),
+            })),
+          );
+          onPasteImages(images);
+        } catch {
+          Toast.error(t('读取图片失败'));
+        }
+      });
+    },
+    [chatAttachmentsEnabled, onPasteImages, t],
+  );
 
   const handlePaste = useCallback(
-    async (e) => {
-      const items = e.clipboardData?.items;
-      if (!items) return;
-
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-
-        if (item.type.indexOf('image') !== -1) {
-          e.preventDefault();
-          const file = item.getAsFile();
-
-          if (file) {
-            try {
-              if (!imageEnabled) {
-                Toast.warning({
-                  content: t('请先在设置中启用图片功能'),
-                  duration: 3,
-                });
-                return;
-              }
-
-              const reader = new FileReader();
-              reader.onload = (event) => {
-                const base64 = event.target.result;
-
-                if (onPasteImage) {
-                  onPasteImage(base64);
-                  Toast.success({
-                    content: t('图片已添加'),
-                    duration: 2,
-                  });
-                } else {
-                  Toast.error({
-                    content: t('无法添加图片'),
-                    duration: 2,
-                  });
-                }
-              };
-              reader.onerror = () => {
-                console.error('Failed to read image file:', reader.error);
-                Toast.error({
-                  content: t('粘贴图片失败'),
-                  duration: 2,
-                });
-              };
-              reader.readAsDataURL(file);
-            } catch (error) {
-              console.error('Failed to paste image:', error);
-              Toast.error({
-                content: t('粘贴图片失败'),
-                duration: 2,
-              });
-            }
-          }
-          break;
-        }
-      }
+    (event) => {
+      if (!chatAttachmentsEnabled) return;
+      const files = clipboardImages(event.clipboardData);
+      if (!files.length) return;
+      event.preventDefault();
+      addFiles(files);
     },
-    [onPasteImage, imageEnabled, t],
+    [addFiles, chatAttachmentsEnabled],
   );
 
   useEffect(() => {
@@ -136,6 +116,29 @@ const CustomInputRender = (props) => {
 
   return (
     <div className='p-2 sm:p-4' ref={containerRef}>
+      {chatAttachmentsEnabled && chatImages.length > 0 && (
+        <ol className='mb-2 flex flex-wrap gap-2'>
+          {chatImages.map(({ name, url }, index) => (
+            <li
+              key={index}
+              className='flex items-center gap-2 rounded border border-[var(--semi-color-border)] p-1 text-xs'
+            >
+              <img
+                src={url}
+                alt={name}
+                className='h-12 w-12 rounded object-contain'
+              />
+              <Button
+                size='small'
+                aria-label={`${t('移除')} ${name}`}
+                onClick={() => onRemoveChatImage(index)}
+              >
+                {t('移除')}
+              </Button>
+            </li>
+          ))}
+        </ol>
+      )}
       <div
         className='flex items-center gap-2 sm:gap-3 p-2 bg-gray-50 rounded-xl sm:rounded-2xl shadow-sm hover:shadow-md transition-shadow'
         style={{ border: '1px solid var(--semi-color-border)' }}
@@ -144,6 +147,29 @@ const CustomInputRender = (props) => {
       >
         {/* 清空对话按钮 - 左边 */}
         {styledClearNode}
+        {chatAttachmentsEnabled && (
+          <>
+            <Button
+              icon={<Paperclip size={16} />}
+              aria-label={t('选择本地图片')}
+              onClick={(event) => {
+                event.stopPropagation();
+                fileInputRef.current.click();
+              }}
+            />
+            <input
+              ref={fileInputRef}
+              type='file'
+              accept='image/*'
+              multiple
+              hidden
+              onChange={(event) => {
+                addFiles(Array.from(event.target.files || []));
+                event.target.value = '';
+              }}
+            />
+          </>
+        )}
         <div className='flex-1'>{inputNode}</div>
         {/* 发送按钮 - 右边 */}
         {styledSendNode}

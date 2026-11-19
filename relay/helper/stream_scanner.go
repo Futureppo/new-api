@@ -263,7 +263,7 @@ func streamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 
 			ticker.Reset(streamingTimeout)
 			data := scanner.Text()
-			if common.DebugEnabled {
+			if common.DebugEnabled && !info.IsPlayground {
 				println(data)
 			}
 

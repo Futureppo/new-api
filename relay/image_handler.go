@@ -326,6 +326,10 @@ func recordOpenAILocalImageTask(c *gin.Context, info *relaycommon.RelayInfo, req
 
 func shouldPassThroughImageRequest(info *relaycommon.RelayInfo) bool {
 	if info != nil && info.ChannelMeta != nil {
+		if info.IsPlayground && info.RelayMode == relayconstant.RelayModeImagesEdits &&
+			(info.ChannelType == constant.ChannelTypeVolcEngine || info.ChannelType == constant.ChannelTypeXai) {
+			return false
+		}
 		switch info.ChannelType {
 		case constant.ChannelTypeOpenRouter:
 			if !info.ChannelOtherSettings.IsOpenRouterEnterprise() {

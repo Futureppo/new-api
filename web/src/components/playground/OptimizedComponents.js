@@ -35,6 +35,7 @@ export const OptimizedMessageContent = React.memo(
       prevProps.message.role === nextProps.message.role &&
       prevProps.message.reasoningContent ===
         nextProps.message.reasoningContent &&
+      prevProps.message.statistics === nextProps.message.statistics &&
       prevProps.message.isReasoningExpanded ===
         nextProps.message.isReasoningExpanded &&
       prevProps.isEditing === nextProps.isEditing &&
@@ -68,6 +69,11 @@ export const OptimizedSettingsPanel = React.memo(
         JSON.stringify(nextProps.parameterEnabled) &&
       JSON.stringify(prevProps.models) === JSON.stringify(nextProps.models) &&
       JSON.stringify(prevProps.groups) === JSON.stringify(nextProps.groups) &&
+      prevProps.endpoint === nextProps.endpoint &&
+      prevProps.endpointOptions === nextProps.endpointOptions &&
+      prevProps.endpointReady === nextProps.endpointReady &&
+      prevProps.endpointLoading === nextProps.endpointLoading &&
+      prevProps.isGenerating === nextProps.isGenerating &&
       prevProps.customRequestMode === nextProps.customRequestMode &&
       prevProps.customRequestBody === nextProps.customRequestBody &&
       prevProps.showDebugPanel === nextProps.showDebugPanel &&

@@ -273,7 +273,7 @@ func OpenaiHandlerWithBodyTransformer(c *gin.Context, info *relaycommon.RelayInf
 			return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 	}
-	if common.DebugEnabled {
+	if common.DebugEnabled && !info.IsPlayground {
 		println("upstream response body:", string(responseBody))
 	}
 	// Unmarshal to simpleResponse
@@ -287,7 +287,11 @@ func OpenaiHandlerWithBodyTransformer(c *gin.Context, info *relaycommon.RelayInf
 		if enterpriseResponse.Success {
 			responseBody = enterpriseResponse.Data
 		} else {
-			logger.LogError(c, fmt.Sprintf("openrouter enterprise response success=false, data: %s", enterpriseResponse.Data))
+			if info.IsPlayground {
+				logger.LogError(c, "openrouter enterprise response success=false")
+			} else {
+				logger.LogError(c, fmt.Sprintf("openrouter enterprise response success=false, data: %s", enterpriseResponse.Data))
+			}
 			return nil, types.NewOpenAIError(fmt.Errorf("openrouter response success=false"), types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 		}
 	}

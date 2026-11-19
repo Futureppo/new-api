@@ -160,6 +160,25 @@ func (r *GeneralOpenAIRequest) GetTokenCountMeta() *types.TokenCountMeta {
 	if r.Input != nil {
 		inputs := r.ParseInput()
 		texts = append(texts, inputs...)
+		if items, ok := r.Input.([]any); ok {
+			for _, item := range items {
+				fields, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				switch fields["type"] {
+				case "text":
+					if text, ok := fields["text"].(string); ok {
+						texts = append(texts, text)
+					}
+				case "image_url":
+					part := MediaContent{Type: "image_url", ImageUrl: fields["image_url"]}
+					if source := part.ToFileSource(); source != nil {
+						fileMeta = append(fileMeta, types.NewImageFileMeta(source, "auto"))
+					}
+				}
+			}
+		}
 	}
 
 	tokenCountMeta.MaxTokens = int(r.GetMaxTokens())

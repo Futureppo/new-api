@@ -108,7 +108,8 @@ func videoBody(c *gin.Context, info *relaycommon.RelayInfo) (map[string]any, err
 		}
 	}
 	if len(images) > 0 {
-		if strings.HasPrefix(info.UpstreamModelName, "wan2.7-") && len(images) > 2 {
+		imageMode := common.GetContextKeyString(c, constant.ContextKeyPlaygroundVideoImageMode)
+		if strings.HasPrefix(info.UpstreamModelName, "wan2.7-") && len(images) > 2 && imageMode != "reference" {
 			return nil, fmt.Errorf("Wan2.7 accepts at most first and last frame images; use native input.media for other media")
 		}
 		if strings.HasPrefix(info.UpstreamModelName, "wan3.") || strings.HasPrefix(info.UpstreamModelName, "wan2.7-") {
@@ -116,7 +117,7 @@ func videoBody(c *gin.Context, info *relaycommon.RelayInfo) (map[string]any, err
 				media := []any{}
 				for i, image := range images {
 					mediaType := "reference_image"
-					if !strings.HasPrefix(info.UpstreamModelName, "wan3.") {
+					if imageMode == "frames" || (imageMode == "" && !strings.HasPrefix(info.UpstreamModelName, "wan3.")) {
 						mediaType = "first_frame"
 						if i > 0 {
 							mediaType = "last_frame"

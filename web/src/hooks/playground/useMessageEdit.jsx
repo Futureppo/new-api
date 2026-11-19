@@ -61,6 +61,7 @@ export const useMessageEdit = (
       }
 
       const targetMessage = prevMessages[messageIndex];
+      if (!targetMessage) return prevMessages;
       let newContent;
 
       if (Array.isArray(targetMessage.content)) {
@@ -103,11 +104,16 @@ export const useMessageEdit = (
                   inputs,
                   parameterEnabled,
                 );
-                setMessage((prevMsg) => [
-                  ...prevMsg,
-                  createLoadingAssistantMessage(),
-                ]);
-                sendRequest(payload, inputs.stream);
+                const loadingMessage = createLoadingAssistantMessage();
+                setMessage((prevMsg) => [...prevMsg, loadingMessage]);
+                if (
+                  sendRequest(payload, inputs.stream, loadingMessage.id) ===
+                  false
+                ) {
+                  setMessage((prevMsg) =>
+                    prevMsg.filter((item) => item.id !== loadingMessage.id),
+                  );
+                }
               }, 100);
             },
             onCancel: () => {

@@ -1033,7 +1033,7 @@ func ClaudeHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayI
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeBadResponseBody)
 	}
-	if common.DebugEnabled {
+	if common.DebugEnabled && !info.IsPlayground {
 		println("responseBody: ", string(responseBody))
 	}
 	handleErr := HandleClaudeResponseData(c, info, claudeInfo, resp, responseBody)

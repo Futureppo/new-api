@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -45,6 +46,34 @@ func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInf
 		N:              int(lo.FromPtrOr(request.N, uint(1))),
 		ResponseFormat: request.ResponseFormat,
 	}
+	if info.IsPlayground && info.RelayMode == constant.RelayModeImagesEdits {
+		if c.Request.MultipartForm == nil {
+			var fields map[string]any
+			if err := common.UnmarshalBodyReusable(c, &fields); err != nil {
+				return nil, err
+			}
+			fields["model"] = request.Model
+			return fields, nil
+		}
+		urls, err := relaycommon.PlaygroundImageDataURLs(c)
+		if err != nil {
+			return nil, err
+		}
+		images := make([]map[string]string, 0, len(urls))
+		for _, url := range urls {
+			images = append(images, map[string]string{"type": "image_url", "url": url})
+		}
+		if len(images) == 1 {
+			return struct {
+				ImageRequest
+				Image map[string]string `json:"image"`
+			}{xaiRequest, images[0]}, nil
+		}
+		return struct {
+			ImageRequest
+			Images []map[string]string `json:"images"`
+		}{xaiRequest, images}, nil
+	}
 	return xaiRequest, nil
 }
 
@@ -57,6 +86,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Header, info *relaycommon.RelayInfo) error {
 	channel.SetupApiRequestHeader(info, c, req)
+	if info.IsPlayground && info.RelayMode == constant.RelayModeImagesEdits {
+		req.Set("Content-Type", gin.MIMEJSON)
+	}
 	req.Set("Authorization", "Bearer "+info.ApiKey)
 	if IsCodexCompatibilityRequest(c, info) {
 		if sessionID := strings.TrimSpace(c.GetHeader("Session_id")); sessionID != "" && req.Get(xaiGrokConversationID) == "" {

@@ -19,7 +19,7 @@ import (
 const conversationLogCleanupBatchSize = 200
 
 func StartConversationCapture(c *gin.Context, relayInfo *relaycommon.RelayInfo) {
-	if c == nil || relayInfo == nil || relayInfo.ChannelMeta == nil {
+	if c == nil || relayInfo == nil || relayInfo.ChannelMeta == nil || relayInfo.IsPlayground || common.IsPlaygroundRequest(c) {
 		return
 	}
 	if !relayInfo.ChannelOtherSettings.ConversationLogEnabled || !isConversationLogRelayFormat(relayInfo.RelayFormat) {

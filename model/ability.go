@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 
 	"github.com/samber/lo"
 	"gorm.io/gorm"
@@ -27,6 +28,24 @@ type Ability struct {
 type AbilityWithChannel struct {
 	Ability
 	ChannelType int `json:"channel_type"`
+}
+
+// GetPlaygroundChannels lists enabled candidates in already authorized groups.
+func GetPlaygroundChannels(groups []string, modelName string) ([]Channel, error) {
+	var channels []Channel
+	if len(groups) == 0 {
+		return channels, nil
+	}
+	names := []string{modelName}
+	if common.MemoryCacheEnabled {
+		if match := ratio_setting.FormatMatchingModelName(modelName); match != modelName {
+			names = append(names, match)
+		}
+	}
+	abilities := DB.Model(&Ability{}).Select("channel_id").
+		Where(commonGroupCol+" IN ? AND model IN ? AND enabled = ?", groups, names, true)
+	err := DB.Where("id IN (?) AND status = ?", abilities, common.ChannelStatusEnabled).Find(&channels).Error
+	return channels, err
 }
 
 func GetAllEnableAbilityWithChannels() ([]AbilityWithChannel, error) {

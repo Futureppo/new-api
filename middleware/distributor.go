@@ -85,6 +85,10 @@ func Distribute() func(c *gin.Context) {
 				}
 				var selectGroup string
 				usingGroup := common.GetContextKeyString(c, constant.ContextKeyUsingGroup)
+				if group := common.GetContextKeyString(c, constant.ContextKeyPlaygroundGroup); group != "" {
+					usingGroup = group
+					common.SetContextKey(c, constant.ContextKeyUsingGroup, group)
+				}
 				// check path is /pg/chat/completions
 				if strings.HasPrefix(c.Request.URL.Path, "/pg/chat/completions") {
 					playgroundRequest := &dto.PlayGroundRequest{}
@@ -103,7 +107,9 @@ func Distribute() func(c *gin.Context) {
 					}
 				}
 
-				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found {
+				if preferredChannelID, found := service.GetPreferredChannelByAffinity(c, modelRequest.Model, usingGroup); found &&
+					service.PlaygroundAllowsChannel(c, preferredChannelID) &&
+					!service.GetChannelSelectionExcludedIDs(c)[preferredChannelID] {
 					preferred, err := model.CacheGetChannel(preferredChannelID)
 					if err == nil && preferred != nil {
 						if preferred.Status != common.ChannelStatusEnabled {
@@ -154,6 +160,10 @@ func Distribute() func(c *gin.Context) {
 						return
 					}
 					if channel == nil {
+						if common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != "" {
+							abortWithOpenAiMessage(c, http.StatusServiceUnavailable, "当前模型没有支持所选上游路径的可用渠道，请重新选择", types.ErrorCodeModelNotFound)
+							return
+						}
 						abortWithOpenAiMessage(c, http.StatusServiceUnavailable, i18n.T(c, i18n.MsgDistributorNoAvailableChannel, map[string]any{"Group": usingGroup, "Model": modelRequest.Model}), types.ErrorCodeModelNotFound)
 						return
 					}
@@ -192,6 +202,9 @@ func getModelFromRequest(c *gin.Context) (*ModelRequest, error) {
 }
 
 func getModelRequest(c *gin.Context) (*ModelRequest, bool, error) {
+	if name := common.GetContextKeyString(c, constant.ContextKeyPlaygroundModel); name != "" {
+		return &ModelRequest{Model: name, Group: common.GetContextKeyString(c, constant.ContextKeyPlaygroundGroup)}, true, nil
+	}
 	if c.Request.URL.Path == "/v1/audio/transcriptions/realtime" {
 		return &ModelRequest{Model: c.Query("model")}, true, nil
 	}

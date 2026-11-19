@@ -109,6 +109,10 @@ func ResolveOriginTask(c *gin.Context, info *relaycommon.RelayInfo) *dto.TaskErr
 	if ch.Status != common.ChannelStatusEnabled {
 		return service.TaskErrorWrapperLocal(errors.New("the channel of the origin task is disabled"), "task_channel_disable", http.StatusBadRequest)
 	}
+	if common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != "" &&
+		(!service.PlaygroundAllowsChannel(c, ch.Id) || !model.IsChannelEnabledForGroupModel(info.UsingGroup, info.OriginModelName, ch.Id)) {
+		return service.TaskErrorWrapperLocal(errors.New("原任务渠道不属于当前分组或不支持所选路径"), "invalid_request", http.StatusBadRequest)
+	}
 	info.LockedChannel = ch
 
 	if originTask.ChannelId != info.ChannelId {
@@ -291,6 +295,9 @@ func RelayTaskSubmit(c *gin.Context, info *relaycommon.RelayInfo) (*TaskSubmitRe
 	c.Header("X-New-Api-Other-Ratios", string(ratiosJSON))
 
 	// 11. 解析响应
+	if common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != "" {
+		c.Header("X-New-Api-Task-Id", info.PublicTaskID)
+	}
 	upstreamTaskID, taskData, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
 		return nil, taskErr

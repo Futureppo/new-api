@@ -19,19 +19,28 @@ For commercial licensing, please contact support@quantumnous.com
 
 import React from 'react';
 import { Card, Select, Typography, Button, Switch } from '@douyinfe/semi-ui';
-import { Sparkles, Users, ToggleLeft, X, Settings } from 'lucide-react';
+import { Sparkles, Users, ToggleLeft, X, Settings, Route } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { renderGroupOption, selectFilter } from '../../helpers';
 import ParameterControl from './ParameterControl';
 import ImageUrlInput from './ImageUrlInput';
 import ConfigManager from './ConfigManager';
 import CustomRequestEditor from './CustomRequestEditor';
+import { isPlaygroundChat } from '../../helpers/playgroundEndpoints';
 
 const SettingsPanel = ({
   inputs,
   parameterEnabled,
   models,
   groups,
+  endpoint = inputs.endpoint || '',
+  endpointOptions,
+  endpointReady,
+  endpointLoading,
+  isGenerating,
+  onSubmitNativeChat,
+  nativeTemplate,
+  onNativeDraftChange,
   styleState,
   showDebugPanel,
   customRequestMode,
@@ -47,6 +56,10 @@ const SettingsPanel = ({
   messages,
 }) => {
   const { t } = useTranslation();
+  const isChat = isPlaygroundChat(endpoint);
+  const legacyCustom = !endpoint && customRequestMode;
+  const nativeChat = !!endpoint && isChat && customRequestMode;
+  const disabledParameters = legacyCustom || nativeChat;
 
   const currentConfig = {
     inputs,
@@ -105,22 +118,24 @@ const SettingsPanel = ({
 
       <div className='space-y-6 overflow-y-auto flex-1 pr-2 model-settings-scroll'>
         {/* 自定义请求体编辑器 */}
-        <CustomRequestEditor
-          customRequestMode={customRequestMode}
-          customRequestBody={customRequestBody}
-          onCustomRequestModeChange={onCustomRequestModeChange}
-          onCustomRequestBodyChange={onCustomRequestBodyChange}
-          defaultPayload={previewPayload}
-        />
+        {!endpoint && (
+          <CustomRequestEditor
+            customRequestMode={customRequestMode}
+            customRequestBody={customRequestBody}
+            onCustomRequestModeChange={onCustomRequestModeChange}
+            onCustomRequestBodyChange={onCustomRequestBodyChange}
+            defaultPayload={previewPayload}
+          />
+        )}
 
         {/* 分组选择 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
+        <div className={legacyCustom ? 'opacity-50' : ''}>
           <div className='flex items-center gap-2 mb-2'>
             <Users size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
               {t('分组')}
             </Typography.Text>
-            {customRequestMode && (
+            {legacyCustom && (
               <Typography.Text className='text-xs text-orange-600'>
                 ({t('已在自定义模式中忽略')})
               </Typography.Text>
@@ -141,18 +156,18 @@ const SettingsPanel = ({
             style={{ width: '100%' }}
             dropdownStyle={{ width: '100%', maxWidth: '100%' }}
             className='!rounded-lg'
-            disabled={customRequestMode}
+            disabled={legacyCustom || isGenerating}
           />
         </div>
 
         {/* 模型选择 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
+        <div className={legacyCustom ? 'opacity-50' : ''}>
           <div className='flex items-center gap-2 mb-2'>
             <Sparkles size={16} className='text-gray-500' />
             <Typography.Text strong className='text-sm'>
               {t('模型')}
             </Typography.Text>
-            {customRequestMode && (
+            {legacyCustom && (
               <Typography.Text className='text-xs text-orange-600'>
                 ({t('已在自定义模式中忽略')})
               </Typography.Text>
@@ -172,58 +187,125 @@ const SettingsPanel = ({
             style={{ width: '100%' }}
             dropdownStyle={{ width: '100%', maxWidth: '100%' }}
             className='!rounded-lg'
-            disabled={customRequestMode}
+            disabled={legacyCustom || isGenerating}
           />
         </div>
 
-        {/* 图片URL输入 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
-          <ImageUrlInput
-            imageUrls={inputs.imageUrls}
-            imageEnabled={inputs.imageEnabled}
-            onImageUrlsChange={(urls) => onInputChange('imageUrls', urls)}
-            onImageEnabledChange={(enabled) =>
-              onInputChange('imageEnabled', enabled)
-            }
-            disabled={customRequestMode}
+        <div className='space-y-2'>
+          <Typography.Text strong className='flex items-center gap-2 text-sm'>
+            <Route size={16} className='text-gray-500' /> {t('上游路径')}
+          </Typography.Text>
+          <Select
+            aria-label={t('上游路径')}
+            value={endpoint}
+            onChange={(value) => onInputChange('endpoint', value)}
+            optionList={endpointOptions}
+            disabled={isGenerating}
+            loading={endpointLoading}
+            style={{ width: '100%' }}
+            dropdownStyle={{ maxWidth: 'min(90vw, 480px)' }}
           />
+          {inputs.model && !endpointLoading && !endpointReady && (
+            <Typography.Text type='warning' className='text-xs'>
+              {t('当前模型没有支持所选路径的可用渠道')}
+            </Typography.Text>
+          )}
         </div>
 
-        {/* 参数控制组件 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
-          <ParameterControl
-            inputs={inputs}
-            parameterEnabled={parameterEnabled}
-            onInputChange={onInputChange}
-            onParameterToggle={onParameterToggle}
-            disabled={customRequestMode}
-          />
-        </div>
+        {endpoint && isChat && (
+          <div className='space-y-3'>
+            <CustomRequestEditor
+              key={endpoint}
+              native
+              customRequestMode={customRequestMode}
+              customRequestBody={inputs.nativeDrafts?.[endpoint] ?? ''}
+              onCustomRequestModeChange={onCustomRequestModeChange}
+              onCustomRequestBodyChange={onNativeDraftChange}
+              defaultPayload={nativeTemplate}
+            />
+            {customRequestMode && (
+              <Button
+                theme='solid'
+                type='primary'
+                disabled={!endpointReady || isGenerating}
+                onClick={onSubmitNativeChat}
+              >
+                {t('发送请求')}
+              </Button>
+            )}
+          </div>
+        )}
 
-        {/* 流式输出开关 */}
-        <div className={customRequestMode ? 'opacity-50' : ''}>
-          <div className='flex items-center justify-between'>
-            <div className='flex items-center gap-2'>
-              <ToggleLeft size={16} className='text-gray-500' />
-              <Typography.Text strong className='text-sm'>
-                {t('流式输出')}
-              </Typography.Text>
-              {customRequestMode && (
-                <Typography.Text className='text-xs text-orange-600'>
-                  ({t('已在自定义模式中忽略')})
-                </Typography.Text>
-              )}
-            </div>
-            <Switch
-              checked={inputs.stream}
-              onChange={(checked) => onInputChange('stream', checked)}
-              checkedText={t('开')}
-              uncheckedText={t('关')}
-              size='small'
-              disabled={customRequestMode}
+        {isChat && (
+          <div className={disabledParameters ? 'opacity-50' : ''}>
+            <ImageUrlInput
+              imageUrls={inputs.imageUrls}
+              imageEnabled={inputs.imageEnabled}
+              onImageUrlsChange={(urls) => onInputChange('imageUrls', urls)}
+              onImageEnabledChange={(enabled) =>
+                onInputChange('imageEnabled', enabled)
+              }
+              disabled={disabledParameters}
             />
           </div>
-        </div>
+        )}
+
+        {/* 参数控制组件 */}
+        {isChat && (
+          <div className={disabledParameters ? 'opacity-50' : ''}>
+            <ParameterControl
+              inputs={inputs}
+              parameterEnabled={parameterEnabled}
+              onInputChange={onInputChange}
+              onParameterToggle={onParameterToggle}
+              disabled={disabledParameters}
+            />
+          </div>
+        )}
+
+        {/* 流式输出开关 */}
+        {isChat && (
+          <div
+            className={
+              disabledParameters && !(nativeChat && endpoint === 'gemini')
+                ? 'opacity-50'
+                : ''
+            }
+          >
+            <div className='flex items-center justify-between'>
+              <div className='flex items-center gap-2'>
+                <ToggleLeft size={16} className='text-gray-500' />
+                <Typography.Text strong className='text-sm'>
+                  {t('流式输出')}
+                </Typography.Text>
+                {disabledParameters &&
+                  !(nativeChat && endpoint === 'gemini') && (
+                    <Typography.Text className='text-xs text-orange-600'>
+                      ({t('已在自定义模式中忽略')})
+                    </Typography.Text>
+                  )}
+              </div>
+              <Switch
+                checked={
+                  inputs.stream &&
+                  endpointOptions.find((item) => item.value === endpoint)
+                    ?.stream !== false
+                }
+                onChange={(checked) => onInputChange('stream', checked)}
+                checkedText={t('开')}
+                uncheckedText={t('关')}
+                size='small'
+                disabled={
+                  isGenerating ||
+                  (disabledParameters &&
+                    !(nativeChat && endpoint === 'gemini')) ||
+                  endpointOptions.find((item) => item.value === endpoint)
+                    ?.stream === false
+                }
+              />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 桌面端的配置管理放在底部 */}

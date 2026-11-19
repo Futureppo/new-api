@@ -107,6 +107,19 @@ func (a *Adaptor) ConvertAudioRequest(c *gin.Context, info *relaycommon.RelayInf
 }
 
 func (a *Adaptor) ConvertImageRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.ImageRequest) (any, error) {
+	if info.IsPlayground && info.RelayMode == constant.RelayModeImagesEdits && common.IsVolcEngineImageGenerationModel(info.UpstreamModelName) {
+		if c.Request.MultipartForm != nil {
+			images, err := relaycommon.PlaygroundImageDataURLs(c)
+			if err != nil {
+				return nil, err
+			}
+			request.Image, err = common.Marshal(images)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return normalizeVolcengineImageRequest(request), nil
+	}
 	switch info.RelayMode {
 	case constant.RelayModeImagesGenerations:
 		if common.IsVolcEngineImageGenerationModel(info.UpstreamModelName) {

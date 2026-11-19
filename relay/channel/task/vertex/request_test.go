@@ -6,11 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func videoTestContext(body string, native bool) (*gin.Context, *relaycommon.RelayInfo) {
@@ -40,6 +43,31 @@ func TestVideoBodyAndBillingUseSameDuration(t *testing.T) {
 	require.Contains(t, string(data), `"lastFrame"`)
 	require.Equal(t, 6.0, a.EstimateBilling(c, info)["seconds"])
 }
+func TestPlaygroundVeoMultipleImages(t *testing.T) {
+	for _, mode := range []string{"frames", "reference"} {
+		t.Run(mode, func(t *testing.T) {
+			c, info := videoTestContext(`{"model":"veo-3.1-generate-001","prompt":"scene","images":["data:image/png;base64,YQ==","data:image/png;base64,Yg=="]}`, false)
+			info.UpstreamModelName = "veo-3.1-generate-001"
+			common.SetContextKey(c, constant.ContextKeyPlaygroundVideoImageMode, mode)
+			a := &TaskAdaptor{}
+			require.Nil(t, a.ValidateRequestAndSetAction(c, info))
+			require.Nil(t, a.ValidateMappedRequest(c, info))
+			body, err := a.BuildRequestBody(c, info)
+			require.NoError(t, err)
+			data, err := io.ReadAll(body)
+			require.NoError(t, err)
+			if mode == "frames" {
+				require.Equal(t, "YQ==", gjson.GetBytes(data, "instances.0.image.bytesBase64Encoded").String())
+				require.Equal(t, "Yg==", gjson.GetBytes(data, "instances.0.lastFrame.bytesBase64Encoded").String())
+			} else {
+				require.Equal(t, "YQ==", gjson.GetBytes(data, "instances.0.referenceImages.0.image.bytesBase64Encoded").String())
+				require.Equal(t, "Yg==", gjson.GetBytes(data, "instances.0.referenceImages.1.image.bytesBase64Encoded").String())
+				require.EqualValues(t, 8, gjson.GetBytes(data, "parameters.durationSeconds").Int())
+			}
+		})
+	}
+}
+
 func TestNativeVideoPreservesReferenceAndExtensionFields(t *testing.T) {
 	for _, instance := range []string{`{"prompt":"scene","referenceImages":[{"image":{"gcsUri":"gs://bucket/ref.png"},"referenceType":"asset"}]}`, `{"video":{"gcsUri":"gs://bucket/source.mp4","mimeType":"video/mp4"},"mask":{"gcsUri":"gs://bucket/mask.png","maskMode":"insert"}}`} {
 		c, info := videoTestContext(`{"instances":[`+instance+`],"parameters":{"sampleCount":3,"durationSeconds":8,"generateAudio":false,"task":"edit","customFlag":0}}`, true)

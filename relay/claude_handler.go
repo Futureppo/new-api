@@ -201,7 +201,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
-		if common.DebugEnabled {
+		if common.DebugEnabled && !info.IsPlayground {
 			println("requestBody: ", string(jsonData))
 		}
 		relaycommon.SetReasoningEffortFromRequest(info, jsonData)

@@ -115,7 +115,24 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	}
 
 	req["model"] = info.UpstreamModelName
-	normalizeImageInput(req)
+	if imageMode := common.GetContextKeyString(c, constant.ContextKeyPlaygroundVideoImageMode); imageMode != "" {
+		urls, _ := req["images"].([]any)
+		sources := make([]map[string]any, 0, len(urls))
+		for _, url := range urls {
+			sources = append(sources, map[string]any{"url": url})
+		}
+		if imageMode == "frames" && len(sources) > 0 {
+			req["image"] = sources[0]
+			if len(sources) == 2 {
+				req["last_frame"] = sources[1]
+			}
+		} else {
+			req["reference_images"] = sources
+		}
+		delete(req, "images")
+	} else {
+		normalizeImageInput(req)
+	}
 
 	data, err := common.Marshal(req)
 	if err != nil {

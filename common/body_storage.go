@@ -281,12 +281,9 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 	}
 
 	// 使用内存读取
-	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	data, err := readBoundedBody(reader, maxBytes)
 	if err != nil {
 		return nil, err
-	}
-	if int64(len(data)) > maxBytes {
-		return nil, ErrRequestBodyTooLarge
 	}
 
 	storage, err := CreateBodyStorage(data)
@@ -300,6 +297,17 @@ func CreateBodyStorageFromReader(reader io.Reader, contentLength int64, maxBytes
 		IncrementDiskCacheHits()
 	}
 	return storage, nil
+}
+
+func readBoundedBody(reader io.Reader, maxBytes int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, ErrRequestBodyTooLarge
+	}
+	return data, nil
 }
 
 // ReaderOnly wraps an io.Reader to hide io.Closer, preventing http.NewRequest

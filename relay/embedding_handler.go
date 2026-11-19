@@ -34,6 +34,28 @@ func EmbeddingHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 	if err != nil {
 		return types.NewError(err, types.ErrorCodeChannelModelMappedError, types.ErrOptionWithSkipRetry())
 	}
+	if attachment := relaycommon.PlaygroundEmbeddingImages(c); len(attachment.Images) > 0 {
+		texts := request.ParseInput()
+		switch relaycommon.PlaygroundEmbeddingImageFormat(info.ChannelType, info.UpstreamModelName) {
+		case relaycommon.EmbeddingImageArk:
+			request.Input = (relaycommon.PlaygroundEmbeddingInput{Texts: texts, Images: attachment.Images}).MediaParts()
+		case relaycommon.EmbeddingImageOpenRouter:
+			var inputs []map[string]any
+			for _, input := range attachment.Inputs(texts, attachment.Mode == "separate") {
+				inputs = append(inputs, map[string]any{"content": input.MediaParts()})
+			}
+			request.Input = inputs
+		case relaycommon.EmbeddingImageJina:
+			input := make([]map[string]string, 0, len(texts)+len(attachment.Images))
+			for _, text := range texts {
+				input = append(input, map[string]string{"text": text})
+			}
+			for _, image := range attachment.Images {
+				input = append(input, map[string]string{"image": image.Data})
+			}
+			request.Input = input
+		}
+	}
 
 	adaptor := GetAdaptor(info.ApiType)
 	if adaptor == nil {

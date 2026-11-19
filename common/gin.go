@@ -2,6 +2,7 @@ package common
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"mime"
@@ -21,6 +22,28 @@ const KeyRequestBody = "key_request_body"
 const KeyBodyStorage = "key_body_storage"
 
 var ErrRequestBodyTooLarge = errors.New("request body too large")
+
+type playgroundPrivacyKey struct{}
+
+func WithPlaygroundPrivacy(ctx context.Context) context.Context {
+	return context.WithValue(ctx, playgroundPrivacyKey{}, true)
+}
+
+func IsPlaygroundContext(ctx context.Context) bool {
+	if c, ok := ctx.(*gin.Context); ok {
+		return IsPlaygroundRequest(c)
+	}
+	return ctx != nil && ctx.Value(playgroundPrivacyKey{}) == true
+}
+
+func IsPlaygroundRequest(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	return strings.HasPrefix(c.FullPath(), "/pg/") ||
+		GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != "" ||
+		(c.Request != nil && c.Request.URL != nil && strings.HasPrefix(c.Request.URL.Path, "/pg/"))
+}
 
 func IsRequestBodyTooLargeError(err error) bool {
 	if err == nil {
@@ -48,6 +71,11 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	cached, exists := c.Get(KeyRequestBody)
 	if exists && cached != nil {
 		if b, ok := cached.([]byte); ok {
+			if IsPlaygroundRequest(c) {
+				storage := newMemoryStorage(b)
+				c.Set(KeyBodyStorage, storage)
+				return storage, nil
+			}
 			bs, err := CreateBodyStorage(b)
 			if err != nil {
 				return nil, err
@@ -63,10 +91,18 @@ func GetRequestBody(c *gin.Context) (io.Seeker, error) {
 	}
 	maxBytes := int64(maxMB) << 20
 
-	contentLength := c.Request.ContentLength
-
-	// 使用新的存储系统
-	storage, err := CreateBodyStorageFromReader(c.Request.Body, contentLength, maxBytes)
+	var storage BodyStorage
+	var err error
+	if IsPlaygroundRequest(c) {
+		var data []byte
+		data, err = readBoundedBody(c.Request.Body, maxBytes)
+		if err == nil {
+			storage = newMemoryStorage(data)
+			IncrementMemoryCacheHits()
+		}
+	} else {
+		storage, err = CreateBodyStorageFromReader(c.Request.Body, c.Request.ContentLength, maxBytes)
+	}
 	_ = c.Request.Body.Close()
 
 	if err != nil {
@@ -259,7 +295,7 @@ func ParseMultipartFormReusable(c *gin.Context) (*multipart.Form, error) {
 	}
 
 	reader := multipart.NewReader(bytes.NewReader(requestBody), boundary)
-	form, err := reader.ReadForm(multipartMemoryLimit())
+	form, err := reader.ReadForm(multipartMemoryLimit(c, storage.Size()))
 	if err != nil {
 		return nil, err
 	}
@@ -320,7 +356,7 @@ func parseMultipartFormData(c *gin.Context, data []byte, v any) error {
 	}
 
 	reader := multipart.NewReader(bytes.NewReader(data), boundary)
-	form, err := reader.ReadForm(multipartMemoryLimit())
+	form, err := reader.ReadForm(multipartMemoryLimit(c, int64(len(data))))
 	if err != nil {
 		return err
 	}
@@ -357,7 +393,12 @@ func parseBoundary(contentType string) (string, error) {
 }
 
 // multipartMemoryLimit returns the configured multipart memory limit in bytes
-func multipartMemoryLimit() int64 {
+func multipartMemoryLimit(c *gin.Context, bodySize int64) int64 {
+	if IsPlaygroundRequest(c) {
+		// The bounded body already contains every file byte. Giving ReadForm
+		// that budget keeps file parts in memory, including on subsequent reads.
+		return bodySize
+	}
 	limitMB := constant.MaxFileDownloadMB
 	if limitMB <= 0 {
 		limitMB = 32

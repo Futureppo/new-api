@@ -10,6 +10,9 @@ import (
 // 在请求处理完成后自动清理磁盘/内存缓存
 func BodyStorageCleanup() gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if common.IsPlaygroundRequest(c) {
+			c.Request = c.Request.WithContext(common.WithPlaygroundPrivacy(c.Request.Context()))
+		}
 		// 处理请求
 		c.Next()
 

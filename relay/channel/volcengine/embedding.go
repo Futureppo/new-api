@@ -26,9 +26,13 @@ type volcengineMultimodalEmbeddingRequest struct {
 }
 
 func convertVolcengineMultimodalEmbeddingRequest(request dto.EmbeddingRequest) (volcengineMultimodalEmbeddingRequest, error) {
+	input := request.Input
+	if _, ok := input.([]dto.MediaContent); !ok {
+		input = normalizeVolcengineMultimodalEmbeddingInput(input)
+	}
 	return volcengineMultimodalEmbeddingRequest{
 		Model:          request.Model,
-		Input:          normalizeVolcengineMultimodalEmbeddingInput(request.Input),
+		Input:          input,
 		EncodingFormat: request.EncodingFormat,
 		Dimensions:     request.Dimensions,
 		User:           request.User,

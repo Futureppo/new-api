@@ -76,6 +76,9 @@ export const DEBUG_TABS = {
 // ========== API 相关常量 ==========
 export const API_ENDPOINTS = {
   CHAT_COMPLETIONS: '/pg/chat/completions',
+  ENDPOINTS: '/pg/endpoints',
+  PROTOCOL: '/pg/protocol',
+  TASKS: '/pg/tasks',
   USER_MODELS: '/api/user/models',
   USER_GROUPS: '/api/user/self/groups',
 };
@@ -85,6 +88,8 @@ export const DEFAULT_CONFIG = {
   inputs: {
     model: 'gpt-4o',
     group: '',
+    endpoint: '',
+    nativeDrafts: {},
     temperature: 0.7,
     top_p: 1,
     max_tokens: 4096,

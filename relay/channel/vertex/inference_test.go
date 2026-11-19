@@ -99,6 +99,41 @@ func TestEmbeddingFanoutOrderingEncodingAndUsage(t *testing.T) {
 	}
 }
 
+func TestPlaygroundVertexImageEmbedding(t *testing.T) {
+	for _, tc := range []struct {
+		model, operation, imageField, response string
+	}{
+		{"gemini-embedding-2", ":embedContent", `"inlineData":{"mimeType":"image/png","data":"AQID"}`, `{"embedding":{"values":[1,2]}}`},
+		{"multimodalembedding@001", ":predict", `"image":{"bytesBase64Encoded":"AQID"}`, `{"predictions":[{"imageEmbedding":[1,2]}]}`},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.True(t, strings.HasSuffix(r.URL.Path, tc.operation))
+				body, err := io.ReadAll(r.Body)
+				require.NoError(t, err)
+				require.Contains(t, string(body), tc.imageField)
+				_, _ = io.WriteString(w, tc.response)
+			}))
+			defer server.Close()
+			info := mockInferenceInfo(t, tc.model, server.URL)
+			info.PriceData.UsePrice = true
+			a := &Adaptor{}
+			a.Init(info)
+			c, w := inferenceContext("/v1/embeddings", "")
+			common.SetContextKey(c, constant.ContextKeyPlaygroundEmbeddingImage, relaycommon.PlaygroundEmbeddingAttachment{Images: []*dto.GeminiInlineData{{MimeType: "image/png", Data: "AQID"}}})
+			payload, err := a.ConvertEmbeddingRequest(c, info, dto.EmbeddingRequest{Input: []string{}})
+			require.NoError(t, err)
+			body, err := common.Marshal(payload)
+			require.NoError(t, err)
+			resp, err := a.DoRequest(c, info, bytes.NewReader(body))
+			require.NoError(t, err)
+			_, apiErr := a.DoResponse(c, resp.(*http.Response), info)
+			require.Nil(t, apiErr)
+			require.Contains(t, w.Body.String(), `"embedding":[1,2]`)
+		})
+	}
+}
+
 func TestEmbeddingFailureNeverPublishesPartialBatch(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

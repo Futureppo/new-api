@@ -7,6 +7,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/textproto"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -145,6 +146,34 @@ func TestApplyImageEditMultipartParamOverrideLegacyPreservesFiles(t *testing.T) 
 	assertImageEditFormValue(t, form, "custom_field", []string{"keep-me"})
 	assertImageEditMultipartFile(t, form, "image", "source.png", "image/png", []byte("source-image"))
 	assertImageEditMultipartFile(t, form, "mask", "mask.webp", "image/webp", []byte("mask-image"))
+}
+
+func TestPlaygroundImageEditOverrideKeepsLargeUploadsInMemory(t *testing.T) {
+	missingTempDir := filepath.Join(t.TempDir(), "missing")
+	for _, key := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(key, missingTempDir)
+	}
+	image := bytes.Repeat([]byte{'i'}, imageEditMultipartMemoryLimit+1)
+	body, contentType := buildImageEditMultipartBody(t, nil, []imageEditMultipartTestFile{
+		{field: "image", filename: "source.png", contentType: "image/png", data: image},
+	})
+	info := newImageEditOverrideInfo(map[string]any{"quality": "high"})
+	info.IsPlayground = true
+	updated, updatedContentType, err := applyImageEditMultipartParamOverride(body, contentType, info)
+	if err != nil {
+		t.Fatalf("apply image edit override without a temporary directory: %v", err)
+	}
+	_, params, err := mime.ParseMediaType(updatedContentType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	form, err := multipart.NewReader(updated, params["boundary"]).ReadForm(int64(len(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer form.RemoveAll()
+	assertImageEditFormValue(t, form, "quality", []string{"high"})
+	assertImageEditMultipartFile(t, form, "image", "source.png", "image/png", image)
 }
 
 func TestApplyImageEditMultipartParamOverrideOperations(t *testing.T) {

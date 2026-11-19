@@ -21,6 +21,7 @@ import React, { useRef, useEffect } from 'react';
 import { Typography, TextArea, Button } from '@douyinfe/semi-ui';
 import MarkdownRenderer from '../common/markdown/MarkdownRenderer';
 import ThinkingContent from './ThinkingContent';
+import MessageStatistics from './MessageStatistics';
 import { Loader2, Check, X, Settings, AlertTriangle } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { isAdmin } from '../../helpers/utils';
@@ -77,7 +78,10 @@ const MessageContent = ({
           >
             <div className='flex items-center gap-2'>
               <AlertTriangle size={16} className='text-orange-500 shrink-0' />
-              <Typography.Text strong className='!text-[var(--semi-color-text-0)]'>
+              <Typography.Text
+                strong
+                className='!text-[var(--semi-color-text-0)]'
+              >
                 {t('模型价格未配置')}
               </Typography.Text>
             </div>
@@ -93,7 +97,9 @@ const MessageContent = ({
                 theme='light'
                 type='warning'
                 icon={<Settings size={14} />}
-                onClick={() => window.open('/console/setting?tab=ratio', '_blank')}
+                onClick={() =>
+                  window.open('/console/setting?tab=ratio', '_blank')
+                }
               >
                 {t('前往设置')}
               </Button>
@@ -404,6 +410,9 @@ const MessageContent = ({
 
           return null;
         })()
+      )}
+      {message.role === 'assistant' && (
+        <MessageStatistics statistics={message.statistics} />
       )}
     </div>
   );

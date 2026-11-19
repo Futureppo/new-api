@@ -17,7 +17,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 
-import React, { useContext, useEffect, useCallback, useRef } from 'react';
+import React, {
+  useContext,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Layout, Toast, Modal } from '@douyinfe/semi-ui';
@@ -38,6 +45,8 @@ import { useDataLoader } from '../../hooks/playground/useDataLoader';
 import {
   MESSAGE_ROLES,
   ERROR_MESSAGES,
+  API_ENDPOINTS,
+  MESSAGE_STATUS,
 } from '../../constants/playground.constants';
 import {
   getLogo,
@@ -48,7 +57,14 @@ import {
   getTextContent,
   buildApiPayload,
   encodeToBase64,
+  API,
 } from '../../helpers';
+import { getChannelTestEndpoints } from '../../helpers/channelTestEndpoints';
+import {
+  isPlaygroundChat,
+  playgroundTemplate,
+  protocolRequest,
+} from '../../helpers/playgroundEndpoints';
 
 // Components
 import {
@@ -58,6 +74,7 @@ import {
   OptimizedMessageActions,
 } from '../../components/playground/OptimizedComponents';
 import ChatArea from '../../components/playground/ChatArea';
+import PlaygroundTool from '../../components/playground/PlaygroundTool';
 import FloatingButtons from '../../components/playground/FloatingButtons';
 import { PlaygroundProvider } from '../../contexts/PlaygroundContext';
 
@@ -119,6 +136,107 @@ const Playground = () => {
     setCustomRequestMode,
     setCustomRequestBody,
   } = state;
+  const [chatImages, setChatImages] = useState([]);
+  const selectedEndpoint = inputs.endpoint || '';
+  const isGenerating = message.some(
+    (item) =>
+      item.status === MESSAGE_STATUS.LOADING ||
+      item.status === MESSAGE_STATUS.INCOMPLETE,
+  );
+  const messageRef = useRef(message);
+  messageRef.current = message;
+  const endpointKey = JSON.stringify([
+    userState?.user?.id,
+    inputs.group,
+    inputs.model,
+  ]);
+  const [endpointResult, setEndpointResult] = useState(null);
+  const endpointLoading = !!inputs.model && endpointResult?.key !== endpointKey;
+  const endpoints =
+    inputs.model && endpointResult?.key === endpointKey
+      ? endpointResult.data
+      : null;
+  const endpoint =
+    endpoints && !endpoints[selectedEndpoint]
+      ? endpoints.openai
+        ? ''
+        : (Object.keys(endpoints)[0] ?? selectedEndpoint)
+      : selectedEndpoint;
+  const isChat = isPlaygroundChat(endpoint);
+  const endpointOption = endpoints?.[endpoint || 'openai'];
+  const endpointReady = !!endpointOption;
+  const stream = inputs.stream && endpointOption?.stream !== false;
+
+  useEffect(() => {
+    if (!userState?.user || !inputs.model) return;
+    let active = true;
+    API.get(API_ENDPOINTS.ENDPOINTS, {
+      params: { group: inputs.group, model: inputs.model },
+      skipErrorHandler: true,
+    }).then(
+      ({ data }) => {
+        if (active)
+          setEndpointResult({
+            key: endpointKey,
+            data: data.success ? data.data : {},
+          });
+      },
+      () => {
+        if (active) setEndpointResult({ key: endpointKey, data: {} });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [endpointKey, userState?.user, inputs.group, inputs.model]);
+
+  const endpointOptions = useMemo(
+    () =>
+      getChannelTestEndpoints(t).map((item) => {
+        const option = endpoints?.[item.value || 'openai'];
+        let label = item.label;
+        if (item.value === 'image-generation') label = t('图像生成');
+        if (item.value === 'jina-rerank') label = `${t('重排序')} (/v1/rerank)`;
+        if (item.value === 'vertex-native' && option?.action)
+          label = label.replace('{action}', option.action);
+        return {
+          ...item,
+          label,
+          disabled: !!item.value && !option,
+          stream: option?.stream ?? item.stream,
+        };
+      }),
+    [endpoints, t],
+  );
+
+  const nativeTemplate = useMemo(
+    () =>
+      playgroundTemplate(
+        endpoint,
+        !!stream,
+        endpointOption?.action,
+        endpointOption?.variant,
+        endpointOption?.family,
+      ),
+    [
+      endpoint,
+      stream,
+      endpointOption?.action,
+      endpointOption?.variant,
+      endpointOption?.family,
+    ],
+  );
+  const savedDraft = inputs.nativeDrafts?.[endpoint];
+  const nativeDraft = typeof savedDraft === 'string' ? savedDraft : undefined;
+  const changeNativeDraft = useCallback(
+    (draft) => {
+      handleInputChange('nativeDrafts', {
+        ...inputs.nativeDrafts,
+        [endpoint]: draft,
+      });
+    },
+    [endpoint, handleInputChange, inputs.nativeDrafts],
+  );
 
   // API 请求相关
   const { sendRequest, onStopGenerator } = useApiRequest(
@@ -128,6 +246,44 @@ const Playground = () => {
     sseSourceRef,
     saveMessagesImmediately,
   );
+
+  const sendChatRequest = useCallback(
+    (body, isStream, id, native = false) => {
+      if (!endpoint) return sendRequest(body, isStream, { id });
+      if (!endpointReady || !isChat) return false;
+      const { url, payload } = protocolRequest(
+        endpoint,
+        inputs.group,
+        inputs.model,
+        isStream,
+        native,
+        body,
+      );
+      return sendRequest(payload, isStream, { id, endpoint, url });
+    },
+    [endpoint, endpointReady, isChat, inputs.group, inputs.model, sendRequest],
+  );
+
+  function getCustomChatRequest() {
+    const native = !!endpoint;
+    const body = native
+      ? nativeDraft?.trim()
+        ? JSON.parse(nativeDraft)
+        : nativeTemplate
+      : JSON.parse(customRequestBody);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      throw new Error(t('请求体必须是 JSON 对象'));
+    }
+    return {
+      body,
+      native,
+      isStream: native
+        ? endpoint === 'gemini'
+          ? !!stream
+          : body.stream === true
+        : body.stream !== false,
+    };
+  }
 
   // 数据加载
   useDataLoader(userState, inputs, handleInputChange, setModels, setGroups);
@@ -144,14 +300,38 @@ const Playground = () => {
     setMessage,
     inputs,
     parameterEnabled,
-    sendRequest,
+    (body, isStream, id) => {
+      if (!endpointReady) {
+        Toast.error(t('当前模型没有支持所选路径的可用渠道'));
+        return false;
+      }
+      if (customRequestMode && (endpoint || customRequestBody)) {
+        try {
+          const request = getCustomChatRequest();
+          return sendChatRequest(
+            request.body,
+            request.isStream,
+            id,
+            request.native,
+          );
+        } catch {
+          Toast.error(t(ERROR_MESSAGES.JSON_PARSE_ERROR));
+          return false;
+        }
+      }
+      return sendChatRequest(
+        body,
+        isStream && endpointOption?.stream !== false,
+        id,
+      );
+    },
     saveMessagesImmediately,
   );
 
   // 消息和自定义请求体同步
   const { syncMessageToCustomBody, syncCustomBodyToMessage } =
     useSyncMessageAndCustomBody(
-      customRequestMode,
+      customRequestMode && !endpoint,
       customRequestBody,
       message,
       inputs,
@@ -187,6 +367,9 @@ const Playground = () => {
   // 构建预览请求体
   const constructPreviewPayload = useCallback(() => {
     try {
+      if (endpoint && (!isChat || customRequestMode)) {
+        return nativeDraft?.trim() ? JSON.parse(nativeDraft) : nativeTemplate;
+      }
       // 如果是自定义请求体模式且有自定义内容，直接返回解析后的自定义请求体
       if (customRequestMode && customRequestBody && customRequestBody.trim()) {
         try {
@@ -209,10 +392,13 @@ const Playground = () => {
         // 处理最后一个用户消息的图片
         for (let i = messages.length - 1; i >= 0; i--) {
           if (messages[i].role === MESSAGE_ROLES.USER) {
-            if (inputs.imageEnabled && inputs.imageUrls) {
-              const validImageUrls = inputs.imageUrls.filter(
-                (url) => url.trim() !== '',
-              );
+            if (inputs.imageEnabled || chatImages.length) {
+              const validImageUrls = [
+                ...(inputs.imageEnabled
+                  ? (inputs.imageUrls || []).filter((url) => url.trim() !== '')
+                  : []),
+                ...chatImages.map((image) => image.url),
+              ];
               if (validImageUrls.length > 0) {
                 const textContent = getTextContent(messages[i]) || '示例消息';
                 const content = buildMessageContent(
@@ -233,76 +419,76 @@ const Playground = () => {
       console.error('构造预览请求体失败:', error);
       return null;
     }
-  }, [inputs, parameterEnabled, message, customRequestMode, customRequestBody]);
+  }, [
+    inputs,
+    parameterEnabled,
+    message,
+    customRequestMode,
+    customRequestBody,
+    endpoint,
+    isChat,
+    nativeDraft,
+    nativeTemplate,
+    chatImages,
+  ]);
 
   // 发送消息
-  function onMessageSend(content, attachment) {
-    console.log('attachment: ', attachment);
-
-    // 创建用户消息和加载消息
-    const userMessage = createMessage(MESSAGE_ROLES.USER, content);
-    const loadingMessage = createLoadingAssistantMessage();
-
-    // 如果是自定义请求体模式
-    if (customRequestMode && customRequestBody) {
-      try {
-        const customPayload = JSON.parse(customRequestBody);
-
-        setMessage((prevMessage) => {
-          const newMessages = [...prevMessage, userMessage, loadingMessage];
-
-          // 发送自定义请求体
-          sendRequest(customPayload, customPayload.stream !== false);
-
-          // 发送消息后保存，传入新消息列表
-          setTimeout(() => saveMessagesImmediately(newMessages), 0);
-
-          return newMessages;
-        });
-        return;
-      } catch (error) {
-        console.error('自定义请求体JSON解析失败:', error);
-        Toast.error(ERROR_MESSAGES.JSON_PARSE_ERROR);
-        return;
-      }
+  function onMessageSend(content) {
+    if (
+      messageRef.current.some(
+        (item) =>
+          item.status === MESSAGE_STATUS.LOADING ||
+          item.status === MESSAGE_STATUS.INCOMPLETE,
+      )
+    )
+      return;
+    if (!endpointReady) {
+      Toast.error(t('当前模型没有支持所选路径的可用渠道'));
+      return;
     }
-
-    // 默认模式
-    const validImageUrls = inputs.imageUrls.filter((url) => url.trim() !== '');
-    const messageContent = buildMessageContent(
-      content,
-      validImageUrls,
-      inputs.imageEnabled,
-    );
-    const userMessageWithImages = createMessage(
-      MESSAGE_ROLES.USER,
-      messageContent,
-    );
-
-    setMessage((prevMessage) => {
-      const newMessages = [...prevMessage, userMessageWithImages];
-
-      const payload = buildApiPayload(
-        newMessages,
-        null,
-        inputs,
-        parameterEnabled,
-      );
-      sendRequest(payload, inputs.stream);
-
-      // 禁用图片模式
-      if (inputs.imageEnabled) {
-        setTimeout(() => {
-          handleInputChange('imageEnabled', false);
-        }, 100);
+    const loadingMessage = createLoadingAssistantMessage();
+    const native = !!endpoint && customRequestMode;
+    let body;
+    let isStream = !!stream;
+    let userContent = content;
+    if (native || (customRequestMode && customRequestBody)) {
+      try {
+        ({ body, isStream } = getCustomChatRequest());
+        if (native) userContent = t('自定义请求');
+      } catch {
+        Toast.error(t(ERROR_MESSAGES.JSON_PARSE_ERROR));
+        return;
       }
-
-      // 发送消息后保存，传入新消息列表（包含用户消息和加载消息）
-      const messagesWithLoading = [...newMessages, loadingMessage];
-      setTimeout(() => saveMessagesImmediately(messagesWithLoading), 0);
-
-      return messagesWithLoading;
-    });
+    } else {
+      userContent = buildMessageContent(
+        content,
+        [
+          ...(inputs.imageEnabled
+            ? (inputs.imageUrls || []).filter((url) => url.trim() !== '')
+            : []),
+          ...chatImages.map((image) => image.url),
+        ],
+        inputs.imageEnabled || chatImages.length > 0,
+      );
+    }
+    const conversation = [
+      ...messageRef.current,
+      createMessage(MESSAGE_ROLES.USER, userContent),
+    ];
+    body ??= buildApiPayload(
+      conversation,
+      null,
+      { ...inputs, stream: isStream },
+      parameterEnabled,
+    );
+    const pending = [...conversation, loadingMessage];
+    messageRef.current = pending;
+    setMessage(pending);
+    saveMessagesImmediately(pending);
+    const sent = sendChatRequest(body, isStream, loadingMessage.id, native);
+    if (sent && !customRequestMode) setChatImages([]);
+    if (inputs.imageEnabled && !native)
+      handleInputChange('imageEnabled', false);
   }
 
   // 切换推理展开状态
@@ -433,28 +619,22 @@ const Playground = () => {
   // 清空对话的处理函数
   const handleClearMessages = useCallback(() => {
     setMessage([]);
+    setChatImages([]);
     // 清空对话后保存，传入空数组
     setTimeout(() => saveMessagesImmediately([]), 0);
   }, [setMessage, saveMessagesImmediately]);
 
-  // 处理粘贴图片
-  const handlePasteImage = useCallback(
-    (base64Data) => {
-      if (!inputs.imageEnabled) {
-        return;
-      }
-      // 添加图片到 imageUrls 数组
-      const newUrls = [...(inputs.imageUrls || []), base64Data];
-      handleInputChange('imageUrls', newUrls);
-    },
-    [inputs.imageEnabled, inputs.imageUrls, handleInputChange],
-  );
+  const handlePasteImages = useCallback((images) => {
+    setChatImages((previous) => [...previous, ...images]);
+  }, []);
 
   // Playground Context 值
   const playgroundContextValue = {
-    onPasteImage: handlePasteImage,
-    imageUrls: inputs.imageUrls || [],
-    imageEnabled: inputs.imageEnabled || false,
+    onPasteImages: handlePasteImages,
+    onRemoveChatImage: (index) =>
+      setChatImages((previous) => previous.filter((_, i) => i !== index)),
+    chatImages,
+    chatAttachmentsEnabled: !customRequestMode,
   };
 
   return (
@@ -478,6 +658,17 @@ const Playground = () => {
                 parameterEnabled={parameterEnabled}
                 models={models}
                 groups={groups}
+                endpoint={endpoint}
+                endpointOptions={endpointOptions}
+                endpointReady={endpointReady}
+                endpointLoading={endpointLoading}
+                isGenerating={isGenerating}
+                nativeTemplate={nativeTemplate}
+                onNativeDraftChange={changeNativeDraft}
+                onSubmitNativeChat={() => {
+                  onMessageSend(t('自定义请求'));
+                  if (isMobile) setShowSettings(false);
+                }}
                 styleState={styleState}
                 showSettings={showSettings}
                 showDebugPanel={showDebugPanel}
@@ -498,24 +689,48 @@ const Playground = () => {
 
           <Layout.Content className='relative flex-1 overflow-hidden'>
             <div className='overflow-hidden flex flex-col lg:flex-row h-[calc(100vh-66px)] mt-[60px]'>
-              <div className='flex-1 flex flex-col'>
-                <ChatArea
-                  chatRef={chatRef}
-                  message={message}
-                  inputs={inputs}
-                  styleState={styleState}
-                  showDebugPanel={showDebugPanel}
-                  roleInfo={roleInfo}
-                  onMessageSend={onMessageSend}
-                  onMessageCopy={messageActions.handleMessageCopy}
-                  onMessageReset={messageActions.handleMessageReset}
-                  onMessageDelete={messageActions.handleMessageDelete}
-                  onStopGenerator={onStopGenerator}
-                  onClearMessages={handleClearMessages}
-                  onToggleDebugPanel={() => setShowDebugPanel(!showDebugPanel)}
-                  renderCustomChatContent={renderCustomChatContent}
-                  renderChatBoxAction={renderChatBoxAction}
-                />
+              <div className='min-w-0 flex-1 flex flex-col'>
+                {isChat ? (
+                  <ChatArea
+                    chatRef={chatRef}
+                    message={message}
+                    inputs={inputs}
+                    styleState={styleState}
+                    showDebugPanel={showDebugPanel}
+                    roleInfo={roleInfo}
+                    onMessageSend={onMessageSend}
+                    onMessageCopy={messageActions.handleMessageCopy}
+                    onMessageReset={messageActions.handleMessageReset}
+                    onMessageDelete={messageActions.handleMessageDelete}
+                    onStopGenerator={onStopGenerator}
+                    onClearMessages={handleClearMessages}
+                    onToggleDebugPanel={() =>
+                      setShowDebugPanel(!showDebugPanel)
+                    }
+                    renderCustomChatContent={renderCustomChatContent}
+                    renderChatBoxAction={renderChatBoxAction}
+                  />
+                ) : (
+                  <PlaygroundTool
+                    key={endpoint}
+                    endpoint={endpoint}
+                    option={endpointOption}
+                    label={
+                      endpointOptions.find((item) => item.value === endpoint)
+                        ?.label
+                    }
+                    ready={endpointReady}
+                    inputs={inputs}
+                    draft={nativeDraft}
+                    onDraftChange={changeNativeDraft}
+                    setDebugData={setDebugData}
+                    setActiveDebugTab={setActiveDebugTab}
+                    onToggleDebugPanel={() =>
+                      setShowDebugPanel(!showDebugPanel)
+                    }
+                    showDebugPanel={showDebugPanel}
+                  />
+                )}
               </div>
 
               {/* 调试面板 - 桌面端 */}

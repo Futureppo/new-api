@@ -3,9 +3,9 @@ package dto
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/QuantumNous/new-api/common"
 	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/types"
 	"github.com/gin-gonic/gin"
 )
@@ -71,18 +71,44 @@ func (r *RerankRequest) IsStream(c *gin.Context) bool {
 }
 
 func (r *RerankRequest) GetTokenCountMeta() *types.TokenCountMeta {
-	var texts = make([]string, 0)
+	var texts []string
+	var files []*types.FileMeta
+	addMedia := func(item map[string]any) bool {
+		text, hasText := item["text"].(string)
+		if hasText {
+			texts = append(texts, text)
+		}
+		for _, media := range []struct {
+			key  string
+			kind types.FileType
+		}{{"image", types.FileTypeImage}, {"video", types.FileTypeVideo}} {
+			if url, ok := item[media.key].(string); ok && url != "" {
+				files = append(files, types.NewFileMeta(media.kind, types.NewFileSourceFromData(url, "")))
+				hasText = true
+			}
+		}
+		return hasText
+	}
 
 	for _, document := range r.Documents {
+		if item, ok := document.(map[string]any); ok && addMedia(item) {
+			continue
+		}
 		texts = append(texts, fmt.Sprintf("%v", document))
 	}
 
 	if r.Query != "" {
 		texts = append(texts, r.Query)
+	} else if r.QueryObject != nil {
+		var query map[string]any
+		if common.Unmarshal(r.QueryObject, &query) == nil {
+			addMedia(query)
+		}
 	}
 
 	return &types.TokenCountMeta{
 		CombineText: strings.Join(texts, "\n"),
+		Files:       files,
 	}
 }
 

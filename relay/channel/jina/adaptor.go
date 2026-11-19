@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
+	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -73,7 +75,35 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) ConvertRerankRequest(c *gin.Context, relayMode int, request dto.RerankRequest) (any, error) {
+	if !common.IsPlaygroundRequest(c) {
+		return request, nil
+	}
+	for _, document := range request.Documents {
+		if fields, ok := document.(map[string]any); ok {
+			jinaRerankImageBase64(fields)
+		}
+	}
+	if len(request.QueryObject) > 0 {
+		var query map[string]any
+		if err := common.Unmarshal(request.QueryObject, &query); err != nil {
+			return nil, err
+		}
+		jinaRerankImageBase64(query)
+		var err error
+		request.QueryObject, err = common.Marshal(query)
+		if err != nil {
+			return nil, err
+		}
+	}
 	return request, nil
+}
+
+func jinaRerankImageBase64(fields map[string]any) {
+	image, _ := fields["image"].(string)
+	header, data, ok := strings.Cut(image, ",")
+	if ok && strings.HasPrefix(header, "data:image/") && strings.HasSuffix(header, ";base64") {
+		fields["image"] = data
+	}
 }
 
 func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {

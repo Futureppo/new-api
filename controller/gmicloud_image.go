@@ -56,11 +56,12 @@ func respondGMICloudImageError(c *gin.Context, status int, code, message, taskID
 	c.JSON(status, gin.H{"error": detail})
 }
 
-func respondGMICloudImageTask(c *gin.Context, task *model.Task, info *relaycommon.RelayInfo) {
+func respondGMICloudImageTask(c *gin.Context, task *model.Task, info *relaycommon.RelayInfo, requestBody string) {
 	c.Header("X-New-Api-Task-Id", task.TaskID)
 	// Load an independent record inside the worker. Never retain a gin context
 	// or share mutable task state after returning the asynchronous response.
 	userID, taskID := task.UserId, task.TaskID
+	playground := info.IsPlayground
 	gopool.Go(func() {
 		queued, exists, err := model.GetByTaskId(userID, taskID)
 		if err != nil || !exists {
@@ -68,13 +69,18 @@ func respondGMICloudImageTask(c *gin.Context, task *model.Task, info *relaycommo
 		}
 		ch, err := model.GetChannelById(queued.ChannelId, true)
 		if err == nil {
-			err = service.RefreshVideoTask(context.Background(), &taskgmicloud.TaskAdaptor{}, ch, queued)
+			adaptor := &taskgmicloud.TaskAdaptor{}
+			if playground {
+				err = service.SubmitPlaygroundGMICloudImage(context.Background(), adaptor, ch, queued, requestBody)
+			} else {
+				err = service.RefreshVideoTask(context.Background(), adaptor, ch, queued)
+			}
 		}
 		if err != nil {
 			common.SysError(fmt.Sprintf("submit GMICLOUD image task %s: %v", taskID, err))
 		}
 	})
-	if c.Request.URL.Path == "/v1/images/tasks" {
+	if c.Request.URL.Path == "/v1/images/tasks" || common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != "" {
 		c.JSON(http.StatusOK, gin.H{
 			"id": task.TaskID, "task_id": task.TaskID,
 			"model": info.OriginModelName, "status": "queued",

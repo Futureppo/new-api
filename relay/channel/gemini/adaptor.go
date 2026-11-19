@@ -202,30 +202,35 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	}
 
 	inputs := request.ParseInput()
-	if len(inputs) == 0 {
+	attachment := relaycommon.PlaygroundEmbeddingImages(c)
+	if len(inputs) == 0 && len(attachment.Images) == 0 {
 		return nil, errors.New("input is empty")
 	}
 	// We always build a batch-style payload with `requests`, so ensure we call the
 	// batch endpoint upstream to avoid payload/endpoint mismatches.
 	info.IsGeminiBatchEmbedding = true
 	// process all inputs
-	geminiRequests := make([]map[string]interface{}, 0, len(inputs))
-	for _, input := range inputs {
+	contents := make([]dto.GeminiChatContent, 0, len(inputs))
+	if len(attachment.Images) > 0 {
+		for _, input := range attachment.Inputs(inputs, attachment.Mode == "separate") {
+			contents = append(contents, input.GeminiContent())
+		}
+	} else {
+		for _, text := range inputs {
+			contents = append(contents, dto.GeminiChatContent{Parts: []dto.GeminiPart{{Text: text}}})
+		}
+	}
+	geminiRequests := make([]map[string]interface{}, 0, len(contents))
+	for _, content := range contents {
 		geminiRequest := map[string]interface{}{
-			"model": fmt.Sprintf("models/%s", info.UpstreamModelName),
-			"content": dto.GeminiChatContent{
-				Parts: []dto.GeminiPart{
-					{
-						Text: input,
-					},
-				},
-			},
+			"model":   fmt.Sprintf("models/%s", info.UpstreamModelName),
+			"content": content,
 		}
 
 		// set specific parameters for different models
 		// https://ai.google.dev/api/embeddings?hl=zh-cn#method:-models.embedcontent
 		switch info.UpstreamModelName {
-		case "text-embedding-004", "gemini-embedding-exp-03-07", "gemini-embedding-001":
+		case "text-embedding-004", "gemini-embedding-exp-03-07", "gemini-embedding-001", "gemini-embedding-2", "gemini-embedding-2-preview":
 			// Only newer models introduced after 2024 support OutputDimensionality
 			dimensions := lo.FromPtrOr(request.Dimensions, 0)
 			if dimensions > 0 {

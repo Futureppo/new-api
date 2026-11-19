@@ -100,12 +100,17 @@ type CohereRerankResponseResult struct {
 }
 
 type CohereEmbeddingRequest struct {
-	Model           string   `json:"model"`
-	Texts           []string `json:"texts,omitempty"`
-	InputType       string   `json:"input_type"`
-	EmbeddingTypes  []string `json:"embedding_types,omitempty"`
-	OutputDimension *int     `json:"output_dimension,omitempty"`
-	Truncate        string   `json:"truncate,omitempty"`
+	Model           string                 `json:"model"`
+	Texts           []string               `json:"texts,omitempty"`
+	Inputs          []CohereEmbeddingInput `json:"inputs,omitempty"`
+	InputType       string                 `json:"input_type"`
+	EmbeddingTypes  []string               `json:"embedding_types,omitempty"`
+	OutputDimension *int                   `json:"output_dimension,omitempty"`
+	Truncate        string                 `json:"truncate,omitempty"`
+}
+
+type CohereEmbeddingInput struct {
+	Content []dto.MediaContent `json:"content"`
 }
 
 type CohereEmbeddingResponse struct {

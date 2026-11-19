@@ -30,6 +30,7 @@ var ModelList = []string{
 	"wan3.0-video", "wan3.0-video-prime", "wan2.7-t2v", "wan2.7-i2v",
 	"qwen-audio-3.1-tts-flash", "qwen-audio-3.0-tts-flash", "qwen-audio-3.1-tts-next", "qwen3-tts-flash", "fun-music-v1",
 	"text-embedding-v4", "text-embedding-v3", "qwen3-rerank", "qwen3.7-text-rerank", "qwen3-vl-rerank",
+	"qwen3-vl-embedding", "qwen2.5-vl-embedding", "multimodal-embedding-v1", "tongyi-embedding-vision-plus", "tongyi-embedding-vision-flash",
 	constant.QianwenIntentModel, constant.QianwenDecisionModel,
 }
 
@@ -47,7 +48,7 @@ func NormalizeBaseURL(base string) string {
 		"/apps/anthropic/v1/messages", "/apps/anthropic/v1", "/apps/anthropic", "/compatible-mode/v1",
 		"/compatible-mode/v1/images/generations", "/compatible-mode/v1/embeddings",
 		"/compatible-api/v1/reranks", "/compatible-api/v1",
-		multimodalPath, speechPath, musicPath, videoPath, rerankPath, "/api/v1",
+		multimodalPath, multimodalEmbeddingPath, speechPath, musicPath, videoPath, rerankPath, "/api/v1",
 		"/api/v1/services/aigc/text-generation/generation",
 		"/compatible-mode/v1/systemone", "/compatible-mode",
 	} {
@@ -92,6 +93,9 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		path = "/compatible-mode/v1/responses"
 	case info.RelayMode == relayconstant.RelayModeEmbeddings:
 		path = "/compatible-mode/v1/embeddings"
+		if relaycommon.PlaygroundEmbeddingImageFormat(constant.ChannelTypeQianwenAI, info.UpstreamModelName) == relaycommon.EmbeddingImageDashScope {
+			path = multimodalEmbeddingPath
+		}
 	case info.RelayMode == relayconstant.RelayModeRerank:
 		path = rerankPath
 		if info.UpstreamModelName == "qwen3-rerank" {
@@ -205,6 +209,10 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycom
 		return rerankResponse(c, resp, info)
 	case relayconstant.RelayModeAudioSpeech:
 		return audioResponse(c, resp, info)
+	case relayconstant.RelayModeEmbeddings:
+		if relaycommon.PlaygroundEmbeddingImageFormat(constant.ChannelTypeQianwenAI, info.UpstreamModelName) == relaycommon.EmbeddingImageDashScope {
+			return multimodalEmbeddingResponse(c, resp, info)
+		}
 	}
 	if info.RelayFormat == types.RelayFormatClaude {
 		adaptor := claude.Adaptor{}
@@ -228,12 +236,15 @@ func unsupportedRequest() error {
 func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dto.GeminiChatRequest) (any, error) {
 	return nil, unsupportedRequest()
 }
-func (a *Adaptor) ConvertEmbeddingRequest(_ *gin.Context, _ *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
+func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, _ *relaycommon.RelayInfo, request dto.EmbeddingRequest) (any, error) {
 	if request.OutputType != "" && request.OutputType != "dense" {
 		return nil, invalid("QianwenAI OpenAI embeddings do not support sparse output; use a DashScope sparse embedding client")
 	}
 	if request.EncodingFormat != "" && request.EncodingFormat != "float" {
 		return nil, invalid("QianwenAI embeddings only support encoding_format=float")
+	}
+	if relaycommon.PlaygroundEmbeddingImageFormat(constant.ChannelTypeQianwenAI, request.Model) == relaycommon.EmbeddingImageDashScope {
+		return multimodalEmbeddingRequest(c, request)
 	}
 	return request, nil
 }

@@ -343,9 +343,9 @@ export function compareObjects(oldObject, newObject) {
 
 // playground message
 
-// 生成唯一ID
-let messageId = 4;
-export const generateMessageId = () => `${messageId++}`;
+// 消息 ID 需要在页面重新加载后仍与本地历史记录区分。
+export const generateMessageId = () =>
+  crypto.getRandomValues(new Uint32Array(4)).join('-');
 
 // 提取消息中的文本内容
 export const getTextContent = (message) => {

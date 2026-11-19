@@ -34,6 +34,7 @@ const CustomRequestEditor = ({
   onCustomRequestModeChange,
   onCustomRequestBodyChange,
   defaultPayload,
+  native = false,
 }) => {
   const { t } = useTranslation();
   const [isValid, setIsValid] = useState(true);
@@ -96,7 +97,7 @@ const CustomRequestEditor = ({
 
   const handleModeToggle = (enabled) => {
     onCustomRequestModeChange(enabled);
-    if (enabled && defaultPayload) {
+    if (enabled && defaultPayload && !customRequestBody?.trim()) {
       const defaultJson = JSON.stringify(defaultPayload, null, 2);
       setLocalValue(defaultJson);
       onCustomRequestBodyChange(defaultJson);
@@ -140,9 +141,13 @@ const CustomRequestEditor = ({
           {/* 提示信息 */}
           <Banner
             type='warning'
-            description={t(
-              '启用此模式后，将使用您自定义的请求体发送API请求，模型配置面板的参数设置将被忽略。',
-            )}
+            description={
+              native
+                ? t('请求体使用所选端点的原生格式，分组和模型由下拉选择。')
+                : t(
+                    '启用此模式后，将使用您自定义的请求体发送API请求，模型配置面板的参数设置将被忽略。',
+                  )
+            }
             icon={<AlertTriangle size={16} />}
             className='!rounded-lg'
             closeIcon={null}

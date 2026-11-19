@@ -64,7 +64,8 @@ func (a *Adaptor) convertEmbedding(c *gin.Context, info *relaycommon.RelayInfo, 
 	default:
 		return nil, errors.New("Vertex embedding input must be a string or array of strings")
 	}
-	if len(inputs) == 0 {
+	attachment := relaycommon.PlaygroundEmbeddingImages(c)
+	if len(inputs) == 0 && len(attachment.Images) == 0 {
 		return nil, errors.New("input is empty")
 	}
 	if r.EncodingFormat != "" && r.EncodingFormat != "float" && r.EncodingFormat != "base64" {
@@ -108,6 +109,13 @@ func (a *Adaptor) convertEmbedding(c *gin.Context, info *relaycommon.RelayInfo, 
 		}
 	}
 	batch := embeddingBatch{}
+	if len(attachment.Images) > 0 {
+		separate := a.capability.Family == vertexmodel.MultimodalEmbedding || attachment.Mode == "separate"
+		for _, input := range attachment.Inputs(inputs, separate) {
+			batch.Requests = append(batch.Requests, map[string]json.RawMessage{"content": raw(input.GeminiContent()), "embedContentConfig": raw(config)})
+		}
+		return batch, nil
+	}
 	for _, text := range inputs {
 		if strings.TrimSpace(text) == "" {
 			return nil, errors.New("embedding input must not be empty")
@@ -146,13 +154,18 @@ func (a *Adaptor) embeddingPayload(req map[string]json.RawMessage) (any, error) 
 		return nil, err
 	}
 	texts := []string{}
+	var image *dto.GeminiInlineData
 	for _, part := range content.Parts {
+		if part.InlineData != nil && a.capability.Family == vertexmodel.MultimodalEmbedding && image == nil {
+			image = part.InlineData
+			continue
+		}
 		if part.InlineData != nil || part.FileData != nil {
 			return nil, errors.New("this Vertex embedding model only accepts text")
 		}
 		texts = append(texts, part.Text)
 	}
-	if strings.TrimSpace(strings.Join(texts, "")) == "" {
+	if image == nil && strings.TrimSpace(strings.Join(texts, "")) == "" {
 		return nil, errors.New("embedding content is empty")
 	}
 	if a.capability.Family == vertexmodel.MultimodalEmbedding {
@@ -163,7 +176,11 @@ func (a *Adaptor) embeddingPayload(req map[string]json.RawMessage) (any, error) 
 			}
 			parameters["dimension"] = v
 		}
-		return map[string]any{"instances": []any{map[string]any{"text": strings.Join(texts, "\n")}}, "parameters": parameters}, nil
+		instance := map[string]any{"text": strings.Join(texts, "\n")}
+		if image != nil {
+			instance = map[string]any{"image": map[string]string{"bytesBase64Encoded": image.Data}}
+		}
+		return map[string]any{"instances": []any{instance}, "parameters": parameters}, nil
 	}
 	instance := map[string]any{"content": strings.Join(texts, "\n")}
 	parameters := map[string]json.RawMessage{}
@@ -233,7 +250,8 @@ func (a *Adaptor) doEmbeddings(c *gin.Context, info *relaycommon.RelayInfo, body
 		if a.capability.Family == vertexmodel.MultimodalEmbedding {
 			var prediction struct {
 				Predictions []struct {
-					TextEmbedding []float64 `json:"textEmbedding"`
+					TextEmbedding  []float64 `json:"textEmbedding"`
+					ImageEmbedding []float64 `json:"imageEmbedding"`
 				} `json:"predictions"`
 			}
 			if err := common.Unmarshal(data, &prediction); err != nil {
@@ -243,6 +261,9 @@ func (a *Adaptor) doEmbeddings(c *gin.Context, info *relaycommon.RelayInfo, body
 				return nil, errors.New("invalid multimodal embedding count")
 			}
 			result.Embedding.Values = prediction.Predictions[0].TextEmbedding
+			if len(result.Embedding.Values) == 0 {
+				result.Embedding.Values = prediction.Predictions[0].ImageEmbedding
+			}
 		} else if a.capability.Action == "predict" {
 			var prediction struct {
 				Predictions []struct {

@@ -1433,7 +1433,7 @@ func GeminiChatHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.R
 		return nil, types.NewOpenAIError(err, types.ErrorCodeBadResponseBody, http.StatusInternalServerError)
 	}
 	service.CloseResponseBodyGracefully(resp)
-	if common.DebugEnabled {
+	if common.DebugEnabled && !info.IsPlayground {
 		println(string(responseBody))
 	}
 	var geminiResponse dto.GeminiChatResponse

@@ -79,7 +79,11 @@ func applyImageEditMultipartParamOverride(
 		return nil, contentType, fmt.Errorf("image edit multipart boundary is missing")
 	}
 
-	form, err := multipart.NewReader(bytes.NewReader(body), boundary).ReadForm(imageEditMultipartMemoryLimit)
+	memoryLimit := int64(imageEditMultipartMemoryLimit)
+	if info.IsPlayground {
+		memoryLimit = int64(len(body))
+	}
+	form, err := multipart.NewReader(bytes.NewReader(body), boundary).ReadForm(memoryLimit)
 	if err != nil {
 		return nil, contentType, fmt.Errorf("parse image edit multipart body: %w", err)
 	}

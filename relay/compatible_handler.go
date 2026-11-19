@@ -56,6 +56,9 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	if !info.SupportStreamOptions || !lo.FromPtrOr(request.Stream, false) {
 		request.StreamOptions = nil
 	} else {
+		if info.IsPlayground && request.StreamOptions == nil {
+			request.StreamOptions = &dto.StreamOptions{IncludeUsage: common.GetPointer(true)}
+		}
 		// 如果支持StreamOptions，且请求中没有设置StreamOptions，根据配置文件设置StreamOptions
 		if constant.ForceStreamOption {
 			if request.StreamOptions == nil {
@@ -74,8 +77,13 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	adaptor.Init(info)
 
 	passThrough := shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled)
+	endpoint := constant.EndpointType(common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint))
+	if endpoint == constant.EndpointTypeCohereChat {
+		passThrough = false
+	}
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThrough &&
+		endpoint != constant.EndpointTypeOpenAI && endpoint != constant.EndpointTypeCohereChat &&
 		info.ChannelType != constant.ChannelTypeOpenAI &&
 		shouldChatCompletionsUseResponses(info) {
 		applySystemPromptIfNeeded(c, info, request)
@@ -103,7 +111,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 		if err != nil {
 			return types.NewErrorWithStatusCode(err, types.ErrorCodeReadRequestBodyFailed, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 		}
-		if common.DebugEnabled {
+		if common.DebugEnabled && !info.IsPlayground {
 			if debugBytes, bErr := storage.Bytes(); bErr == nil {
 				println("requestBody: ", string(debugBytes))
 			}
@@ -189,7 +197,11 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			if err != nil {
 				return invalidOpenAIModelRequest(err)
 			}
-			if requiresResponses || shouldChatCompletionsUseResponses(info) {
+			explicitChat := endpoint == constant.EndpointTypeOpenAI
+			if explicitChat && requiresResponses {
+				return invalidOpenAIModelRequest(fmt.Errorf("此请求需要 Responses 上游路径"))
+			}
+			if requiresResponses || (!explicitChat && shouldChatCompletionsUseResponses(info)) {
 				usage, apiErr := chatCompletionsViaResponsesBody(c, info, adaptor, jsonData)
 				if apiErr != nil {
 					return apiErr

@@ -99,6 +99,7 @@ func (m Properties) Value() (driver.Value, error) {
 
 type TaskPrivateData struct {
 	QianwenBaseURL string `json:"qianwen_base_url,omitempty"`
+	Playground     bool   `json:"playground,omitempty"`
 	// A durable, not-yet-submitted HY request. NOT_START is claimable; SUBMITTED
 	// means a worker owns the POST and it must never be replayed automatically.
 	GMICloudImageRequest string `json:"gmicloud_image_request,omitempty"`
@@ -211,6 +212,7 @@ func InitTask(platform constant.TaskPlatform, relayInfo *commonRelay.RelayInfo) 
 		group = relayInfo.UsingGroup
 		channelId = relayInfo.ChannelId
 		privateData.ModelMappingFullEnabled = relayInfo.IsModelMappingFullActive()
+		privateData.Playground = relayInfo.IsPlayground
 	}
 
 	// 使用预生成的公开 ID（如果有），否则新生成

@@ -139,7 +139,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			}
 		}
 
-		if common.DebugEnabled {
+		if common.DebugEnabled && !info.IsPlayground {
 			println("requestBody: ", string(jsonData))
 		}
 		relaycommon.SetReasoningEffortFromRequest(info, jsonData)

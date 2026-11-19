@@ -132,7 +132,7 @@ if (process.env.NEW_API_PLAYGROUND_SSE_TEST === '1') {
     consoleError.mockRestore();
   });
 
-  function startRequest() {
+  function startRequest({ endpoint = '', stream = true } = {}) {
     const state = {
       messages: [
         {
@@ -166,8 +166,9 @@ if (process.env.NEW_API_PLAYGROUND_SSE_TEST === '1') {
     }
     render(React.createElement(Harness));
     api.sendRequest(
-      { model: 'stealth/crouton-alpha', stream: true, messages: [] },
-      true,
+      { model: 'stealth/crouton-alpha', stream, messages: [] },
+      stream,
+      endpoint ? { endpoint, url: `/pg/protocol/${endpoint}` } : undefined,
     );
     return {
       state,
@@ -199,6 +200,137 @@ if (process.env.NEW_API_PLAYGROUND_SSE_TEST === '1') {
     usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
   });
   const doneFrame = 'data: [DONE]\n\n';
+  const nativeFrame = (event, data) => `event: ${event}\n${frame(data)}`;
+
+  test('Responses named SSE events persist usage, explicit zero cache and timings', async () => {
+    const { state, xhr, saveMessages } = startRequest({
+      endpoint: 'openai-response',
+    });
+    expect(xhr.url).toBe('/pg/protocol/openai-response');
+    xhr.receive(
+      nativeFrame('response.created', { response: { id: 'resp_pg' } }),
+    );
+    xhr.receive(
+      nativeFrame('response.reasoning_summary_text.delta', {
+        delta: 'thinking',
+      }),
+    );
+    await Bun.sleep(2);
+    xhr.receive(nativeFrame('response.output_text.delta', { delta: 'answer' }));
+    xhr.receive(
+      nativeFrame('response.completed', {
+        response: {
+          usage: {
+            input_tokens: 10,
+            output_tokens: 4,
+            input_tokens_details: { cached_tokens: 0 },
+          },
+        },
+      }),
+    );
+    expect(state.messages[0].content).toBe('answer');
+    expect(state.messages[0].reasoningContent).toBe('thinking');
+    expect(state.messages[0].statistics).toMatchObject({
+      input: 10,
+      output: 4,
+      cached: 0,
+      cacheRate: 0,
+    });
+    expect(state.messages[0].statistics.firstMs).toBeGreaterThanOrEqual(0);
+    expect(state.messages[0].statistics.tokensPerSecond).toBeGreaterThan(0);
+    expect(state.messages[0].statistics.durationMs).toBeGreaterThan(
+      state.messages[0].statistics.firstMs,
+    );
+    await Bun.sleep(5);
+    expect(saveMessages).toHaveBeenCalledTimes(1);
+    expect(saveMessages.mock.calls[0][0][0].statistics).toEqual(
+      state.messages[0].statistics,
+    );
+  });
+
+  test('Anthropic merges partial usage frames and counts cached and written input', () => {
+    const { state, xhr } = startRequest({ endpoint: 'anthropic' });
+    xhr.receive(
+      nativeFrame('message_start', {
+        message: {
+          usage: {
+            input_tokens: 30,
+            output_tokens: 0,
+            cache_read_input_tokens: 60,
+            cache_creation_input_tokens: 10,
+          },
+        },
+      }),
+    );
+    xhr.receive(
+      nativeFrame('content_block_delta', {
+        delta: { type: 'text_delta', text: 'answer' },
+      }),
+    );
+    xhr.receive(nativeFrame('message_delta', { usage: { output_tokens: 4 } }));
+    xhr.receive(nativeFrame('message_stop', {}));
+    expect(state.messages[0].status).toBe(MESSAGE_STATUS.COMPLETE);
+    expect(state.messages[0].statistics).toMatchObject({
+      input: 100,
+      output: 4,
+      cached: 60,
+      cacheRate: 0.6,
+    });
+  });
+
+  test('Gemini collects final usage and completes at EOF after a finish reason', () => {
+    const { state, xhr } = startRequest({ endpoint: 'gemini' });
+    xhr.receive(
+      frame({
+        candidates: [
+          { content: { parts: [{ text: 'answer' }] }, finishReason: 'STOP' },
+        ],
+      }),
+    );
+    xhr.receive(
+      frame({
+        usageMetadata: {
+          promptTokenCount: 10,
+          candidatesTokenCount: 4,
+          thoughtsTokenCount: 1,
+        },
+      }),
+    );
+    xhr.finish();
+    expect(state.messages[0].status).toBe(MESSAGE_STATUS.COMPLETE);
+    expect(state.messages[0].statistics).toMatchObject({
+      input: 10,
+      output: 5,
+    });
+    expect(state.messages[0].statistics.cached).toBeUndefined();
+    expect(state.messages[0].statistics.cacheRate).toBeUndefined();
+  });
+
+  test('non-stream replies save usage and total time', async () => {
+    const fakeFetch = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          choices: [{ message: { content: 'answer' } }],
+          usage: { prompt_tokens: 7, completion_tokens: 2 },
+        }),
+      ),
+    );
+    try {
+      const { state, saveMessages } = startRequest({ stream: false });
+      await Bun.sleep(5);
+      expect(state.messages[0].content).toBe('answer');
+      expect(state.messages[0].statistics).toMatchObject({
+        input: 7,
+        output: 2,
+      });
+      expect(state.messages[0].statistics.durationMs).toBeGreaterThanOrEqual(0);
+      expect(state.messages[0].statistics.firstMs).toBeUndefined();
+      expect(state.messages[0].statistics.tokensPerSecond).toBeUndefined();
+      expect(saveMessages).toHaveBeenCalledTimes(1);
+    } finally {
+      fakeFetch.mockRestore();
+    }
+  });
 
   test('three OpenRouter keep-alives allow reasoning, content and final usage to complete', async () => {
     const { state, sourceRef, saveMessages, xhr } = startRequest();

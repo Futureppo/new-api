@@ -70,12 +70,22 @@ func GetChannelRPMLimitSkippedIDs(c *gin.Context) map[int]bool {
 
 func GetChannelSelectionExcludedIDs(c *gin.Context) map[int]bool {
 	excluded := GetChannelDailySuccessLimitSkippedIDs(c)
+	if unsupported, ok := common.GetContextKeyType[map[int]bool](c, constant.ContextKeyPlaygroundExcludedChannels); ok {
+		for id := range unsupported {
+			excluded[id] = true
+		}
+	}
 	for id, skipped := range GetChannelRPMLimitSkippedIDs(c) {
 		if skipped {
 			excluded[id] = true
 		}
 	}
 	return excluded
+}
+
+func PlaygroundAllowsChannel(c *gin.Context, id int) bool {
+	allowed, limited := common.GetContextKeyType[map[int]bool](c, constant.ContextKeyPlaygroundAllowedChannels)
+	return !limited || allowed[id]
 }
 
 func getChannelSkippedIDs(c *gin.Context, key string) map[int]bool {
@@ -192,6 +202,15 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 	selectGroup := param.TokenGroup
 	userGroup := common.GetContextKeyString(param.Ctx, constant.ContextKeyUserGroup)
 	excludedChannelIDs := GetChannelSelectionExcludedIDs(param.Ctx)
+	selectChannel := func(group string, retry int) (*model.Channel, error) {
+		for {
+			channel, err := model.GetRandomSatisfiedChannelWithExclusions(group, param.ModelName, retry, excludedChannelIDs)
+			if err != nil || channel == nil || PlaygroundAllowsChannel(param.Ctx, channel.Id) {
+				return channel, err
+			}
+			excludedChannelIDs[channel.Id] = true
+		}
+	}
 
 	if param.TokenGroup == "auto" {
 		candidateGroups := GetRequestGroupCandidates(param.Ctx, userGroup, param.TokenGroup)
@@ -231,7 +250,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			}
 			logger.LogDebug(param.Ctx, "Auto selecting group: %s, priorityRetry: %d", autoGroup, priorityRetry)
 
-			channel, _ = model.GetRandomSatisfiedChannelWithExclusions(autoGroup, param.ModelName, priorityRetry, excludedChannelIDs)
+			channel, _ = selectChannel(autoGroup, priorityRetry)
 			if channel == nil {
 				// Before the first channel is chosen, unsupported groups may be
 				// skipped regardless of the retry switch. Once a group has handled
@@ -276,7 +295,7 @@ func CacheGetRandomSatisfiedChannel(param *RetryParam) (*model.Channel, string, 
 			break
 		}
 	} else {
-		channel, err = model.GetRandomSatisfiedChannelWithExclusions(param.TokenGroup, param.ModelName, param.GetRetry(), excludedChannelIDs)
+		channel, err = selectChannel(param.TokenGroup, param.GetRetry())
 		if err != nil {
 			return nil, param.TokenGroup, err
 		}

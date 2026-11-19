@@ -38,6 +38,27 @@ func configureVertexTestChannel(t *testing.T, ch *model.Channel, models string, 
 	require.NoError(t, ch.Update())
 }
 
+func mockVertexServiceAccount(t *testing.T) string {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	require.NoError(t, err)
+	creds := vertexcore.Credentials{ProjectID: "mock-project", ClientEmail: "mock@example.iam.gserviceaccount.com", PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))}
+	key, err := common.Marshal(creds)
+	require.NoError(t, err)
+	client := service.GetHttpClient()
+	original := client.Transport
+	client.Transport = vertexTestTransport(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "oauth2.googleapis.com" {
+			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"vertex-mock-token","expires_in":3600}`))}, nil
+		}
+		return original.RoundTrip(r)
+	})
+	t.Cleanup(func() { client.Transport = original })
+	return string(key)
+}
+
 func TestVertexTokenToolsBypassGenerationBilling(t *testing.T) {
 	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -81,28 +102,13 @@ func TestVertexEmbeddingPartialFailureRefundsAndDoesNotRetry(t *testing.T) {
 		_, _ = io.WriteString(w, `{"embedding":{"values":[1,2]},"usageMetadata":{"promptTokenCount":2,"totalTokenCount":2}}`)
 	}))
 	defer server.Close()
-	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
-	require.NoError(t, err)
-	der, err := x509.MarshalPKCS8PrivateKey(privateKey)
-	require.NoError(t, err)
-	creds := vertexcore.Credentials{ProjectID: "mock-project", ClientEmail: "mock@example.iam.gserviceaccount.com", PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))}
-	key, err := common.Marshal(creds)
-	require.NoError(t, err)
-	db, engine, ch := setupTypeSafeGateway(t, server.URL, string(key))
+	db, engine, ch := setupTypeSafeGateway(t, server.URL, "unused-test-key")
+	ch.Key = mockVertexServiceAccount(t)
 	configureVertexTestChannel(t, ch, "embedding-alias", dto.VertexKeyTypeJSON)
 	ch.ModelMapping = common.GetPointer(`{"embedding-alias":"gemini-embedding-2"}`)
 	require.NoError(t, ch.Save())
 	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"embedding-alias":1}`))
 	common.RetryTimes = 3
-	client := service.GetHttpClient()
-	original := client.Transport
-	client.Transport = vertexTestTransport(func(r *http.Request) (*http.Response, error) {
-		if r.URL.Host == "oauth2.googleapis.com" {
-			return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"access_token":"vertex-mock-token","expires_in":3600}`))}, nil
-		}
-		return original.RoundTrip(r)
-	})
-	t.Cleanup(func() { client.Transport = original })
 	engine.POST("/v1/embeddings", func(c *gin.Context) { Relay(c, types.RelayFormatEmbedding) })
 	w := requestTypeSafe(t, engine, "/v1/embeddings", `{"model":"embedding-alias","input":["one","two","three"]}`, typeSafeGatewayKey)
 	require.NotEqual(t, 200, w.Code, w.Body.String())

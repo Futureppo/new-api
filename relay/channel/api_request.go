@@ -561,6 +561,9 @@ func DoRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http
 	return doRequest(c, req, info)
 }
 func doRequest(c *gin.Context, req *http.Request, info *common.RelayInfo) (*http.Response, error) {
+	if endpoint := projectconstant.EndpointType(common2.GetContextKeyString(c, projectconstant.ContextKeyPlaygroundEndpoint)); !matchesPlaygroundPath(endpoint, req.URL.Path) {
+		return nil, fmt.Errorf("所选渠道实际请求路径不支持该协议")
+	}
 	var client *http.Client
 	var err error
 	if info.ChannelSetting.Proxy != "" {

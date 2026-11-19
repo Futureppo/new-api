@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -400,8 +401,14 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 	if task.Status == model.TaskStatusSuccess || task.Status == model.TaskStatusFailure {
 		return nil
 	}
+	if task.PrivateData.Playground {
+		ctx = common.WithPlaygroundPrivacy(ctx)
+	}
 	if ch.Type == constant.ChannelTypeGMICloud && task.PrivateData.GMICloudImageRequest != "" {
 		return submitQueuedGMICloudImage(ctx, adaptor, ch, task)
+	}
+	if ch.Type == constant.ChannelTypeGMICloud && task.PrivateData.Playground && task.PrivateData.UpstreamTaskID == "" {
+		return nil // The in-memory submitter has not obtained the upstream ID yet.
 	}
 	key := ch.Key
 
@@ -448,7 +455,9 @@ func updateVideoSingleTask(ctx context.Context, adaptor TaskPollingAdaptor, ch *
 		return fmt.Errorf("readAll failed for task %s: %w", taskId, err)
 	}
 
-	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	if !task.PrivateData.Playground {
+		logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask response: %s", string(responseBody)))
+	}
 	return ApplyTaskPollingResult(ctx, adaptor, ch, task, responseBody, resp.StatusCode)
 }
 
@@ -489,8 +498,13 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 		// authenticated retrieval after the upstream operation expires.
 		task.Data = responseBody
 	}
+	if task.PrivateData.Playground {
+		task.Data = PlaygroundTaskResponse(task.Data)
+	}
 
-	logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
+	if !task.PrivateData.Playground {
+		logger.LogDebug(ctx, fmt.Sprintf("updateVideoSingleTask taskResult: %+v", taskResult))
+	}
 
 	now := time.Now().Unix()
 	if taskResult.Status == "" {
@@ -513,7 +527,11 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 				taskResult = relaycommon.FailTaskInfo(reason)
 			} else {
 				// unknown error format, log original response
-				logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
+				if task.PrivateData.Playground {
+					logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format", taskId))
+				} else {
+					logger.LogError(ctx, fmt.Sprintf("Task %s returned empty status with unrecognized error format, response: %s", taskId, string(responseBody)))
+				}
 				taskResult = relaycommon.FailTaskInfo("upstream returned unrecognized message")
 			}
 		}
@@ -523,6 +541,14 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 	shouldSettle := false
 	shouldChargeViolationFee := false
 	violationFeeReason := taskViolationFeeReason(taskResult.Reason, responseBody)
+	if task.PrivateData.Playground && taskResult.Status == model.TaskStatusFailure {
+		taskResult.Reason = "上游任务失败"
+		if HasViolationFeeMarkerText(violationFeeReason) {
+			violationFeeReason = ContentViolatesUsageMarker
+		} else {
+			violationFeeReason = taskResult.Reason
+		}
+	}
 	quota := task.Quota
 
 	task.Status = model.TaskStatus(taskResult.Status)
@@ -553,7 +579,9 @@ func ApplyTaskPollingResult(ctx context.Context, adaptor TaskPollingAdaptor, ch 
 		}
 		shouldSettle = true
 	case model.TaskStatusFailure:
-		logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
+		if !task.PrivateData.Playground {
+			logger.LogJson(ctx, fmt.Sprintf("Task %s failed", taskId), task)
+		}
 		task.Status = model.TaskStatusFailure
 		task.Progress = taskcommon.ProgressComplete
 		if task.FinishTime == 0 {
@@ -662,6 +690,30 @@ func redactVideoResponseBody(body []byte) []byte {
 		return body
 	}
 	return b
+}
+
+// PlaygroundTaskResponse keeps result metadata while dropping copies of
+// request fields that some providers echo in task submit or status responses.
+func PlaygroundTaskResponse(body []byte) []byte {
+	var fields map[string]json.RawMessage
+	if common.Unmarshal(body, &fields) != nil || fields == nil {
+		return nil
+	}
+	for _, key := range []string{
+		"input", "inputs", "input_reference", "input_references", "input_audio",
+		"input_data", "input_file", "input_image", "input_video", "source_audio",
+		"source_image", "reference_image", "reference_images",
+		"request", "request_body", "request_payload", "payload", "prompt", "error", "message",
+	} {
+		delete(fields, key)
+	}
+	for _, key := range []string{"response", "data", "outcome", "metadata"} {
+		if value := fields[key]; common.GetJsonType(value) == "object" {
+			fields[key] = PlaygroundTaskResponse(value)
+		}
+	}
+	cleaned, _ := common.Marshal(fields)
+	return cleaned
 }
 
 func truncateBase64(s string) string {

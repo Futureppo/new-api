@@ -146,7 +146,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 
 	defer func() {
 		if newAPIError != nil {
-			logger.LogError(c, fmt.Sprintf("relay error: %s", newAPIError.Error()))
+			logger.LogError(c, fmt.Sprintf("relay error: %s", relayErrorLogMessage(c, newAPIError)))
 			if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
 				return
 			}
@@ -211,6 +211,11 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		meta = request.GetTokenCountMeta()
 	} else {
 		meta = fastTokenCountMetaForPricing(request)
+	}
+	if needCountToken {
+		for _, image := range relaycommon.PlaygroundEmbeddingImages(c).Images {
+			meta.Files = append(meta.Files, types.NewImageFileMeta(image.ToFileSource(), "auto"))
+		}
 	}
 
 	if needSensitiveCheck && meta != nil {
@@ -528,12 +533,17 @@ func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) b
 }
 
 func processChannelError(c *gin.Context, channelError types.ChannelError, err *types.NewAPIError) {
-	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, err.Error()))
+	message := relayErrorLogMessage(c, err)
+	logger.LogError(c, fmt.Sprintf("channel error (channel #%d, status code: %d): %s", channelError.ChannelId, err.StatusCode, message))
 	// 不要使用context获取渠道信息，异步处理时可能会出现渠道信息不一致的情况
 	// do not use context to get channel info, there may be inconsistent channel info when processing asynchronously
 	if service.ShouldDisableChannel(err) && channelError.AutoBan {
+		reason := err.ErrorWithStatusCode()
+		if common.IsPlaygroundRequest(c) {
+			reason = message
+		}
 		gopool.Go(func() {
-			service.DisableChannel(channelError, err.ErrorWithStatusCode())
+			service.DisableChannel(channelError, reason)
 		})
 	}
 
@@ -573,9 +583,20 @@ func processChannelError(c *gin.Context, channelError types.ChannelError, err *t
 			startTime = time.Now()
 		}
 		useTimeSeconds := int(time.Since(startTime).Seconds())
-		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, relaycommon.SanitizeModelText(relayInfo, err.MaskSensitiveErrorWithStatusCode()), tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
+		recordMessage := message
+		if !common.IsPlaygroundRequest(c) {
+			recordMessage = relaycommon.SanitizeModelText(relayInfo, err.MaskSensitiveErrorWithStatusCode())
+		}
+		model.RecordErrorLog(c, userId, channelId, modelName, tokenName, recordMessage, tokenId, useTimeSeconds, common.GetContextKeyBool(c, constant.ContextKeyIsStream), userGroup, other)
 	}
 
+}
+
+func relayErrorLogMessage(c *gin.Context, err *types.NewAPIError) string {
+	if common.IsPlaygroundRequest(c) {
+		return fmt.Sprintf("%s (HTTP %d)", err.GetErrorCode(), err.StatusCode)
+	}
+	return err.Error()
 }
 
 func RelayMidjourney(c *gin.Context) {
@@ -841,7 +862,9 @@ func RelayTask(c *gin.Context) {
 
 		task := model.InitTask(result.Platform, relayInfo)
 		task.PrivateData.UpstreamTaskID = result.UpstreamTaskID
-		task.PrivateData.GMICloudImageRequest = result.PendingImageRequest
+		if !relayInfo.IsPlayground {
+			task.PrivateData.GMICloudImageRequest = result.PendingImageRequest
+		}
 		if result.PendingImageRequest != "" {
 			task.PrivateData.Key = relayInfo.ApiKey
 		}
@@ -867,6 +890,9 @@ func RelayTask(c *gin.Context) {
 			task.Quota = relayInfo.FinalPreConsumedQuota
 		}
 		task.Data = result.TaskData
+		if task.PrivateData.Playground {
+			task.Data = service.PlaygroundTaskResponse(task.Data)
+		}
 		task.Action = relayInfo.Action
 		if insertErr := task.Insert(); insertErr != nil {
 			common.SysError("insert task error: " + insertErr.Error())
@@ -901,7 +927,7 @@ func RelayTask(c *gin.Context) {
 				}
 				service.LogTaskConsumption(c, relayInfo)
 			}
-			respondGMICloudImageTask(c, task, relayInfo)
+			respondGMICloudImageTask(c, task, relayInfo, result.PendingImageRequest)
 		}
 	}
 

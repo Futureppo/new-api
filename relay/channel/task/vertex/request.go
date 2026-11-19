@@ -143,10 +143,28 @@ func (a *TaskAdaptor) validateVideoRequest(c *gin.Context, info *relaycommon.Rel
 	if image == "" {
 		image = req.Image
 	}
-	if len(req.Images) > 1 {
+	imageMode := common.GetContextKeyString(c, constant.ContextKeyPlaygroundVideoImageMode)
+	if imageMode != "" {
+		var references []map[string]any
+		for i, value := range req.Images {
+			attachment, err := videoInput(c, value, "image/png")
+			if err != nil {
+				return videoError(err)
+			}
+			if imageMode == "reference" {
+				references = append(references, map[string]any{"image": attachment, "referenceType": "asset"})
+			} else if i == 0 {
+				instance["image"] = videoRaw(attachment)
+			} else {
+				instance["lastFrame"] = videoRaw(attachment)
+			}
+		}
+		if len(references) > 0 {
+			instance["referenceImages"] = videoRaw(references)
+		}
+	} else if len(req.Images) > 1 {
 		return videoError(errors.New("use metadata.referenceImages for multiple reference images"))
-	}
-	if len(req.Images) == 1 {
+	} else if len(req.Images) == 1 {
 		image = req.Images[0]
 	}
 	if image != "" {
@@ -180,6 +198,12 @@ func (a *TaskAdaptor) validateVideoRequest(c *gin.Context, info *relaycommon.Rel
 			return videoError(errors.New("seconds, duration and durationSeconds conflict"))
 		}
 		duration = v
+	}
+	if imageMode == "reference" {
+		if duration != 0 && duration != 8 {
+			return videoError(errors.New("Veo reference images require a duration of 8 seconds"))
+		}
+		duration = 8
 	}
 	if duration != 0 {
 		parameters["durationSeconds"] = videoRaw(duration)

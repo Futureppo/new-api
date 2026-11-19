@@ -79,6 +79,32 @@ func (a *TaskAdaptor) prepare(c *gin.Context, info *relaycommon.RelayInfo) ([]by
 	if err != nil {
 		return nil, err
 	}
+	if imageMode := common.GetContextKeyString(c, constant.ContextKeyPlaygroundVideoImageMode); imageMode != "" {
+		var urls []string
+		if err := common.Unmarshal(fields["images"], &urls); err != nil {
+			return nil, err
+		}
+		sources := make([]map[string]any, 0, len(urls))
+		for index, value := range urls {
+			item := map[string]any{"type": "image_url", "image_url": map[string]string{"url": value}}
+			if imageMode == "frames" {
+				item["frame_type"] = "first_frame"
+				if index == 1 {
+					item["frame_type"] = "last_frame"
+				}
+			}
+			sources = append(sources, item)
+		}
+		key := "input_references"
+		if imageMode == "frames" {
+			key = "frame_images"
+		}
+		fields[key], err = common.Marshal(sources)
+		if err != nil {
+			return nil, err
+		}
+		delete(fields, "images")
+	}
 	if raw, ok := fields["seconds"]; ok {
 		var seconds string
 		if common.Unmarshal(raw, &seconds) == nil {

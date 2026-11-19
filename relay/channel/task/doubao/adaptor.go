@@ -189,6 +189,23 @@ func (a *TaskAdaptor) BuildRequestBody(c *gin.Context, info *relaycommon.RelayIn
 	if err != nil {
 		return nil, errors.Wrap(err, "convert request payload failed")
 	}
+	if imageMode := common.GetContextKeyString(c, constant.ContextKeyPlaygroundVideoImageMode); imageMode != "" {
+		position := 0
+		for i := range body.Content {
+			if body.Content[i].Type != "image_url" {
+				continue
+			}
+			role := "reference_image"
+			if imageMode == "frames" {
+				role = "first_frame"
+				if position == 1 {
+					role = "last_frame"
+				}
+			}
+			body.Content[i].Role = role
+			position++
+		}
+	}
 	if info.IsModelMapped {
 		body.Model = info.UpstreamModelName
 	} else {

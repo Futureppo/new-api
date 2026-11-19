@@ -43,7 +43,10 @@ func RerankHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	adaptor.Init(info)
 
 	var requestBody io.Reader
-	if info.ChannelType != constant.ChannelTypeXunfeiMaas && info.ChannelType != constant.ChannelTypeQianwenAI && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
+	if common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint) != string(constant.EndpointTypeCohereRerank) &&
+		!(info.IsPlayground && info.ChannelType == constant.ChannelTypeJina) &&
+		info.ChannelType != constant.ChannelTypeXunfeiMaas && info.ChannelType != constant.ChannelTypeQianwenAI &&
+		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
 		info.MarkModelMappingBypassed()
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {
@@ -69,7 +72,7 @@ func RerankHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
-		if common.DebugEnabled {
+		if common.DebugEnabled && !info.IsPlayground {
 			println(fmt.Sprintf("Rerank request body: %s", string(jsonData)))
 		}
 		requestBody = bytes.NewBuffer(jsonData)

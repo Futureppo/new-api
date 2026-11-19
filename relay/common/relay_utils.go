@@ -159,7 +159,7 @@ func ValidateMultipartDirect(c *gin.Context, info *RelayInfo) *dto.TaskError {
 		return createTaskError(fmt.Errorf("model field is required"), "missing_model", http.StatusBadRequest, true)
 	}
 
-	if req.HasImage() {
+	if req.HasImage() || (c.Request.MultipartForm != nil && len(c.Request.MultipartForm.File["input_reference"]) > 0) {
 		hasInputReference = true
 	}
 
