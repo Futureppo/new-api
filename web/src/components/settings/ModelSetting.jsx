@@ -41,6 +41,7 @@ const ModelSetting = () => {
     'claude.thinking_adapter_budget_tokens_percentage': 0.8,
     'claude.remove_claude_code_billing_header_enabled': true,
     'global.pass_through_request_enabled': false,
+    'global.ir_conversion_enabled': true,
     'global.thinking_model_blacklist': '[]',
     'global.chat_completions_to_responses_policy': '{}',
     'general_setting.ping_interval_enabled': false,

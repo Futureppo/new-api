@@ -329,7 +329,8 @@ func calculateTextQuotaSummary(ctx *gin.Context, relayInfo *relaycommon.RelayInf
 		summary.Quota = int(quotaCalculateDecimal.Round(0).IntPart())
 	}
 
-	if summary.TotalTokens == 0 && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
+	hasCacheBillableTokens := usage != nil && (usage.PromptTokensDetails.CachedTokens > 0 || usage.PromptTokensDetails.GetCacheCreationTokens() > 0)
+	if summary.TotalTokens == 0 && !hasCacheBillableTokens && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
 		summary.Quota = 0
 	}
 
@@ -408,7 +409,8 @@ func PostTextConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, us
 		extraContent = append(extraContent, fmt.Sprintf("Image Generation Call 花费 %s", decimal.NewFromFloat(summary.ImageGenerationCallPrice).Mul(decimal.NewFromFloat(summary.GroupRatio)).Mul(decimal.NewFromFloat(common.QuotaPerUnit)).String()))
 	}
 
-	if summary.TotalTokens == 0 && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
+	hasCacheBillableTokens := usage != nil && (usage.PromptTokensDetails.CachedTokens > 0 || usage.PromptTokensDetails.GetCacheCreationTokens() > 0)
+	if summary.TotalTokens == 0 && !hasCacheBillableTokens && !openRouterBillableResult(ctx, relayInfo, usage) && !mistralNativeCallPrice(relayInfo) {
 		extraContent = append(extraContent, "上游没有返回计费信息，无法扣费（可能是上游超时）")
 		logger.LogError(ctx, fmt.Sprintf("total tokens is 0, cannot consume quota, userId %d, channelId %d, tokenId %d, model %s， pre-consumed quota %d", relayInfo.UserId, relayInfo.ChannelId, relayInfo.TokenId, summary.ModelName, relayInfo.FinalPreConsumedQuota))
 	} else {

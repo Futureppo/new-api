@@ -68,6 +68,7 @@ const chatCompletionsToResponsesPolicyAllChannelsExample = JSON.stringify(
 
 const defaultGlobalSettingInputs = {
   'global.pass_through_request_enabled': false,
+  'global.ir_conversion_enabled': true,
   'global.thinking_model_blacklist': '[]',
   'global.chat_completions_to_responses_policy': '{}',
   'general_setting.ping_interval_enabled': false,
@@ -188,8 +189,8 @@ export default function SettingGlobalModel(props) {
           style={{ marginBottom: 15 }}
         >
           <Form.Section text={t('全局设置')}>
-            <Row>
-              <Col xs={24} sm={12} md={8} lg={8} xl={8}>
+            <Row gutter={24}>
+              <Col xs={24} sm={12} md={10} lg={10} xl={10}>
                 <Form.Switch
                   label={t('启用请求透传')}
                   field={'global.pass_through_request_enabled'}
@@ -201,6 +202,27 @@ export default function SettingGlobalModel(props) {
                   }
                   extraText={t(
                     '开启后，所有请求将直接透传给上游，不会进行任何处理（重定向和渠道适配也将失效）,请谨慎开启',
+                  )}
+                />
+              </Col>
+              <Col
+                xs={24}
+                sm={12}
+                md={{ span: 10, offset: 2 }}
+                lg={{ span: 10, offset: 2 }}
+                xl={{ span: 10, offset: 2 }}
+              >
+                <Form.Switch
+                  label={t('启用 IR 跨协议转换引擎')}
+                  field={'global.ir_conversion_enabled'}
+                  onChange={(value) =>
+                    setInputs((prev) => ({
+                      ...prev,
+                      'global.ir_conversion_enabled': value,
+                    }))
+                  }
+                  extraText={t(
+                    '开启后，跨协议请求（OpenAI Chat / Responses / Claude / Gemini / Vertex / Bedrock）将统一通过中立 IR 引擎双向转换并支持跨轮签名桥接；关闭后回退到传统转换逻辑',
                   )}
                 />
               </Col>

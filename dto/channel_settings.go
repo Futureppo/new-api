@@ -66,6 +66,9 @@ type ChannelOtherSettings struct {
 	BilibiliWebSourceLanguage             string        `json:"bilibili_web_source_language,omitempty"`
 	BilibiliWebTargetLanguage             string        `json:"bilibili_web_target_language,omitempty"`
 	AzureResponsesVersion                 string        `json:"azure_responses_version,omitempty"`
+	AzureResourceID                       string        `json:"azure_resource_id,omitempty"`
+	AzureRegion                           string        `json:"azure_region,omitempty"`
+	AzureRegionSource                     string        `json:"azure_region_source,omitempty"`
 	VertexKeyType                         VertexKeyType `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	OpenRouterEnterprise                  *bool         `json:"openrouter_enterprise,omitempty"`
 	ClaudeBetaQuery                       bool          `json:"claude_beta_query,omitempty"`         // Claude 渠道是否强制追加 ?beta=true

@@ -18,6 +18,21 @@ func DecodeJson(reader io.Reader, v any) error {
 	return json.NewDecoder(reader).Decode(v)
 }
 
+// DecodeJsonUseNumber preserves integer precision in untyped JSON values.
+func DecodeJsonUseNumber(reader io.Reader, v any) error {
+	decoder := json.NewDecoder(reader)
+	decoder.UseNumber()
+	return decoder.Decode(v)
+}
+
+func CompactJson(dst *bytes.Buffer, data []byte) error {
+	return json.Compact(dst, data)
+}
+
+func ValidJson(data []byte) bool {
+	return json.Valid(data)
+}
+
 func Marshal(v any) ([]byte, error) {
 	return json.Marshal(v)
 }

@@ -150,6 +150,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
 				return
 			}
+			if c.GetBool("ir_response_committed") && c.Writer.Written() {
+				return
+			}
 			if c.GetBool("qianwen_audio_committed") && c.Writer.Written() {
 				return // Do not append JSON to an audio binary stream or an SSE error.
 			}
@@ -165,6 +168,9 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			if !isChannelDailySuccessLimitError(newAPIError) && !service.IsChannelRPMLimitError(newAPIError) {
 				newAPIError.SetMessage(common.MessageWithRequestId(newAPIError.Error(), requestId))
 			}
+			// Clear any pre-set SSE headers (e.g. set before client.Do on streaming attempts)
+			// so JSON error responses carry application/json and are never trapped in SSE buffers.
+			helper.ClearEventStreamHeaders(c)
 			switch relayFormat {
 			case types.RelayFormatOpenAIRealtime:
 				helper.WssError(c, ws, newAPIError.ToOpenAIError())
@@ -340,6 +346,7 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		if !shouldRetry(c, newAPIError, retryParam.GetRemainingRetryTimes()) {
 			break
 		}
+		helper.ClearEventStreamHeaders(c)
 		retryParam.IncreaseRetry()
 	}
 
@@ -496,6 +503,9 @@ func getChannel(c *gin.Context, info *relaycommon.RelayInfo, retryParam *service
 
 func shouldRetry(c *gin.Context, openaiErr *types.NewAPIError, retryTimes int) bool {
 	if c.GetBool("openrouter_response_committed") && c.Writer.Written() {
+		return false
+	}
+	if c.GetBool("ir_response_committed") && c.Writer.Written() {
 		return false
 	}
 	if c.GetBool("vertex_batch_started") || (common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeVertexAi && c.Writer.Written()) {

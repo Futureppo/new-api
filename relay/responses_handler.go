@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/ir"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -82,10 +83,25 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 		return types.NewError(fmt.Errorf("invalid api type: %d", info.ApiType), types.ErrorCodeInvalidApiType, types.ErrOptionWithSkipRetry())
 	}
 	adaptor.Init(info)
-	var requestBody io.Reader
-	if info.ChannelType != appconstant.ChannelTypeXunfeiMaas && info.ChannelType != appconstant.ChannelTypeBilibiliWeb &&
+	passThrough := info.ChannelType != appconstant.ChannelTypeXunfeiMaas && info.ChannelType != appconstant.ChannelTypeBilibiliWeb &&
 		info.ChannelType != appconstant.ChannelTypeOpenCode && info.ChannelType != appconstant.ChannelTypeOpenCodeGo &&
-		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled) {
+		(model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled)
+	if !passThrough && info.RelayMode == relayconstant.RelayModeResponses {
+		if handled, usage, irErr := tryIRCrossProtocolRelay(c, info, adaptor, ir.FormatOpenAIResponses, request); handled {
+			if irErr != nil {
+				service.ResetStatusCode(irErr, c.GetString("status_code_mapping"))
+				return irErr
+			}
+			if strings.HasPrefix(info.OriginModelName, "gpt-4o-audio") {
+				service.PostAudioConsumeQuota(c, info, usage, "")
+			} else {
+				billIRUsage(c, info, usage)
+			}
+			return nil
+		}
+	}
+	var requestBody io.Reader
+	if passThrough {
 		info.MarkModelMappingBypassed()
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {

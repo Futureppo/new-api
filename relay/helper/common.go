@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
@@ -40,8 +41,11 @@ func FlushWriter(c *gin.Context) (err error) {
 }
 
 func SetEventStreamHeaders(c *gin.Context) {
+	if c == nil || c.Writer == nil {
+		return
+	}
 	// 检查是否已经设置过头部
-	if _, exists := c.Get("event_stream_headers_set"); exists {
+	if c.GetBool("event_stream_headers_set") {
 		return
 	}
 
@@ -53,6 +57,25 @@ func SetEventStreamHeaders(c *gin.Context) {
 	c.Writer.Header().Set("Connection", "keep-alive")
 	c.Writer.Header().Set("Transfer-Encoding", "chunked")
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
+}
+
+// ClearEventStreamHeaders removes pre-set SSE response headers when an upstream
+// attempt fails or resolves to a non-streaming JSON response before any body bytes
+// have been written to the client.
+func ClearEventStreamHeaders(c *gin.Context) {
+	if c == nil || c.Writer == nil || c.Writer.Written() {
+		return
+	}
+	if !c.GetBool("event_stream_headers_set") && !strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+		return
+	}
+	c.Set("event_stream_headers_set", false)
+	h := c.Writer.Header()
+	h.Del("Content-Type")
+	h.Del("Cache-Control")
+	h.Del("Connection")
+	h.Del("Transfer-Encoding")
+	h.Del("X-Accel-Buffering")
 }
 
 func ClaudeData(c *gin.Context, resp dto.ClaudeResponse) error {

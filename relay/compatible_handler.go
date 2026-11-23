@@ -14,6 +14,7 @@ import (
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/ir"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
@@ -80,6 +81,22 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	endpoint := constant.EndpointType(common.GetContextKeyString(c, constant.ContextKeyPlaygroundEndpoint))
 	if endpoint == constant.EndpointTypeCohereChat {
 		passThrough = false
+	}
+	if !passThrough && endpoint != constant.EndpointTypeCohereChat && info.RelayMode == relayconstant.RelayModeChatCompletions {
+		if info.ChannelSetting.SystemPrompt != "" {
+			// Apply channel system prompt before cross-protocol IR translation so non-OpenAI targets also receive it.
+			if spec, ok := resolveTargetIRSpec(c, info, adaptor, ir.FormatOpenAIChat); ok && spec.Format != ir.FormatOpenAIChat && model_setting.IsIRConversionEnabled() {
+				applySystemPromptIfNeeded(c, info, request)
+			}
+		}
+		if handled, usage, irErr := tryIRCrossProtocolRelay(c, info, adaptor, ir.FormatOpenAIChat, request); handled {
+			if irErr != nil {
+				service.ResetStatusCode(irErr, c.GetString("status_code_mapping"))
+				return irErr
+			}
+			billIRUsage(c, info, usage)
+			return nil
+		}
 	}
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThrough &&

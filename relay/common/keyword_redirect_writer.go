@@ -166,9 +166,27 @@ func FinalizeRelayResponse(c *gin.Context) error {
 	if w.keywordErr != nil {
 		return w.keywordErr
 	}
+	var flushErr error
+	flushedSSEPending := false
+	if len(w.ssePending) > 0 {
+		pending := w.ssePending
+		w.ssePending = nil
+		rewritten := rewriteClientResponseBytes(c, pending, &w.sseEventError)
+		if !bytes.Equal(pending, rewritten) {
+			w.Header().Del("Content-Length")
+		}
+		if _, err := w.writeClientBytes(rewritten); err != nil {
+			flushErr = err
+		}
+		flushedSSEPending = true
+	}
 	state := w.keyword
 	if state == nil || state.finished {
-		return nil
+		if flushedSSEPending {
+			w.removeContentLengthForRewrite(w.Status())
+			w.ResponseWriter.Flush()
+		}
+		return flushErr
 	}
 	state.finished = true
 	if state.stream {
@@ -188,7 +206,10 @@ func FinalizeRelayResponse(c *gin.Context) error {
 	state.pending = nil
 	w.removeContentLengthForRewrite(w.Status())
 	w.ResponseWriter.Flush()
-	return w.keywordErr
+	if w.keywordErr != nil {
+		return w.keywordErr
+	}
+	return flushErr
 }
 
 // InitChannelMeta calls this before each upstream attempt. Buffered data and

@@ -203,7 +203,7 @@ func buildFetchModelsHeaders(channel *model.Channel, key string) (http.Header, e
 		if key = strings.TrimSpace(key); key != "" {
 			headers.Set("Authorization", "Bearer "+key)
 		}
-	case constant.ChannelTypeMiMo:
+	case constant.ChannelTypeMiMo, constant.ChannelTypeAzure:
 		headers = make(http.Header)
 		headers.Set("api-key", key)
 	case constant.ChannelTypeAnthropic:

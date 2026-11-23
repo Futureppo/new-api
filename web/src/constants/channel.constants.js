@@ -232,6 +232,7 @@ export const isManualModelFetchSupported = (
   vertexKeyType = 'json',
   customModelListUrl = '',
 ) => {
+  if (Number(type) === 3) return true;
   if (Number(type) === 74) {
     return String(customModelListUrl || '').trim() !== '';
   }

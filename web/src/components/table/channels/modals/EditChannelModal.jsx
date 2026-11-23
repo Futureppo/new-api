@@ -59,6 +59,9 @@ import {
   selectFilter,
 } from '../../../../helpers';
 import ModelSelectModal from './ModelSelectModal';
+import AzureDiscoveryFields, { AzureModelDiscoveryStatus } from './AzureDiscoveryFields';
+import { useAzureDiscovery } from '../../../../hooks/channels/useAzureDiscovery';
+import { applyAzureDiscoveryResult, azureConnectionDraft } from '../../../../hooks/channels/azureDiscovery';
 import SingleModelSelectModal from './SingleModelSelectModal';
 import OllamaModelModal from './OllamaModelModal';
 import CodexOAuthModal from './CodexOAuthModal';
@@ -239,6 +242,9 @@ const EditChannelModal = (props) => {
     system_prompt: '',
     system_prompt_override: false,
     settings: '',
+    azure_resource_id: '',
+    azure_region: '',
+    azure_region_source: '',
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
     // 仅 AWS: 密钥格式和区域（存入 settings.aws_key_type 和 settings.aws_region）
@@ -304,6 +310,21 @@ const EditChannelModal = (props) => {
   const [isModalOpenurl, setIsModalOpenurl] = useState(false);
   const [modelModalVisible, setModelModalVisible] = useState(false);
   const [fetchedModels, setFetchedModels] = useState([]);
+  const [savedAzureDraft, setSavedAzureDraft] = useState(null);
+  const channelLoadRequestRef = useRef(0);
+  const azureDiscovery = useAzureDiscovery({
+    visible: props.visible,
+    channelId,
+    inputs,
+    savedDraft: savedAzureDraft,
+    canOverride: isRoot(),
+    onResult: (result, target) => {
+      if (target !== 'region' && !result.model_error) {
+        setFetchedModels(result.models || []);
+      }
+      setInputs((current) => applyAzureDiscoveryResult(current, result, target));
+    },
+  });
   const [modelMappingValueModalVisible, setModelMappingValueModalVisible] =
     useState(false);
   const [modelMappingValueModalModels, setModelMappingValueModalModels] =
@@ -687,10 +708,24 @@ const EditChannelModal = (props) => {
       });
       return;
     }
-    setInputs((inputs) => ({ ...inputs, [name]: value }));
+    setInputs((inputs) => {
+      const next = { ...inputs, [name]: value };
+      if (inputs.type === 3 && ['base_url', 'type'].includes(name) && inputs[name] !== value) {
+        next.azure_region = '';
+        next.azure_region_source = '';
+        let settings;
+        try { settings = JSON.parse(inputs.settings || '{}'); } catch { settings = {}; }
+        next.settings = JSON.stringify({ ...settings, azure_region: '', azure_region_source: '' });
+      }
+      return next;
+    });
     if (name === 'type') {
       let localModels = [];
       switch (value) {
+        case 3:
+          localModels = getChannelModels(value);
+          setInputs((prev) => ({ ...prev, models: [], azure_region: '', azure_region_source: '' }));
+          break;
         case BILIBILI_CHANNEL_TYPE:
         case BILIBILI_WEB_CHANNEL_TYPE:
           localModels = getChannelModels(value);
@@ -841,6 +876,7 @@ const EditChannelModal = (props) => {
           break;
       }
       if (
+        value !== 3 &&
         value !== MODAL_CHANNEL_TYPE &&
         value !== KILO_CHANNEL_TYPE &&
         value !== CLINE_CHANNEL_TYPE &&
@@ -988,8 +1024,10 @@ const EditChannelModal = (props) => {
   };
 
   const loadChannel = async () => {
+    const requestId = ++channelLoadRequestRef.current;
     setLoading(true);
     let res = await API.get(`/api/channel/${channelId}`);
+    if (requestId !== channelLoadRequestRef.current) return;
     if (res === undefined) {
       return;
     }
@@ -1262,6 +1300,10 @@ const EditChannelModal = (props) => {
       })();
       data.bilibili_web_source_language = bilibiliSettings.bilibili_web_source_language || 'zh';
       data.bilibili_web_target_language = bilibiliSettings.bilibili_web_target_language || 'en';
+      data.azure_resource_id = bilibiliSettings.azure_resource_id || '';
+      data.azure_region = bilibiliSettings.azure_region || '';
+      data.azure_region_source = bilibiliSettings.azure_region_source || '';
+      setSavedAzureDraft({ channelId, json: JSON.stringify(azureConnectionDraft(data)) });
       initialBaseUrlRef.current = data.base_url || '';
       data.clear_key = false;
       setInputs(data);
@@ -1319,6 +1361,12 @@ const EditChannelModal = (props) => {
 
   const fetchUpstreamModelList = async (name, options = {}) => {
     const silent = !!options.silent;
+    if (inputs.type === 3) {
+      const result = await azureDiscovery.discover('models');
+      if (!result || result.model_error) return null;
+      if (!silent) setModelModalVisible(true);
+      return result.models;
+    }
     setLoading(true);
     const models = [];
     let err = false;
@@ -1605,7 +1653,10 @@ const EditChannelModal = (props) => {
   useEffect(() => {
     const modelMap = new Map();
 
-    originModelOptions.forEach((option) => {
+    const availableOptions = inputs.type === 3 && azureDiscovery.result?.model_source
+      ? (azureDiscovery.result.models || []).map((value) => ({ key: value, label: value, value }))
+      : originModelOptions;
+    availableOptions.forEach((option) => {
       const v = (option.value || '').trim();
       if (!modelMap.has(v)) {
         modelMap.set(v, option);
@@ -1645,7 +1696,7 @@ const EditChannelModal = (props) => {
     });
 
     setModelOptions(optionsWithIcon);
-  }, [originModelOptions, inputs.models, t]);
+  }, [originModelOptions, inputs.models, inputs.type, azureDiscovery.result, t]);
 
   useEffect(() => {
     fetchModels().then();
@@ -1670,6 +1721,7 @@ const EditChannelModal = (props) => {
 
   useEffect(() => {
     setModelSearchValue('');
+    channelLoadRequestRef.current += 1;
     if (props.visible) {
       if (isEdit) {
         loadChannel();
@@ -1712,6 +1764,7 @@ const EditChannelModal = (props) => {
 
   // 统一的模态框重置函数
   const resetModalState = () => {
+    setSavedAzureDraft(null);
     resolveStatusCodeRiskConfirm(false);
     formApiRef.current?.reset();
     // 重置渠道设置状态
@@ -2332,7 +2385,16 @@ const EditChannelModal = (props) => {
       settings.upstream_model_update_last_check_time = 0;
     }
 
+    if (localInputs.type === 3) {
+      // Discovery fields are controlled inputs outside Semi Form's registered fields.
+      settings.azure_resource_id = (inputs.azure_resource_id || '').trim();
+      settings.azure_region = inputs.azure_region || '';
+      settings.azure_region_source = inputs.azure_region_source || '';
+    }
     localInputs.settings = JSON.stringify(settings);
+    delete localInputs.azure_resource_id;
+    delete localInputs.azure_region;
+    delete localInputs.azure_region_source;
 
     // 清理不需要发送到后端的字段
     delete localInputs.force_format;
@@ -4319,6 +4381,15 @@ const EditChannelModal = (props) => {
                               showClear
                             />
                           </div>
+                          <AzureDiscoveryFields
+                            inputs={inputs}
+                            discovery={azureDiscovery}
+                            canOverride={isRoot()}
+                            onResourceIDChange={(value) => {
+                              handleChannelOtherSettingsChange('azure_resource_id', value);
+                              setInputs((current) => applyAzureDiscoveryResult(current, {}, 'region'));
+                            }}
+                          />
                         </>
                       )}
 
@@ -4743,13 +4814,15 @@ const EditChannelModal = (props) => {
                             <Button
                               size='small'
                               type='tertiary'
+                              loading={inputs.type === 3 && ['all', 'models'].includes(azureDiscovery.busy)}
                               disabled={
-                                !isEdit &&
+                                (inputs.type === 3 && (!azureDiscovery.enabled || !!azureDiscovery.busy)) ||
+                                (!isEdit &&
                                 isVertexChannel(inputs.type) &&
                                 getServiceAccountKeyType(inputs.type, inputs.vertex_key_type) === 'json' &&
                                 !useManualInput &&
                                 vertexKeys.length === 0 &&
-                                vertexFileList.length === 0
+                                vertexFileList.length === 0)
                               }
                               onClick={() => fetchUpstreamModelList('models')}
                             >
@@ -4802,6 +4875,8 @@ const EditChannelModal = (props) => {
                         </Space>
                       }
                     />
+
+                  {inputs.type === 3 && <AzureModelDiscoveryStatus discovery={azureDiscovery} />}
 
                   {/* Custom Model Name - Core Config */}
                   <Form.Input
