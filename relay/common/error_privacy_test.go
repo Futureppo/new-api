@@ -80,3 +80,43 @@ func TestErrorPrivacyKeepsResponsesFailureEnvelope(t *testing.T) {
 	require.Contains(t, got, `"id":"resp_123"`)
 	require.NotContains(t, got, "private")
 }
+
+func TestErrorPrivacyDoesNotSwallowHTTP400JSONWhenSSEHeaderWasPreSet(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	basecommon.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{ShowErrorDetails: false})
+	InstallRelayResponseWriter(c)
+
+	// Simulate DoApiRequest setting SSE headers before client.Do returns HTTP 400.
+	c.Header("Content-Type", "text/event-stream")
+	c.JSON(http.StatusBadRequest, gin.H{
+		"error": gin.H{
+			"code":    "invalid_request_error",
+			"message": "private upstream detail",
+			"type":    "invalid_request_error",
+		},
+	})
+
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.NotEmpty(t, recorder.Body.String(), "HTTP 400 error JSON must not be trapped in ssePending")
+	require.Contains(t, recorder.Body.String(), "invalid_request_error")
+	require.NotContains(t, recorder.Body.String(), "private upstream detail")
+}
+
+func TestFinalizeRelayResponseFlushesTrailingSSEPending(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	basecommon.SetContextKey(c, constant.ContextKeyChannelSetting, dto.ChannelSettings{ShowErrorDetails: false})
+	InstallRelayResponseWriter(c)
+
+	c.Header("Content-Type", "text/event-stream")
+	_, err := c.Writer.WriteString(`data: {"error":{"code":"stream_failed","message":"private secret"}}`)
+	require.NoError(t, err)
+	// Still buffered because no \n\n delimiter arrived yet.
+	require.Empty(t, recorder.Body.String())
+
+	require.NoError(t, FinalizeRelayResponse(c))
+	require.NotEmpty(t, recorder.Body.String())
+	require.Contains(t, recorder.Body.String(), `"message":"stream_failed"`)
+	require.NotContains(t, recorder.Body.String(), "private secret")
+}

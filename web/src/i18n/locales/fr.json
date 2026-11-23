@@ -2028,6 +2028,8 @@
     "启用签到功能": "Activer la fonction d'enregistrement",
     "启用请求体透传功能": "Activer la fonctionnalité de transmission du corps de la requête",
     "启用请求透传": "Activer la transmission de la requête",
+    "启用 IR 跨协议转换引擎": "Activer le moteur de conversion inter-protocoles IR",
+    "开启后，跨协议请求（OpenAI Chat / Responses / Claude / Gemini / Vertex / Bedrock）将统一通过中立 IR 引擎双向转换并支持跨轮签名桥接；关闭后回退到传统转换逻辑": "Une fois activé, les requêtes inter-protocoles (OpenAI Chat / Responses / Claude / Gemini / Vertex / Bedrock) sont converties de manière bidirectionnelle via un moteur IR neutre avec pontage de signature multi-tours ; une fois désactivé, la logique de conversion traditionnelle est utilisée.",
     "启用全部": "Activer tout",
     "启用数据看板（实验性）": "Activer le tableau de bord des données (expérimental)",
     "启用所有密钥失败": "Échec de l'activation de toutes les clés",

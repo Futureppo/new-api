@@ -178,6 +178,10 @@ type RelayInfo struct {
 
 	StreamStatus *StreamStatus
 
+	initialStateSaved  bool
+	initialIsStream    bool
+	initialDisablePing bool
+
 	ThinkingContentInfo
 	TokenCountMeta
 	*ClaudeConvertInfo
@@ -187,9 +191,32 @@ type RelayInfo struct {
 	*TaskRelayInfo
 }
 
+// IRBridgeScope builds a tenant- and channel-isolated key for the IR TurnBridge cache,
+// preventing cross-user or cross-token metadata leakage on shared channels.
+func IRBridgeScope(info *RelayInfo) string {
+	if info == nil || info.ChannelMeta == nil || info.ChannelId <= 0 {
+		return ""
+	}
+	if info.UserId > 0 || info.TokenId > 0 {
+		return fmt.Sprintf("u:%d:t:%d:c:%d", info.UserId, info.TokenId, info.ChannelId)
+	}
+	return fmt.Sprintf("c:%d", info.ChannelId)
+}
+
 func (info *RelayInfo) InitChannelMeta(c *gin.Context) {
 	resetKeywordResponse(c)
 	info.ReasoningEffort = ""
+	// Clear per-attempt format conversion and stream flags so cross-channel retries never inherit stale state.
+	info.FinalRequestRelayFormat = ""
+	info.RequestConversionChain = nil
+	info.InitRequestConversionChain()
+	if info.RelayFormat != types.RelayFormatOpenAIResponses {
+		info.ResponsesUsageInfo = nil
+	}
+	if info.initialStateSaved {
+		info.IsStream = info.initialIsStream
+		info.DisablePing = info.initialDisablePing
+	}
 	channelType := common.GetContextKeyInt(c, constant.ContextKeyChannelType)
 	paramOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelParamOverride)
 	headerOverride := common.GetContextKeyStringMap(c, constant.ContextKeyChannelHeaderOverride)
@@ -639,6 +666,9 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 		return nil, errors.New("failed to build relay info")
 	}
 
+	info.initialStateSaved = true
+	info.initialIsStream = info.IsStream
+	info.initialDisablePing = info.DisablePing
 	info.InitRequestConversionChain()
 	SetRelayInfo(c, info)
 	InstallRelayResponseWriter(c)

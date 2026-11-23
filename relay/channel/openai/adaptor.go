@@ -148,7 +148,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 		requestURL = fmt.Sprintf("%s?api-version=%s", requestURL, apiVersion)
 		task := strings.TrimPrefix(requestURL, "/v1/")
 
-		if info.RelayFormat == types.RelayFormatClaude {
+		if info.RelayFormat == types.RelayFormatClaude && strings.HasPrefix(task, "messages") {
 			task = strings.TrimPrefix(task, "messages")
 			task = "chat/completions" + task
 		}

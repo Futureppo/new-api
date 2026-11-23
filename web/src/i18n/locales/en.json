@@ -2072,6 +2072,8 @@
     "启用签到功能": "Enable check-in feature",
     "启用请求体透传功能": "Enable request body pass-through functionality",
     "启用请求透传": "Enable request pass-through",
+    "启用 IR 跨协议转换引擎": "Enable IR cross-protocol conversion engine",
+    "开启后，跨协议请求（OpenAI Chat / Responses / Claude / Gemini / Vertex / Bedrock）将统一通过中立 IR 引擎双向转换并支持跨轮签名桥接；关闭后回退到传统转换逻辑": "When enabled, cross-protocol requests (OpenAI Chat / Responses / Claude / Gemini / Vertex / Bedrock) are bidirectionally converted through a neutral IR engine with cross-turn signature bridging; when disabled, falls back to legacy conversion logic.",
     "启用全部": "Enable all",
     "启用数据看板（实验性）": "Enable data dashboard (experimental)",
     "启用所有密钥失败": "Failed to enable all keys",

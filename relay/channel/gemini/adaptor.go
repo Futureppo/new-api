@@ -12,6 +12,8 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/constant"
+	"github.com/QuantumNous/new-api/relay/ir"
+	_ "github.com/QuantumNous/new-api/relay/ir/codec/all"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
 	"github.com/QuantumNous/new-api/types"
@@ -47,6 +49,19 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, req *dto.ClaudeRequest) (any, error) {
+	if model_setting.IsIRConversionEnabled() {
+		scope := relaycommon.IRBridgeScope(info)
+		raw, err := ir.ConvertPayload(ir.FormatAnthropic, ir.FormatGoogleGenAI, req, nil, scope, map[string]any{
+			"attach_thought_signature": model_setting.GetGeminiSettings().FunctionCallThoughtSignatureEnabled,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if info != nil {
+			info.AppendRequestConversion(types.RelayFormatGemini)
+		}
+		return raw, nil
+	}
 	adaptor := openai.Adaptor{}
 	oaiReq, err := adaptor.ConvertClaudeRequest(c, info, req)
 	if err != nil {
@@ -245,8 +260,7 @@ func (a *Adaptor) ConvertEmbeddingRequest(c *gin.Context, info *relaycommon.Rela
 	}, nil
 }
 
-func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
-	// TODO implement me
+func (a *Adaptor) ConvertOpenAIResponsesRequest(_ *gin.Context, _ *relaycommon.RelayInfo, _ dto.OpenAIResponsesRequest) (any, error) {
 	return nil, errors.New("not implemented")
 }
 

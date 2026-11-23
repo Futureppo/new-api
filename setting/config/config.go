@@ -89,8 +89,19 @@ func (cm *ConfigManager) SaveToDB(updateFunc func(key, value string) error) erro
 	return nil
 }
 
+type configLockable interface {
+	ConfigRLock()
+	ConfigRUnlock()
+	ConfigLock()
+	ConfigUnlock()
+}
+
 // 辅助函数：将配置对象转换为map
 func configToMap(config interface{}) (map[string]string, error) {
+	if l, ok := config.(configLockable); ok {
+		l.ConfigRLock()
+		defer l.ConfigRUnlock()
+	}
 	result := make(map[string]string)
 
 	val := reflect.ValueOf(config)
@@ -163,6 +174,10 @@ func configToMap(config interface{}) (map[string]string, error) {
 
 // 辅助函数：从map更新配置对象
 func updateConfigFromMap(config interface{}, configMap map[string]string) error {
+	if l, ok := config.(configLockable); ok {
+		l.ConfigLock()
+		defer l.ConfigUnlock()
+	}
 	val := reflect.ValueOf(config)
 	if val.Kind() != reflect.Ptr {
 		return nil

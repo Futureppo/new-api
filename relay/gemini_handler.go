@@ -14,6 +14,7 @@ import (
 	"github.com/QuantumNous/new-api/relay/channel/gemini"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/ir"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/types"
@@ -137,8 +138,35 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 		}
 	}
 
+	passThrough := shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled)
+	if !passThrough {
+		if handled, usage, irErr := tryIRCrossProtocolRelay(c, info, adaptor, ir.FormatGoogleGenAI, request); handled {
+			if irErr != nil {
+				service.ResetStatusCode(irErr, c.GetString("status_code_mapping"))
+				return irErr
+			}
+			billIRUsage(c, info, usage)
+			return nil
+		}
+	}
+	if !passThrough && info.ChannelType != constant.ChannelTypeOpenAI &&
+		shouldChatCompletionsUseResponses(info) {
+		openAIRequest, convErr := service.GeminiToOpenAIRequest(request, info)
+		if convErr != nil {
+			return types.NewError(convErr, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
+		}
+
+		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, openAIRequest)
+		if newApiErr != nil {
+			return newApiErr
+		}
+
+		service.PostTextConsumeQuota(c, info, usage, nil)
+		return nil
+	}
+
 	var requestBody io.Reader
-	if shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled) {
+	if passThrough {
 		info.MarkModelMappingBypassed()
 		storage, err := common.GetBodyStorage(c)
 		if err != nil {

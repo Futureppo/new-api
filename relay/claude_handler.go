@@ -13,6 +13,7 @@ import (
 	"github.com/QuantumNous/new-api/dto"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
+	"github.com/QuantumNous/new-api/relay/ir"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/QuantumNous/new-api/setting/reasoning"
@@ -133,6 +134,16 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 
 	passThrough := shouldPassThroughTextRequest(info, model_setting.GetGlobalSettings().PassThroughRequestEnabled)
+	if !passThrough {
+		if handled, usage, irErr := tryIRCrossProtocolRelay(c, info, adaptor, ir.FormatAnthropic, request); handled {
+			if irErr != nil {
+				service.ResetStatusCode(irErr, c.GetString("status_code_mapping"))
+				return irErr
+			}
+			billIRUsage(c, info, usage)
+			return nil
+		}
+	}
 	if !passThrough && info.ChannelType != constant.ChannelTypeOpenAI &&
 		shouldChatCompletionsUseResponses(info) {
 		openAIRequest, convErr := service.ClaudeToOpenAIRequest(*request, info)

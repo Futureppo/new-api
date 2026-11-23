@@ -103,7 +103,7 @@ func (w *relayResponseWriter) Write(data []byte) (int, error) {
 		}
 		return inputLen, nil
 	}
-	if shouldHideChannelErrorDetails(w.context) && strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
+	if shouldHideChannelErrorDetails(w.context) && !responseIsError(w.context) && strings.HasPrefix(w.Header().Get("Content-Type"), "text/event-stream") {
 		// Writes are transport chunks, not complete events. Wait for the SSE
 		// delimiter so split JSON and multiline data cannot escape filtering.
 		if len(w.ssePending)+len(data) > 64<<20 {
