@@ -40,6 +40,7 @@ jobs:
           go mod download
           go build -ldflags "-s -w -X 'new-api/common.Version=$VERSION' -extldflags '-static'" -o new-api-$VERSION
       - name: Build Backend (arm64)
+        if: ${{ false }} # ARM64 builds are disabled for this fork.
         run: |
           sudo apt-get update
           DEBIAN_FRONTEND=noninteractive sudo apt-get install -y gcc-aarch64-linux-gnu
