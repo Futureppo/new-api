@@ -90,7 +90,16 @@ export function playgroundTemplate(
           greeting: { type: 'noul', instructions: 'Is this a greeting?' },
         },
       };
+    case 'gemini-decisions':
     case 'openai-decisions':
+      if (endpoint === 'gemini-decisions' || variant === 'gemini') {
+        return {
+          input: 'Hello',
+          questions: {
+            greeting: { type: 'noul', instructions: 'Is this a greeting?' },
+          },
+        };
+      }
       return variant === 'named'
         ? {
             state: 'Hello',

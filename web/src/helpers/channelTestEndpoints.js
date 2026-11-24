@@ -68,6 +68,11 @@ export const CHANNEL_TEST_ENDPOINTS = [
     label: 'Gemini (/v1beta/models/{model}:generateContent)',
     stream: true,
   },
+  {
+    value: 'gemini-decisions',
+    label: 'Gemini Decisions (/v1beta/decisions)',
+    stream: false,
+  },
   { value: 'jina-rerank', label: 'Jina Rerank (/v1/rerank)', stream: false },
   { value: 'image-generation', label: '', stream: false },
   { value: 'openai-video', label: 'OpenAI Video (/v1/videos)', stream: false },

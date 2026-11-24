@@ -108,6 +108,9 @@ func GetEndpointTypesByChannelType(channelType int, modelName string) []constant
 			return []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}
 		}
 	case constant.ChannelTypeGemini:
+		if constant.IsGeminiDecisionModel(modelName) {
+			return []constant.EndpointType{constant.EndpointTypeGeminiDecisions, constant.EndpointTypeOpenAIDecisions}
+		}
 		endpointTypes = []constant.EndpointType{constant.EndpointTypeGemini, constant.EndpointTypeOpenAI}
 	case constant.ChannelTypeOpenRouter:
 		return openRouterEndpointTypes(modelName)

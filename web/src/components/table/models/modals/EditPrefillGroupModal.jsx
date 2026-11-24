@@ -46,6 +46,7 @@ const ENDPOINT_TEMPLATE = {
   'openai-response': { path: '/v1/responses', method: 'POST' },
   'openai-response-compact': { path: '/v1/responses/compact', method: 'POST' },
   'openai-decisions': { path: '/v1/decisions', method: 'POST' },
+  'gemini-decisions': { path: '/v1beta/decisions', method: 'POST' },
   anthropic: { path: '/v1/messages', method: 'POST' },
   gemini: { path: '/v1beta/models/{model}:generateContent', method: 'POST' },
   'jina-rerank': { path: '/v1/rerank', method: 'POST' },

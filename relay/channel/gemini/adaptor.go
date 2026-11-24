@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	baseconstant "github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/openai"
@@ -146,6 +147,17 @@ func (a *Adaptor) Init(info *relaycommon.RelayInfo) {
 }
 
 func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
+	if info.RelayMode == constant.RelayModeDecisions {
+		if _, ok := info.Request.(*dto.GeminiDecisionsRequest); !ok || info.IsStream {
+			return "", invalidDecisionsRequest()
+		}
+		base := strings.TrimRight(info.ChannelBaseUrl, "/")
+		base = strings.TrimSuffix(base, "/v1beta")
+		return base + "/v1beta/decisions", nil
+	}
+	if baseconstant.IsGeminiDecisionModel(info.UpstreamModelName) {
+		return "", invalidDecisionsRequest()
+	}
 
 	if model_setting.GetGeminiSettings().ThinkingAdapterEnabled &&
 		!model_setting.ShouldPreserveThinkingSuffix(info.OriginModelName) {
@@ -269,6 +281,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if info.RelayMode == constant.RelayModeDecisions {
+		return GeminiDecisionsHandler(c, resp, info)
+	}
 	if info.RelayMode == constant.RelayModeGemini {
 		if strings.Contains(info.RequestURLPath, ":embedContent") ||
 			strings.Contains(info.RequestURLPath, ":batchEmbedContents") {

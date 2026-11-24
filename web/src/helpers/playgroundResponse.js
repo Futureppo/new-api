@@ -54,8 +54,14 @@ export function playgroundUsage(data) {
       ) ?? 0),
   );
   return {
-    input: tokenCount(usage.prompt_tokens ?? usage.input_tokens),
-    output: tokenCount(usage.completion_tokens ?? usage.output_tokens),
+    input: tokenCount(
+      usage.prompt_tokens ?? usage.input_tokens ?? usage.total_input_tokens,
+    ),
+    output: tokenCount(
+      usage.completion_tokens ??
+        usage.output_tokens ??
+        usage.total_output_tokens,
+    ),
     cached,
     ...(anthropic
       ? {

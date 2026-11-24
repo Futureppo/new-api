@@ -39,6 +39,7 @@ var playgroundFormats = map[constant.EndpointType]types.RelayFormat{
 	constant.EndpointTypeVertexNative:          types.RelayFormatGemini,
 	constant.EndpointTypeTypeSafeSystemOne:     types.RelayFormatTypeSafe,
 	constant.EndpointTypeOpenAIDecisions:       types.RelayFormatOpenAIDecisions,
+	constant.EndpointTypeGeminiDecisions:       types.RelayFormatGeminiDecisions,
 	constant.EndpointTypeImageGeneration:       types.RelayFormatOpenAIImage,
 	constant.EndpointTypeOpenAIVideo:           types.RelayFormatTask,
 	constant.EndpointTypeBatchGeneration:       types.RelayFormatTask,
@@ -151,7 +152,9 @@ func playgroundChannelOptions(ch *model.Channel, name string) map[constant.Endpo
 		// These adaptors translate Chat to the model's actual wire protocol.
 		endpoints = endpoints[:min(len(endpoints), 1)]
 		if ch.Type == constant.ChannelTypeGemini {
-			if strings.Contains(name, "embedding") {
+			if constant.IsGeminiDecisionModel(name) {
+				endpoints = []constant.EndpointType{constant.EndpointTypeGeminiDecisions, constant.EndpointTypeOpenAIDecisions}
+			} else if strings.Contains(name, "embedding") {
 				endpoints = []constant.EndpointType{constant.EndpointTypeEmbeddings}
 			} else if common.IsImageGenerationModel(name) || strings.HasPrefix(name, "imagen") {
 				endpoints = []constant.EndpointType{constant.EndpointTypeImageGeneration}
@@ -285,6 +288,9 @@ func playgroundChannelOptions(ch *model.Channel, name string) map[constant.Endpo
 		}
 		if endpoint == constant.EndpointTypeOpenAIDecisions && (ch.Type == constant.ChannelTypeOpenRouter || constant.SupportsNamedDecisions(ch.Type)) {
 			option.Variant = "named"
+		}
+		if ch.Type == constant.ChannelTypeGemini && (endpoint == constant.EndpointTypeOpenAIDecisions || endpoint == constant.EndpointTypeGeminiDecisions) {
+			option.Variant = "gemini"
 		}
 		if endpoint == constant.EndpointTypeOpenAI && ch.Type == constant.ChannelTypeBilibiliWeb && constant.IsBilibiliWebEchoModel(name) {
 			option.Stream = false
@@ -585,8 +591,14 @@ func PreparePlaygroundProtocol(c *gin.Context) {
 	allowed := make(map[int]bool)
 	action := ""
 	var decisionFields map[string]json.RawMessage
+	decisionVariant := ""
 	if endpoint == constant.EndpointTypeOpenAIDecisions {
 		_ = common.Unmarshal(req.Body, &decisionFields)
+		if decisionFields["state"] != nil {
+			decisionVariant = "named"
+		} else if gjson.GetBytes(req.Body, "questions").IsObject() {
+			decisionVariant = "gemini"
+		}
 	}
 	for i := range channels {
 		ch := &channels[i]
@@ -606,7 +618,7 @@ func PreparePlaygroundProtocol(c *gin.Context) {
 				((req.EmbeddingMode == "separate" || !option.EmbeddingJoint) && playgroundLimitExceeded(len(req.EmbeddingImages), option.EmbeddingLimit)) ||
 				((req.EmbeddingMode == "joint" || !option.EmbeddingSeparate) && playgroundLimitExceeded(len(req.EmbeddingImages), option.EmbeddingJointLimit)) ||
 				(req.EmbeddingMode == "joint" && !option.EmbeddingJoint) || (req.EmbeddingMode == "separate" && !option.EmbeddingSeparate))) ||
-			(endpoint == constant.EndpointTypeOpenAIDecisions && (option.Variant == "named") != (decisionFields["state"] != nil)) {
+			(endpoint == constant.EndpointTypeOpenAIDecisions && option.Variant != decisionVariant) {
 			excluded[ch.Id] = true
 			continue
 		}

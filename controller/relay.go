@@ -100,9 +100,13 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 			return
 		}
 	}
-	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && !constant.SupportsNamedDecisions(common.GetContextKeyInt(c, constant.ContextKeyChannelType)) {
+	if relayFormat == types.RelayFormatGeminiDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeGemini {
+		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{Message: "Gemini Decisions requires a Gemini channel", Type: "invalid_request_error"}})
+		return
+	}
+	if relayFormat == types.RelayFormatOpenAIDecisions && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeOpenAI && common.GetContextKeyInt(c, constant.ContextKeyChannelType) != constant.ChannelTypeGemini && !constant.SupportsNamedDecisions(common.GetContextKeyInt(c, constant.ContextKeyChannelType)) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": types.OpenAIError{
-			Message: "/v1/decisions requires an OpenAI, OpenRouter, TypeSafe or QianwenAI channel", Type: "invalid_request_error",
+			Message: "/v1/decisions requires an OpenAI, Gemini, OpenRouter, TypeSafe or QianwenAI channel", Type: "invalid_request_error",
 		}})
 		return
 	}

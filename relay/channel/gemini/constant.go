@@ -1,6 +1,7 @@
 package gemini
 
 var ModelList = []string{
+	"gemini-decision-1",
 	// stable version
 	"gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash",
 	"gemini-2.0-flash-001", "gemini-2.0-flash-lite-001", "gemini-2.0-flash-lite",

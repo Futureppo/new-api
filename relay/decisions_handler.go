@@ -8,7 +8,6 @@ import (
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
-	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/service"
@@ -23,12 +22,18 @@ func DecisionsHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIE
 	}
 	info.InitChannelMeta(c)
 	info.DisablePing = true
-	if info.ChannelType != constant.ChannelTypeOpenAI {
-		return types.NewErrorWithStatusCode(errors.New("OpenAI Decisions with input and a questions array requires an OpenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
-	}
 	var request dto.Request
 	switch original := info.Request.(type) {
+	case *dto.GeminiDecisionsRequest:
+		if info.ChannelType != constant.ChannelTypeGemini {
+			return types.NewErrorWithStatusCode(errors.New("Gemini Decisions requires a Gemini channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
+		copy := *original
+		request = &copy
 	case *dto.OpenAIDecisionsRequest:
+		if info.ChannelType != constant.ChannelTypeOpenAI {
+			return types.NewErrorWithStatusCode(errors.New("OpenAI Decisions with input and a questions array requires an OpenAI channel"), types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
+		}
 		copy := *original
 		request = &copy
 	default:
@@ -61,7 +66,7 @@ func DecisionsHelper(c *gin.Context, info *relaycommon.RelayInfo) *types.NewAPIE
 		return types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())
 	}
 	relaycommon.SetConversationUpstreamRequest(info, body)
-	a := &openai.Adaptor{}
+	a := GetAdaptor(info.ApiType)
 	a.Init(info)
 	response, err := doChannelRPMGuardedRequest(c, info, func() (any, error) {
 		return a.DoRequest(c, info, bytes.NewReader(body))

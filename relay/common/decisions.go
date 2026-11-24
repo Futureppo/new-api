@@ -31,6 +31,12 @@ func NamedDecisionsPassThrough(info *RelayInfo) bool {
 // upstream requests. Decisions is priced by the client's model, even on retries.
 func (info *RelayInfo) GetBillingModelName() string {
 	if info.RelayMode == constant.RelayModeDecisions {
+		if _, ok := info.Request.(*dto.GeminiDecisionsRequest); ok {
+			if info.ClientModelName != "" {
+				return info.ClientModelName
+			}
+			return info.OriginModelName
+		}
 		if IsNamedDecisionsRequest(info.Request) {
 			return info.OriginModelName
 		}
@@ -49,6 +55,24 @@ func (info *RelayInfo) GetBillingModelName() string {
 // PrepareDecisionsRequest is shared by relay and channel tests so overrides and
 // privacy settings cannot produce a different protocol in the test path.
 func PrepareDecisionsRequest(info *RelayInfo, body []byte) ([]byte, error) {
+	if _, ok := info.Request.(*dto.GeminiDecisionsRequest); ok {
+		if info.ChannelType != baseconstant.ChannelTypeGemini {
+			return nil, errors.New("Gemini Decisions requires a Gemini channel")
+		}
+		var err error
+		if !GeminiDecisionsPassThrough(info) && len(info.ParamOverride) > 0 {
+			body, err = ApplyParamOverrideWithRelayInfo(body, info)
+			if err != nil {
+				return nil, err
+			}
+		}
+		var effective dto.GeminiDecisionsRequest
+		if err := basecommon.Unmarshal(body, &effective); err != nil {
+			return nil, err
+		}
+		info.UpstreamModelName = effective.Model
+		return body, nil
+	}
 	if IsNamedDecisionsRequest(info.Request) || (info.ChannelMeta != nil && baseconstant.SupportsNamedDecisions(info.ChannelType)) {
 		return PrepareNamedDecisionsRequest(info, body)
 	}
@@ -69,6 +93,11 @@ func PrepareDecisionsRequest(info *RelayInfo, body []byte) ([]byte, error) {
 	}
 	info.UpstreamModelName = effective.Model
 	return body, nil
+}
+
+func GeminiDecisionsPassThrough(info *RelayInfo) bool {
+	_, ok := info.Request.(*dto.GeminiDecisionsRequest)
+	return ok && (model_setting.GetGlobalSettings().PassThroughRequestEnabled || info.ChannelSetting.PassThroughBodyEnabled)
 }
 
 // PrepareNamedDecisionsRequest runs after model mapping, for both relay and

@@ -10,6 +10,7 @@ const (
 	RelayFormatOpenAIResponses                       = "openai_responses"
 	RelayFormatOpenAIResponsesCompaction             = "openai_responses_compaction"
 	RelayFormatOpenAIDecisions                       = "openai_decisions"
+	RelayFormatGeminiDecisions                       = "gemini_decisions"
 	RelayFormatOpenAIAudio                           = "openai_audio"
 	RelayFormatOpenAIImage                           = "openai_image"
 	RelayFormatOpenAIRealtime                        = "openai_realtime"

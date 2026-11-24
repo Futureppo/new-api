@@ -612,7 +612,7 @@ func GenRelayInfo(c *gin.Context, relayFormat types.RelayFormat, request dto.Req
 		info.DisablePing = true // Native SSE event framing must remain unchanged.
 	case types.RelayFormatOpenAI:
 		info = GenRelayInfoOpenAI(c, request)
-	case types.RelayFormatOpenAIDecisions:
+	case types.RelayFormatOpenAIDecisions, types.RelayFormatGeminiDecisions:
 		info = genBaseRelayInfo(c, request)
 		info.RelayFormat = relayFormat
 		info.RelayMode = relayconstant.RelayModeDecisions

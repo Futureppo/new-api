@@ -400,7 +400,8 @@ const ModelTestModal = ({
             icon={<IconInfoCircle />}
             className='!rounded-lg mb-2'
             description={
-              selectedEndpointType === 'openai-decisions'
+              selectedEndpointType === 'openai-decisions' &&
+              ![20, 24, 71, 77].includes(channelType)
                 ? t(
                     'Decisions 使用独立定价项：模型名后加 -openai-decisions，请先在定价设置中配置。',
                   )

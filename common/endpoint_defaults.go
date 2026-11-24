@@ -15,6 +15,7 @@ var defaultEndpointInfoMap = map[constant.EndpointType]EndpointInfo{
 	constant.EndpointTypeOpenAIResponse:        {Path: "/v1/responses", Method: "POST"},
 	constant.EndpointTypeOpenAIResponseCompact: {Path: "/v1/responses/compact", Method: "POST"},
 	constant.EndpointTypeOpenAIDecisions:       {Path: "/v1/decisions", Method: "POST"},
+	constant.EndpointTypeGeminiDecisions:       {Path: "/v1beta/decisions", Method: "POST"},
 	constant.EndpointTypeAnthropic:             {Path: "/v1/messages", Method: "POST"},
 	constant.EndpointTypeGemini:                {Path: "/v1beta/models/{model}:generateContent", Method: "POST"},
 	constant.EndpointTypeJinaRerank:            {Path: "/v1/rerank", Method: "POST"},
@@ -42,7 +43,7 @@ func ChannelTestEndpointSupportsStream(et constant.EndpointType) bool {
 	switch et {
 	case constant.EndpointTypeVertexNative:
 		return false
-	case constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions,
+	case constant.EndpointTypeTypeSafeSystemOne, constant.EndpointTypeOpenAIDecisions, constant.EndpointTypeGeminiDecisions,
 		constant.EndpointTypeOpenAIResponseCompact, constant.EndpointTypeModerations,
 		constant.EndpointTypeEmbeddings, constant.EndpointTypeCohereEmbeddings,
 		constant.EndpointTypeImageGeneration, constant.EndpointTypeJinaRerank,

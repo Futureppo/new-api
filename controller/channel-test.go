@@ -271,6 +271,9 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	if normalized != "" {
 		return normalized
 	}
+	if channel != nil && channel.Type == constant.ChannelTypeGemini && constant.IsGeminiDecisionModel(playgroundMappedModel(channel, modelName)) {
+		return string(constant.EndpointTypeGeminiDecisions)
+	}
 	if channel != nil && (channel.Type == constant.ChannelTypeOpenRouter || channel.Type == constant.ChannelTypeVertexAi) {
 		endpoints := common.GetEndpointTypesByChannelType(channel.Type, modelName)
 		if len(endpoints) > 0 {
@@ -531,6 +534,8 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			relayFormat = types.RelayFormatOpenAIResponses
 		case constant.EndpointTypeOpenAIDecisions:
 			relayFormat = types.RelayFormatOpenAIDecisions
+		case constant.EndpointTypeGeminiDecisions:
+			relayFormat = types.RelayFormatGeminiDecisions
 		case constant.EndpointTypeOpenAIResponseCompact:
 			relayFormat = types.RelayFormatOpenAIResponsesCompaction
 		case constant.EndpointTypeAnthropic:
@@ -610,7 +615,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 	}
 
 	var namedPassThroughBody []byte
-	if relaycommon.IsNamedDecisionsRequest(request) && relaycommon.NamedDecisionsPassThrough(info) {
+	if (relaycommon.IsNamedDecisionsRequest(request) && relaycommon.NamedDecisionsPassThrough(info)) || relaycommon.GeminiDecisionsPassThrough(info) {
 		namedPassThroughBody, err = common.Marshal(request)
 		if err != nil {
 			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeJsonMarshalFailed)}
@@ -1511,7 +1516,13 @@ func buildTestRequest(model string, endpointType string, channel *model.Channel,
 	// 根据端点类型构建不同的测试请求
 	if endpointType != "" {
 		switch constant.EndpointType(endpointType) {
-		case constant.EndpointTypeOpenAIDecisions:
+		case constant.EndpointTypeOpenAIDecisions, constant.EndpointTypeGeminiDecisions:
+			if constant.EndpointType(endpointType) == constant.EndpointTypeGeminiDecisions || (channel != nil && channel.Type == constant.ChannelTypeGemini) {
+				return &dto.GeminiDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
+					"input":     json.RawMessage(`"Have a nice day."`),
+					"questions": json.RawMessage(`{"greeting":{"type":"noul","instructions":"Is this a friendly greeting?"}}`),
+				}}
+			}
 			if channel != nil && channel.Type == constant.ChannelTypeOpenRouter {
 				return &dto.OpenRouterDecisionsRequest{Model: model, Fields: map[string]json.RawMessage{
 					"state":     json.RawMessage(`"Have a nice day."`),

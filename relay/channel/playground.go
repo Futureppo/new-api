@@ -24,7 +24,7 @@ func matchesPlaygroundPath(endpoint constant.EndpointType, path string) bool {
 		return strings.HasSuffix(path, ":generateContent") || strings.HasSuffix(path, ":streamGenerateContent")
 	case constant.EndpointTypeTypeSafeSystemOne:
 		return strings.HasSuffix(path, "/systemone")
-	case constant.EndpointTypeOpenAIDecisions:
+	case constant.EndpointTypeOpenAIDecisions, constant.EndpointTypeGeminiDecisions:
 		return strings.HasSuffix(path, "/decisions")
 	case constant.EndpointTypeCohereChat:
 		return strings.HasSuffix(path, "/v2/chat")

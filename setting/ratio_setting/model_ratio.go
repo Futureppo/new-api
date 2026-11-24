@@ -24,6 +24,8 @@ const (
 // 1 === ￥0.014 / 1k tokens
 
 var defaultModelRatio = map[string]float64{
+	// https://aistudio.google.com/docs/models/gemini-decision-1#pricing ($0.10 / 1M input tokens).
+	"gemini-decision-1": 0.05,
 	// https://mimo.mi.com/docs/zh-CN/price/pay-as-you-go (CNY per million tokens).
 	"mimo-v2.5":     1.0 / 1000 * RMB,
 	"mimo-v2.5-pro": 3.0 / 1000 * RMB,
@@ -382,6 +384,7 @@ var modelRatioMap = types.NewRWMap[string, float64]()
 var completionRatioMap = types.NewRWMap[string, float64]()
 
 var defaultCompletionRatio = map[string]float64{
+	"gemini-decision-1":        0,
 	"mimo-v2.5":                2,
 	"mimo-v2.5-pro":            2,
 	"mimo-v2.6-pro-ultraspeed": 2,

@@ -27,9 +27,11 @@ func GetAndValidateRequest(c *gin.Context, format types.RelayFormat) (request dt
 	}
 
 	switch format {
-	case types.RelayFormatOpenAIDecisions:
+	case types.RelayFormatOpenAIDecisions, types.RelayFormatGeminiDecisions:
 		var r dto.Request = &dto.OpenAIDecisionsRequest{}
-		if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
+		if format == types.RelayFormatGeminiDecisions || common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeGemini {
+			r = &dto.GeminiDecisionsRequest{}
+		} else if common.GetContextKeyInt(c, constant.ContextKeyChannelType) == constant.ChannelTypeOpenRouter {
 			r = &dto.OpenRouterDecisionsRequest{}
 		} else if constant.SupportsNamedDecisions(common.GetContextKeyInt(c, constant.ContextKeyChannelType)) {
 			r = &dto.TypeSafeRequest{}
