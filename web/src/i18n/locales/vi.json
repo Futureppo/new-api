@@ -1,5 +1,6 @@
 {
   "translation": {
+    "剩余：{{requests}} 次请求 / {{tokens}} token": "Còn lại: {{requests}} yêu cầu / {{tokens}} token",
     "规则必须是 JSON 对象": "Quy tắc phải là một đối tượng JSON",
     "关键词不能为空": "Từ khóa không được để trống",
     "替换内容必须是字符串": "Nội dung thay thế phải là chuỗi",
@@ -5109,7 +5110,7 @@
     "已部署模型": "Mô hình đã triển khai",
     "可用模型目录": "Danh mục mô hình khả dụng",
     "暂无已部署模型": "Chưa có mô hình đã triển khai",
-    "目录包含基础模型，调用时仍需配置对应的 Azure 部署名称。": "Danh mục gồm mô hình cơ sở. Cần cấu hình tên triển khai Azure tương ứng để gọi API.",
+    "目录包含基础模型，不会自动填入；请确认已部署后选择或填写部署名称。": "Danh mục gồm các mô hình cơ sở và không được tự động thêm. Chỉ chọn mô hình sau khi xác nhận đã triển khai, hoặc nhập tên triển khai.",
     "Azure 管理授权不可用，已切换为模型目录。": "Không có quyền quản lý Azure; đã chuyển sang danh mục mô hình.",
     "Azure 区域管理授权不可用，尝试从响应头获取区域。": "Không có quyền đọc khu vực Azure; thử lấy từ tiêu đề phản hồi.",
     "获取未保存的 Azure 配置需要超级管理员权限；可保存渠道后重新打开获取。": "Cấu hình Azure chưa lưu cần quyền quản trị cao nhất. Hãy lưu và mở lại kênh.",

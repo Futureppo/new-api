@@ -1,5 +1,6 @@
 {
   "translation": {
+    "剩余：{{requests}} 次请求 / {{tokens}} token": "Remaining: {{requests}} requests / {{tokens}} tokens",
     "规则必须是 JSON 对象": "Rules must be a JSON object",
     "关键词不能为空": "Keywords cannot be empty",
     "替换内容必须是字符串": "Replacement values must be strings",
@@ -4770,7 +4771,7 @@
     "已部署模型": "Deployed models",
     "可用模型目录": "Available model catalog",
     "暂无已部署模型": "No deployed models",
-    "目录包含基础模型，调用时仍需配置对应的 Azure 部署名称。": "The catalog includes base models. Configure the corresponding Azure deployment names for API calls.",
+    "目录包含基础模型，不会自动填入；请确认已部署后选择或填写部署名称。": "The catalog includes base models and is not added automatically. Select models only after confirming they are deployed, or enter deployment names.",
     "Azure 管理授权不可用，已切换为模型目录。": "Azure management authorization is unavailable; using the model catalog.",
     "Azure 区域管理授权不可用，尝试从响应头获取区域。": "Azure region management authorization is unavailable; trying response headers.",
     "获取未保存的 Azure 配置需要超级管理员权限；可保存渠道后重新打开获取。": "Querying unsaved Azure settings requires root access. Save and reopen the channel to query saved settings.",

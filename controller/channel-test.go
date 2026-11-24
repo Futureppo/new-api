@@ -197,7 +197,7 @@ func hasChannelRateLimitInfo(info *channelRateLimitInfo) bool {
 }
 
 func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *channelRateLimitInfo {
-	if !isOfficialOpenAIChannel(channel) || headers == nil {
+	if channel == nil || headers == nil || (!isOfficialOpenAIChannel(channel) && channel.Type != constant.ChannelTypeAzure) {
 		return nil
 	}
 
@@ -218,7 +218,11 @@ func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, header
 	if !hasChannelRateLimitInfo(info) {
 		return nil
 	}
-	info.Tier = inferOpenAIRateLimitTier(modelName, info)
+	if channel.Type == constant.ChannelTypeAzure {
+		info.Provider = "azure"
+	} else {
+		info.Tier = inferOpenAIRateLimitTier(modelName, info)
+	}
 	return info
 }
 
@@ -881,6 +885,12 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			return testResult{context: c, localErr: err, newAPIError: types.NewErrorWithStatusCode(err, types.ErrorCodeInvalidRequest, http.StatusBadRequest, types.ErrOptionWithSkipRetry())}
 		}
 	}
+	if channel.Type == constant.ChannelTypeAzure && !isMultipart {
+		jsonData, err = prepareAzureChannelTestRequest(info, jsonData)
+		if err != nil {
+			return testResult{context: c, localErr: err, newAPIError: types.NewError(err, types.ErrorCodeConvertRequestFailed)}
+		}
+	}
 	// Check the final body: channel overrides must not enable streaming for
 	// synchronous test samples. Multipart samples never apply JSON overrides.
 	if !isMultipart && !common.ChannelTestEndpointSupportsStream(constant.EndpointType(endpointType)) &&
@@ -915,8 +925,10 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 		}
 	}
 	var httpResp *http.Response
+	var rateLimit *channelRateLimitInfo
 	if resp != nil {
 		httpResp = resp.(*http.Response)
+		rateLimit = extractChannelRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
 		if httpResp.StatusCode != http.StatusOK {
 			err := service.RelayErrorHandler(c.Request.Context(), httpResp, true)
 			common.SysError(fmt.Sprintf(
@@ -933,12 +945,9 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 				context:     c,
 				localErr:    err,
 				newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+				rateLimit:   rateLimit,
 			}
 		}
-	}
-	var rateLimit *channelRateLimitInfo
-	if httpResp != nil {
-		rateLimit = extractChannelRateLimitInfo(channel, info.UpstreamModelName, httpResp.Header)
 	}
 	responseCapture := captureTestUpstreamResponse(info, httpResp)
 	usageA, respErr := adaptor.DoResponse(c, httpResp, info)
@@ -950,6 +959,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			context:     c,
 			localErr:    respErr,
 			newAPIError: respErr,
+			rateLimit:   rateLimit,
 		}
 	}
 	usage, usageErr := coerceTestUsage(usageA, isStream, info.GetEstimatePromptTokens())
@@ -958,6 +968,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			context:     c,
 			localErr:    usageErr,
 			newAPIError: types.NewOpenAIError(usageErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+			rateLimit:   rateLimit,
 		}
 	}
 	result := w.Result()
@@ -967,6 +978,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			context:     c,
 			localErr:    err,
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeReadResponseBodyFailed, http.StatusInternalServerError),
+			rateLimit:   rateLimit,
 		}
 	}
 	if bodyErr := validateTestResponseBody(respBody, isStream); bodyErr != nil {
@@ -974,6 +986,7 @@ func testChannel(channel *model.Channel, testModel string, endpointType string, 
 			context:     c,
 			localErr:    bodyErr,
 			newAPIError: types.NewOpenAIError(bodyErr, types.ErrorCodeBadResponseBody, http.StatusInternalServerError),
+			rateLimit:   rateLimit,
 		}
 	}
 	info.SetEstimatePromptTokens(usage.PromptTokens)
@@ -1235,6 +1248,7 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
 		}
 	}
+	rateLimit := extractChannelRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
 	accepted := resp.StatusCode == http.StatusOK ||
 		((directEndpoint || channel.Type == constant.ChannelTypeOpenRouter) && resp.StatusCode == http.StatusAccepted) ||
 		(directEndpoint && resp.StatusCode == http.StatusCreated)
@@ -1254,14 +1268,16 @@ func testTaskChannel(c *gin.Context, channel *model.Channel, testModel string, t
 			context:     c,
 			localErr:    err,
 			newAPIError: types.NewOpenAIError(err, types.ErrorCodeBadResponse, http.StatusInternalServerError),
+			rateLimit:   rateLimit,
 		}
 	}
 
-	rateLimit := extractChannelRateLimitInfo(channel, info.UpstreamModelName, resp.Header)
 	responseCapture := captureTestUpstreamResponse(info, resp)
 	taskID, _, taskErr := adaptor.DoResponse(c, resp, info)
 	if taskErr != nil {
-		return taskErrorToTestResult(c, taskErr)
+		result := taskErrorToTestResult(c, taskErr)
+		result.rateLimit = rateLimit
+		return result
 	}
 
 	tok := time.Now()
@@ -1763,6 +1779,9 @@ func TestChannel(c *gin.Context) {
 		if result.newAPIError != nil {
 			resp["error_code"] = result.newAPIError.GetErrorCode()
 		}
+		if result.rateLimit != nil {
+			resp["rate_limit"] = result.rateLimit
+		}
 		statusCode := http.StatusOK
 		if isChannelDailySuccessLimitError(result.newAPIError) {
 			statusCode = result.newAPIError.StatusCode
@@ -1784,6 +1803,7 @@ func TestChannel(c *gin.Context) {
 			"message":    result.newAPIError.Error(),
 			"time":       consumedTime,
 			"error_code": result.newAPIError.GetErrorCode(),
+			"rate_limit": result.rateLimit,
 		})
 		return
 	}

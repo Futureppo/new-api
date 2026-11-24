@@ -114,10 +114,11 @@ describe('Azure discovery lifecycle', () => {
 describe('Azure form updates', () => {
   const response = {
     models: ['deployment'],
+    model_source: 'deployments',
     region: 'eastus',
     region_source: 'resource',
   };
-  test('fills empty models and persists region while retaining other settings', () => {
+  test('fills empty models from deployments and persists region while retaining other settings', () => {
     const next = applyAzureDiscoveryResult(
       { models: [], settings: '{"azure_responses_version":"preview"}' },
       response,
@@ -129,6 +130,25 @@ describe('Azure form updates', () => {
       azure_region: 'eastus',
       azure_region_source: 'resource',
     });
+  });
+  test('catalog and unknown sources never auto-fill channel models but still update region', () => {
+    for (const model_source of ['catalog', '', undefined]) {
+      const next = applyAzureDiscoveryResult(
+        { models: [], settings: '{}' },
+        { ...response, model_source, models: ['undeployed-base-model'] },
+        'all',
+      );
+      expect(next.models).toEqual([]);
+      expect(next.azure_region).toBe('eastus');
+      expect(JSON.parse(next.settings).azure_region).toBe('eastus');
+    }
+    expect(
+      applyAzureDiscoveryResult(
+        { models: [] },
+        { ...response, model_source: 'catalog', management_fallback: true },
+        'models',
+      ).models,
+    ).toEqual([]);
   });
   test('keeps existing choices and handles model and region failures independently', () => {
     const original = {

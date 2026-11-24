@@ -28,7 +28,12 @@ export const azureConnectionDraft = (inputs) => ({
 
 export const applyAzureDiscoveryResult = (inputs, result, target) => {
   const next = { ...inputs };
-  if (target !== 'region' && !result.model_error && !inputs.models?.length) {
+  if (
+    target !== 'region' &&
+    result.model_source === 'deployments' &&
+    !result.model_error &&
+    !inputs.models?.length
+  ) {
     next.models = result.models || [];
   }
   if (target !== 'models' && !result.region_error) {

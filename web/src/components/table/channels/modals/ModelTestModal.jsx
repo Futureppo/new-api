@@ -37,6 +37,7 @@ import {
   getChannelTestEndpoints,
   channelTestSupportsStream,
 } from '../../../../helpers/channelTestEndpoints';
+import { formatChannelTestRateLimit } from '../../../../helpers/channelTestRateLimit';
 
 const ModelTestModal = ({
   showModelTestModal,
@@ -125,36 +126,6 @@ const ModelTestModal = ({
     setSelectedModelKeys(successKeys);
   };
 
-  const formatRateLimitSummary = (rateLimit) => {
-    if (!rateLimit) return '';
-    const limits = [];
-    const appendLimit = (value, unit) => {
-      if (value) {
-        limits.push(`${value} ${unit}`);
-      }
-    };
-
-    appendLimit(rateLimit.limit_requests, 'RPM');
-    appendLimit(
-      rateLimit.limit_tokens || rateLimit.limit_project_tokens,
-      'TPM',
-    );
-    appendLimit(rateLimit.limit_input_tokens, 'ITPM');
-    appendLimit(rateLimit.limit_output_tokens, 'OTPM');
-    appendLimit(
-      rateLimit.limit_priority_input_tokens,
-      t('优先级 ${unit}').replace('${unit}', 'ITPM'),
-    );
-    appendLimit(
-      rateLimit.limit_priority_output_tokens,
-      t('优先级 ${unit}').replace('${unit}', 'OTPM'),
-    );
-
-    return limits.length
-      ? t('限速: ${limits}').replace('${limits}', limits.join(' / '))
-      : '';
-  };
-
   const columns = [
     {
       title: t('模型名称'),
@@ -166,35 +137,47 @@ const ModelTestModal = ({
       ),
     },
     {
-      title: t('状态'),
+      title: isMobile ? t('模型名称') : t('状态'),
       dataIndex: 'status',
       render: (text, record) => {
         const testResult =
           modelTestResults[`${currentTestChannel.id}-${record.model}`];
         const isTesting = testingModels.has(record.model);
+        const modelLabel = isMobile ? (
+          <Typography.Text strong className='break-all'>
+            {record.model}
+          </Typography.Text>
+        ) : null;
 
         if (isTesting) {
           return (
-            <Tag color='blue' shape='circle'>
-              {t('测试中')}
-            </Tag>
+            <div className='flex flex-col items-start gap-1'>
+              {modelLabel}
+              <Tag color='blue' shape='circle'>
+                {t('测试中')}
+              </Tag>
+            </div>
           );
         }
 
         if (!testResult) {
           return (
-            <Tag color='grey' shape='circle'>
-              {t('未开始')}
-            </Tag>
+            <div className='flex flex-col items-start gap-1'>
+              {modelLabel}
+              <Tag color='grey' shape='circle'>
+                {t('未开始')}
+              </Tag>
+            </div>
           );
         }
 
         const rateLimitTier = testResult.rateLimit?.tier;
-        const rateLimitSummary = formatRateLimitSummary(testResult.rateLimit);
+        const rateLimit = formatChannelTestRateLimit(testResult.rateLimit, t);
 
         return (
           <div className='flex flex-col gap-1'>
-            <div className='flex items-center gap-2'>
+            {modelLabel}
+            <div className='flex flex-wrap items-center gap-2'>
               <Tag color={testResult.success ? 'green' : 'red'} shape='circle'>
                 {testResult.success ? t('成功') : t('失败')}
               </Tag>
@@ -240,9 +223,22 @@ const ModelTestModal = ({
                 })}
               </Typography.Text>
             )}
-            {testResult.success && !rateLimitTier && rateLimitSummary && (
-              <Typography.Text type='tertiary' size='small'>
-                {rateLimitSummary}
+            <Typography.Text
+              type='tertiary'
+              size='small'
+              className='break-words'
+              style={{ maxWidth: '400px' }}
+            >
+              {rateLimit.limits}
+            </Typography.Text>
+            {rateLimit.remaining && (
+              <Typography.Text
+                type='tertiary'
+                size='small'
+                className='break-words'
+                style={{ maxWidth: '400px' }}
+              >
+                {rateLimit.remaining}
               </Typography.Text>
             )}
             {!testResult.success && testResult.message && (
@@ -278,6 +274,7 @@ const ModelTestModal = ({
     {
       title: '',
       dataIndex: 'operate',
+      width: isMobile ? 64 : undefined,
       render: (text, record) => {
         const isTesting = testingModels.has(record.model);
         return (
@@ -432,7 +429,9 @@ const ModelTestModal = ({
           </div>
 
           <Table
-            columns={columns}
+            columns={columns.filter(
+              (column) => !isMobile || column.dataIndex !== 'model',
+            )}
             dataSource={dataSource}
             rowSelection={{
               selectedRowKeys: selectedModelKeys,

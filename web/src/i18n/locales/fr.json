@@ -1,5 +1,6 @@
 {
   "translation": {
+    "剩余：{{requests}} 次请求 / {{tokens}} token": "Restant : {{requests}} requêtes / {{tokens}} tokens",
     "规则必须是 JSON 对象": "Les règles doivent être un objet JSON",
     "关键词不能为空": "Les mots-clés ne peuvent pas être vides",
     "替换内容必须是字符串": "Les valeurs de remplacement doivent être des chaînes",
@@ -4601,7 +4602,7 @@
     "已部署模型": "Modèles déployés",
     "可用模型目录": "Catalogue des modèles disponibles",
     "暂无已部署模型": "Aucun modèle déployé",
-    "目录包含基础模型，调用时仍需配置对应的 Azure 部署名称。": "Le catalogue inclut des modèles de base. Configurez les noms de déploiement Azure correspondants pour les appels API.",
+    "目录包含基础模型，不会自动填入；请确认已部署后选择或填写部署名称。": "Le catalogue inclut des modèles de base et n’est pas ajouté automatiquement. Sélectionnez les modèles après avoir confirmé leur déploiement, ou saisissez les noms des déploiements.",
     "Azure 管理授权不可用，已切换为模型目录。": "Autorisation de gestion Azure indisponible ; utilisation du catalogue.",
     "Azure 区域管理授权不可用，尝试从响应头获取区域。": "Autorisation de région Azure indisponible ; lecture des en-têtes de réponse.",
     "获取未保存的 Azure 配置需要超级管理员权限；可保存渠道后重新打开获取。": "Les paramètres Azure non enregistrés nécessitent un accès root. Enregistrez puis rouvrez le canal.",

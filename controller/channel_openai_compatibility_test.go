@@ -18,7 +18,9 @@ func TestOpenAIChannelTestUsesModelCapabilities(t *testing.T) {
 		require.False(t, useOpenAICompletionTokens(name, constant.ChannelTypeOpenAI), name)
 	}
 	require.False(t, useOpenAICompletionTokens("gpt-6-astra", constant.ChannelTypeModal))
-	require.False(t, useOpenAICompletionTokens("gpt-5", constant.ChannelTypeAzure))
+	require.True(t, useOpenAICompletionTokens("gpt-5", constant.ChannelTypeAzure))
+	require.True(t, useOpenAICompletionTokens("gpt-6-luna", constant.ChannelTypeAzure))
+	require.False(t, useOpenAICompletionTokens("gpt-4o", constant.ChannelTypeAzure))
 	require.True(t, useOpenAICompletionTokens("o3", constant.ChannelTypeAzure))
 	for _, tc := range []struct{ model, fields, path, token string }{
 		{"gpt-6-astra", `,"max_tokens":16`, "/v1/chat/completions", "max_completion_tokens"},
@@ -32,6 +34,41 @@ func TestOpenAIChannelTestUsesModelCapabilities(t *testing.T) {
 		require.Equal(t, tc.model, info.UpstreamModelName)
 		require.True(t, gjson.GetBytes(body, tc.token).Exists())
 		require.False(t, gjson.GetBytes(body, "max_tokens").Exists())
+	}
+}
+
+func TestAzureChannelTestTokenCompatibility(t *testing.T) {
+	for _, tc := range []struct {
+		name, model, fields, token string
+		mode                       int
+		unchanged                  bool
+	}{
+		{name: "luna", model: "gpt-6-luna", fields: `"max_tokens":16`, token: "16"},
+		{name: "reasoning suffix", model: "gpt-6-luna-high", fields: `"max_tokens":16`, token: "16"},
+		{name: "zero", model: "gpt-6-luna", fields: `"max_tokens":0`, token: "0"},
+		{name: "explicit completion wins", model: "gpt-6-luna", fields: `"max_tokens":16,"max_completion_tokens":0`, token: "0"},
+		{name: "missing", model: "gpt-6-luna", fields: `"stream":false`},
+		{name: "legacy", model: "gpt-4o", fields: `"max_tokens":16`, unchanged: true},
+		{name: "opaque deployment", model: "custom-deployment", fields: `"max_tokens":16`, unchanged: true},
+		{name: "responses", model: "gpt-6-luna", fields: `"max_output_tokens":16`, mode: relayconstant.RelayModeResponses, unchanged: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mode := tc.mode
+			if mode == 0 {
+				mode = relayconstant.RelayModeChatCompletions
+			}
+			info := &relaycommon.RelayInfo{RelayMode: mode, ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tc.model}}
+			body := []byte(`{"model":"` + tc.model + `","custom":{"enabled":false},` + tc.fields + `}`)
+			result, err := prepareAzureChannelTestRequest(info, body)
+			require.NoError(t, err)
+			if tc.unchanged {
+				require.Equal(t, body, result)
+				return
+			}
+			require.False(t, gjson.GetBytes(result, "max_tokens").Exists())
+			require.Equal(t, tc.token, gjson.GetBytes(result, "max_completion_tokens").Raw)
+			require.Equal(t, "false", gjson.GetBytes(result, "custom.enabled").Raw)
+		})
 	}
 }
 

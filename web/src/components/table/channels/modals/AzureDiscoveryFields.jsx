@@ -38,7 +38,9 @@ export const AzureModelDiscoveryStatus = ({ discovery }) => {
       {result?.model_source === 'catalog' && (
         <div>
           <Text type='tertiary' size='small'>
-            {t('目录包含基础模型，调用时仍需配置对应的 Azure 部署名称。')}
+            {t(
+              '目录包含基础模型，不会自动填入；请确认已部署后选择或填写部署名称。',
+            )}
           </Text>
         </div>
       )}
