@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Responses API 版本（留空使用 v1）": "Responses API version (blank uses v1)",
+    "留空使用 v1；旧版接口可填写日期版本": "Leave blank for v1; enter a date version for the legacy API",
+    "自动映射 Azure 部署名称": "Automatically map Azure deployment names",
+    "获取部署后，使用原始模型名并自动添加到部署 ID 的重定向，保留已有重定向。": "After fetching deployments, use original model names and add redirects to deployment IDs, preserving existing redirects.",
+    "Azure 管理授权不可用，已改用 API Key 查询。": "Azure management authorization is unavailable. Queries now use the API key.",
     "剩余：{{requests}} 次请求 / {{tokens}} token": "Remaining: {{requests}} requests / {{tokens}} tokens",
     "规则必须是 JSON 对象": "Rules must be a JSON object",
     "关键词不能为空": "Keywords cannot be empty",

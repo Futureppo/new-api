@@ -137,7 +137,7 @@ func ResponsesHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *
 			}
 		}
 
-		if info.ChannelType == appconstant.ChannelTypeOpenAI {
+		if info.ChannelType == appconstant.ChannelTypeOpenAI || info.ChannelType == appconstant.ChannelTypeAzure {
 			if info.RelayMode == relayconstant.RelayModeResponses {
 				jsonData, err = normalizeOfficialResponsesRequest(info, jsonData)
 				if err != nil {

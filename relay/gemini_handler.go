@@ -197,7 +197,7 @@ func GeminiHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 
-		if info.ChannelType == constant.ChannelTypeOpenAI {
+		if info.ChannelType == constant.ChannelTypeOpenAI || (info.ChannelType == constant.ChannelTypeAzure && !relaycommon.IsAzureClaude(info)) {
 			var requiresResponses bool
 			jsonData, requiresResponses, err = normalizeOfficialChatRequest(info, jsonData)
 			if err != nil {

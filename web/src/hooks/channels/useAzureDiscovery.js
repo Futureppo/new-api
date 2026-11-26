@@ -107,6 +107,7 @@ export const useAzureDiscovery = ({
             ...(target !== 'region'
               ? {
                   models: data.models,
+                  deployments: data.deployments,
                   model_source: data.model_source,
                   model_error: data.model_error,
                 }

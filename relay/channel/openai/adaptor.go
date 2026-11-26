@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/pkg/openaimodel"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/ai360"
+	"github.com/QuantumNous/new-api/relay/channel/claude"
 	"github.com/QuantumNous/new-api/relay/channel/cline"
 	"github.com/QuantumNous/new-api/relay/channel/gmicloud"
 	"github.com/QuantumNous/new-api/relay/channel/lingyiwanwu"
@@ -56,6 +57,10 @@ func (a *Adaptor) ConvertGeminiRequest(c *gin.Context, info *relaycommon.RelayIn
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	if relaycommon.IsAzureClaude(info) {
+		info.FinalRequestRelayFormat = types.RelayFormatClaude
+		return request, nil
+	}
 	if isOpenRouterNative(info) {
 		info.FinalRequestRelayFormat = types.RelayFormatClaude
 		return request, nil
@@ -139,54 +144,7 @@ func (a *Adaptor) GetRequestURL(info *relaycommon.RelayInfo) (string, error) {
 	}
 	switch info.ChannelType {
 	case constant.ChannelTypeAzure:
-		apiVersion := info.ApiVersion
-		if apiVersion == "" {
-			apiVersion = constant.AzureDefaultAPIVersion
-		}
-		// https://learn.microsoft.com/en-us/azure/cognitive-services/openai/chatgpt-quickstart?pivots=rest-api&tabs=command-line#rest-api
-		requestURL := strings.Split(info.RequestURLPath, "?")[0]
-		requestURL = fmt.Sprintf("%s?api-version=%s", requestURL, apiVersion)
-		task := strings.TrimPrefix(requestURL, "/v1/")
-
-		if info.RelayFormat == types.RelayFormatClaude && strings.HasPrefix(task, "messages") {
-			task = strings.TrimPrefix(task, "messages")
-			task = "chat/completions" + task
-		}
-
-		// 特殊处理 responses API（包含 compact）
-		if info.RelayMode == relayconstant.RelayModeResponses || info.RelayMode == relayconstant.RelayModeResponsesCompact {
-			responsesApiVersion := "preview"
-
-			subUrl := "/openai/v1/responses"
-			if strings.Contains(info.ChannelBaseUrl, "cognitiveservices.azure.com") {
-				subUrl = "/openai/responses"
-				responsesApiVersion = apiVersion
-			}
-
-			if info.ChannelOtherSettings.AzureResponsesVersion != "" {
-				responsesApiVersion = info.ChannelOtherSettings.AzureResponsesVersion
-			}
-
-			// compact 模式追加 /compact
-			if info.RelayMode == relayconstant.RelayModeResponsesCompact {
-				subUrl = subUrl + "/compact"
-			}
-
-			requestURL = fmt.Sprintf("%s?api-version=%s", subUrl, responsesApiVersion)
-			return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURL, info.ChannelType), nil
-		}
-
-		model_ := info.UpstreamModelName
-		// 2025年5月10日后创建的渠道不移除.
-		if info.ChannelCreateTime < constant.AzureNoRemoveDotTime {
-			model_ = strings.Replace(model_, ".", "", -1)
-		}
-		// https://github.com/songquanpeng/one-api/issues/67
-		requestURL = fmt.Sprintf("/openai/deployments/%s/%s", model_, task)
-		if info.RelayMode == relayconstant.RelayModeRealtime {
-			requestURL = fmt.Sprintf("/openai/realtime?deployment=%s&api-version=%s", model_, apiVersion)
-		}
-		return relaycommon.GetFullRequestURL(info.ChannelBaseUrl, requestURL, info.ChannelType), nil
+		return azureRequestURL(info)
 	//case constant.ChannelTypeMiniMax:
 	//	return minimax.GetRequestURL(info)
 	case constant.ChannelTypeCustom:
@@ -225,6 +183,9 @@ func (a *Adaptor) SetupRequestHeader(c *gin.Context, header *http.Header, info *
 		return nil
 	}
 	if info.ChannelType == constant.ChannelTypeAzure {
+		if relaycommon.IsAzureClaude(info) {
+			return (&claude.Adaptor{}).SetupRequestHeader(c, header, info)
+		}
 		header.Set("api-key", info.ApiKey)
 		return nil
 	}
@@ -318,6 +279,27 @@ func (a *Adaptor) FilterHeaderPassthrough(headers map[string]string, info *relay
 func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.GeneralOpenAIRequest) (any, error) {
 	if request == nil {
 		return nil, errors.New("request is nil")
+	}
+	if info.ChannelType == constant.ChannelTypeAzure {
+		if relaycommon.IsAzureClaude(info) {
+			info.FinalRequestRelayFormat = types.RelayFormatClaude
+			modelRequest := *request
+			modelRequest.Model = relaycommon.AzureModelName(info, info.UpstreamModelName)
+			converted, err := claude.RequestOpenAI2ClaudeMessage(c, modelRequest)
+			if err != nil {
+				return nil, err
+			}
+			converted.Model = info.UpstreamModelName
+			// Keep explicit zero values; the upstream validates their admissibility.
+			if request.MaxCompletionTokens != nil {
+				converted.MaxTokens = request.MaxCompletionTokens
+			} else if request.MaxTokens != nil {
+				converted.MaxTokens = request.MaxTokens
+			}
+			return converted, nil
+		}
+		// Normalize after overrides, preserving literal deployment IDs and explicit zeros.
+		return request, nil
 	}
 	if !info.SupportStreamOptions {
 		request.StreamOptions = nil
@@ -617,6 +599,12 @@ func detectImageMimeType(filename string) string {
 }
 
 func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, request dto.OpenAIResponsesRequest) (any, error) {
+	if info.ChannelType == constant.ChannelTypeAzure {
+		if relaycommon.IsAzureClaude(info) {
+			return nil, errors.New("Azure Claude Responses requests require IR conversion")
+		}
+		return request, nil
+	}
 	if isOpenRouterNative(info) {
 		return request, nil
 	}
@@ -671,6 +659,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, info *relaycommon.RelayInfo, request
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (usage any, err *types.NewAPIError) {
+	if relaycommon.IsAzureClaude(info) {
+		return (&claude.Adaptor{}).DoResponse(c, resp, info)
+	}
 	if isOpenRouterNative(info) {
 		return openRouterResponse(c, resp, info)
 	}

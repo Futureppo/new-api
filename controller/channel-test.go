@@ -227,7 +227,7 @@ func extractOpenAIRateLimitInfo(channel *model.Channel, modelName string, header
 }
 
 func extractAnthropicRateLimitInfo(channel *model.Channel, modelName string, headers http.Header) *channelRateLimitInfo {
-	if !isOfficialAnthropicChannel(channel) || headers == nil {
+	if channel == nil || (!isOfficialAnthropicChannel(channel) && channel.Type != constant.ChannelTypeAzure) || headers == nil {
 		return nil
 	}
 
@@ -257,6 +257,9 @@ func extractAnthropicRateLimitInfo(channel *model.Channel, modelName string, hea
 	if !hasChannelRateLimitInfo(info) {
 		return nil
 	}
+	if channel.Type == constant.ChannelTypeAzure {
+		info.Provider = "azure"
+	}
 	return info
 }
 
@@ -274,6 +277,20 @@ func normalizeChannelTestEndpoint(channel *model.Channel, modelName, endpointTyp
 	normalized := strings.TrimSpace(endpointType)
 	if normalized != "" {
 		return normalized
+	}
+	if channel != nil && channel.Type == constant.ChannelTypeAzure {
+		info := &relaycommon.RelayInfo{OriginModelName: modelName, ChannelMeta: &relaycommon.ChannelMeta{
+			ChannelType: channel.Type, UpstreamModelName: playgroundMappedModel(channel, modelName), ChannelOtherSettings: channel.GetOtherSettings(),
+		}}
+		info.ModelMappingTargetName = info.UpstreamModelName
+		modelName = relaycommon.AzureModelName(info, info.UpstreamModelName)
+		if strings.Contains(modelName, "embedding") {
+			return string(constant.EndpointTypeEmbeddings)
+		}
+		if strings.HasSuffix(modelName, ratio_setting.CompactModelSuffix) {
+			return string(constant.EndpointTypeOpenAIResponseCompact)
+		}
+		return string(common.GetEndpointTypesByChannelType(channel.Type, modelName)[0])
 	}
 	if channel != nil && channel.Type == constant.ChannelTypeGemini && constant.IsGeminiDecisionModel(playgroundMappedModel(channel, modelName)) {
 		return string(constant.EndpointTypeGeminiDecisions)

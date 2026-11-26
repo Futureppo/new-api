@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Responses API 版本（留空使用 v1）": "Phiên bản Responses API (để trống dùng v1)",
+    "留空使用 v1；旧版接口可填写日期版本": "Để trống dùng v1; nhập phiên bản ngày cho API cũ",
+    "自动映射 Azure 部署名称": "Tự động ánh xạ tên triển khai Azure",
+    "获取部署后，使用原始模型名并自动添加到部署 ID 的重定向，保留已有重定向。": "Sau khi lấy danh sách triển khai, dùng tên mô hình gốc và thêm chuyển hướng đến ID triển khai, giữ nguyên các chuyển hướng hiện có.",
+    "Azure 管理授权不可用，已改用 API Key 查询。": "Không dùng được quyền quản lý Azure. Đã chuyển sang truy vấn bằng API Key.",
     "剩余：{{requests}} 次请求 / {{tokens}} token": "Còn lại: {{requests}} yêu cầu / {{tokens}} token",
     "规则必须是 JSON 对象": "Quy tắc phải là một đối tượng JSON",
     "关键词不能为空": "Từ khóa không được để trống",

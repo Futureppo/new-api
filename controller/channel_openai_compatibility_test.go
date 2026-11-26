@@ -57,12 +57,12 @@ func TestAzureChannelTestTokenCompatibility(t *testing.T) {
 			if mode == 0 {
 				mode = relayconstant.RelayModeChatCompletions
 			}
-			info := &relaycommon.RelayInfo{RelayMode: mode, ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: tc.model}}
+			info := &relaycommon.RelayInfo{RelayMode: mode, ChannelMeta: &relaycommon.ChannelMeta{ChannelType: constant.ChannelTypeAzure, UpstreamModelName: tc.model}}
 			body := []byte(`{"model":"` + tc.model + `","custom":{"enabled":false},` + tc.fields + `}`)
 			result, err := prepareAzureChannelTestRequest(info, body)
 			require.NoError(t, err)
 			if tc.unchanged {
-				require.Equal(t, body, result)
+				require.JSONEq(t, string(body), string(result))
 				return
 			}
 			require.False(t, gjson.GetBytes(result, "max_tokens").Exists())

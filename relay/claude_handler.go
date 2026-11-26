@@ -49,13 +49,13 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 	}
 	adaptor.Init(info)
 
-	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeOpenRouter && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo && info.ChannelType != constant.ChannelTypeQianwenAI) {
+	if request.MaxTokens == nil || (*request.MaxTokens == 0 && info.ChannelType != constant.ChannelTypeAzure && info.ChannelType != constant.ChannelTypeOpenRouter && info.ChannelType != constant.ChannelTypeAgnesAI && info.ChannelType != constant.ChannelTypeDeepSeek && info.ChannelType != constant.ChannelTypeMiMo && info.ChannelType != constant.ChannelTypeQianwenAI) {
 		defaultMaxTokens := uint(model_setting.GetClaudeSettings().GetDefaultMaxTokens(request.Model))
 		request.MaxTokens = &defaultMaxTokens
 	}
 
 	explicitOpenRouterThinking := info.ChannelType == constant.ChannelTypeOpenRouter && (request.Thinking != nil || len(request.OutputConfig) > 0)
-	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); ok && effortLevel != "" &&
+	if baseModel, effortLevel, ok := reasoning.TrimEffortSuffix(request.Model); info.ChannelType != constant.ChannelTypeAzure && ok && effortLevel != "" &&
 		(strings.HasPrefix(request.Model, "claude-opus-4-6") || strings.HasPrefix(request.Model, "claude-opus-4-7")) {
 		request.Model = baseModel
 		if !explicitOpenRouterThinking {
@@ -75,7 +75,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 			}
 		}
 		info.UpstreamModelName = request.Model
-	} else if model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
+	} else if info.ChannelType != constant.ChannelTypeAzure && model_setting.GetClaudeSettings().ThinkingAdapterEnabled &&
 		strings.HasSuffix(request.Model, "-thinking") {
 		if request.Thinking == nil && !explicitOpenRouterThinking {
 			baseModel := strings.TrimSuffix(request.Model, "-thinking")
@@ -196,7 +196,7 @@ func ClaudeHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *typ
 				return newAPIErrorFromParamOverride(err)
 			}
 		}
-		if info.ChannelType == constant.ChannelTypeOpenAI {
+		if info.ChannelType == constant.ChannelTypeOpenAI || (info.ChannelType == constant.ChannelTypeAzure && !relaycommon.IsAzureClaude(info)) {
 			var requiresResponses bool
 			jsonData, requiresResponses, err = normalizeOfficialChatRequest(info, jsonData)
 			if err != nil {

@@ -530,7 +530,7 @@ func TestIRResponsesPolicyRoutingAndSuffixAdaptation(t *testing.T) {
 		})
 	}
 
-	// 2. Non-ChannelTypeOpenAI Responses target strips OpenAI reasoning effort suffix (e.g. gpt-5-high -> gpt-5 + effort=high).
+	// 2. Azure deployment IDs retain literal effort-looking suffixes.
 	infoResp := &relaycommon.RelayInfo{
 		OriginModelName: "gpt-5-high",
 		ChannelMeta: &relaycommon.ChannelMeta{
@@ -544,12 +544,12 @@ func TestIRResponsesPolicyRoutingAndSuffixAdaptation(t *testing.T) {
 		irTargetSpec{Format: ir.FormatOpenAIResponses},
 	)
 	require.NoError(t, err)
-	require.Equal(t, "gpt-5", infoResp.UpstreamModelName)
-	require.Equal(t, "high", infoResp.ReasoningEffort)
+	require.Equal(t, "gpt-5-high", infoResp.UpstreamModelName)
+	require.Empty(t, infoResp.ReasoningEffort)
 	var mResp map[string]any
 	require.NoError(t, common.Unmarshal(outResp, &mResp))
-	require.Equal(t, "gpt-5", mResp["model"])
-	require.Equal(t, "high", mResp["reasoning"].(map[string]any)["effort"])
+	require.Equal(t, "gpt-5-high", mResp["model"])
+	require.NotContains(t, mResp, "reasoning")
 }
 
 func TestGeminiHelperNonOpenAIChannelFallbackUsesResponsesPolicy(t *testing.T) {

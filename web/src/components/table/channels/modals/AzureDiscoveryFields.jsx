@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 
 import React, { useId } from 'react';
-import { Button, Input, Tag, Typography } from '@douyinfe/semi-ui';
+import { Button, Input, Switch, Tag, Typography } from '@douyinfe/semi-ui';
 import { useTranslation } from 'react-i18next';
 
 const { Text } = Typography;
@@ -56,9 +56,7 @@ export const AzureModelDiscoveryStatus = ({ discovery }) => {
       {result?.management_fallback && (
         <div>
           <Text type='warning' size='small'>
-            {result.model_source === 'catalog'
-              ? t('Azure 管理授权不可用，已切换为模型目录。')
-              : t('Azure 区域管理授权不可用，尝试从响应头获取区域。')}
+            {t('Azure 管理授权不可用，已改用 API Key 查询。')}
           </Text>
         </div>
       )}
@@ -86,6 +84,7 @@ const AzureDiscoveryFields = ({
   inputs,
   discovery,
   onResourceIDChange,
+  onAutoModelMappingChange,
   canOverride,
 }) => {
   const { t } = useTranslation();
@@ -130,6 +129,21 @@ const AzureDiscoveryFields = ({
             </Text>
           </div>
         )}
+      </div>
+      <div className='space-y-1'>
+        <div className='flex items-center justify-between gap-2'>
+          <Text>{t('自动映射 Azure 部署名称')}</Text>
+          <Switch
+            checked={inputs.azure_auto_model_mapping !== false}
+            onChange={onAutoModelMappingChange}
+            aria-label={t('自动映射 Azure 部署名称')}
+          />
+        </div>
+        <Text type='tertiary' size='small'>
+          {t(
+            '获取部署后，使用原始模型名并自动添加到部署 ID 的重定向，保留已有重定向。',
+          )}
+        </Text>
       </div>
       {canOverride && (
         <details>

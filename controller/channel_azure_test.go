@@ -26,12 +26,17 @@ func TestAzureDiscoveryDraftOverridesSavedChannelWithoutSaving(t *testing.T) {
 	t.Cleanup(func() { *fetchSettings = previous })
 	wantKey := "stored-first"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, "/openai/models", r.URL.Path)
 		require.Equal(t, wantKey, r.Header.Get("api-key"))
-		require.Equal(t, "draft-version", r.URL.Query().Get("api-version"))
 		require.Equal(t, "draft-header", r.Header.Get("X-Test"))
 		require.Empty(t, r.Header.Get("Authorization"))
 		w.Header().Set("x-ms-region", "East US")
+		if r.URL.Path == "/openai/deployments" {
+			require.Equal(t, "2023-03-15-preview", r.URL.Query().Get("api-version"))
+			_, _ = w.Write([]byte(`{"data":[{"id":"production","model":"gpt-4.1","status":"succeeded"}]}`))
+			return
+		}
+		require.Equal(t, "/openai/models", r.URL.Path)
+		require.Equal(t, "draft-version", r.URL.Query().Get("api-version"))
 		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4.1"}]}`))
 	}))
 	defer upstream.Close()
@@ -56,7 +61,9 @@ func TestAzureDiscoveryDraftOverridesSavedChannelWithoutSaving(t *testing.T) {
 		}
 		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
 		require.True(t, response.Success)
-		require.Equal(t, []string{"gpt-4.1"}, response.Data.Models)
+		require.Equal(t, []string{"production"}, response.Data.Models)
+		require.Equal(t, []service.AzureDeployment{{ID: "production", Model: "gpt-4.1"}}, response.Data.Deployments)
+		require.Equal(t, "deployments", response.Data.ModelSource)
 		require.Equal(t, "East US", response.Data.Region)
 		require.NotContains(t, recorder.Body.String(), wantKey)
 	}
@@ -89,6 +96,8 @@ func TestAzureDiscoveryRegionSettingsRoundTrip(t *testing.T) {
 	require.Equal(t, settings, saved.GetOtherSettings())
 	settings.AzureRegion = "West Europe"
 	settings.AzureRegionSource = "response_header"
+	settings.AzureAutoModelMapping = common.GetPointer(false)
+	settings.AzureDeploymentModels = map[string]string{"opaque-deployment": "claude-opus-5"}
 	serialized, err := common.Marshal(settings)
 	require.NoError(t, err)
 	callKiloChannelMutation(t, http.MethodPut, map[string]any{"id": saved.Id, "settings": string(serialized)}, UpdateChannel)

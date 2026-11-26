@@ -42,6 +42,10 @@ func TestAzureDiscoveryCatalogAndRegion(t *testing.T) {
 	for _, version := range []string{"2025-04-01-preview", ""} {
 		options.APIVersion = version
 		client := &http.Client{Transport: azureTestTransport(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/openai/deployments" {
+				require.Equal(t, azureDeploymentListVersion, r.URL.Query().Get("api-version"))
+				return azureTestReply(404, `{}`, "")
+			}
 			require.Equal(t, "/openai/models", r.URL.Path)
 			wantVersion := version
 			if wantVersion == "" {
@@ -93,6 +97,7 @@ func TestAzureDiscoveryDeploymentsAndPagination(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 3, requests)
 	require.Equal(t, []string{"production", "second"}, result.Models)
+	require.Equal(t, AzureDeployment{ID: "production", Model: "gpt-4.1"}, result.Deployments[0])
 	require.Equal(t, "deployments", result.ModelSource)
 	require.Equal(t, "resource", result.RegionSource)
 	require.Equal(t, "eastus", result.Region)
@@ -108,6 +113,10 @@ func TestAzureDiscoveryManagementFailuresAndEmptyList(t *testing.T) {
 			client := &http.Client{Transport: azureTestTransport(func(r *http.Request) (*http.Response, error) {
 				if r.URL.Host == "management.azure.com" {
 					return azureTestReply(status, `{"value":[]}`, "")
+				}
+				if r.URL.Path == "/openai/deployments" {
+					require.Empty(t, r.Header.Get("Authorization"))
+					return azureTestReply(404, `{}`, "")
 				}
 				catalogCalls++
 				require.Empty(t, r.Header.Get("Authorization"))
@@ -147,6 +156,9 @@ func TestAzureDiscoveryPartialResults(t *testing.T) {
 			options.ManagementToken = "secret"
 			client := &http.Client{Transport: azureTestTransport(func(r *http.Request) (*http.Response, error) {
 				if r.URL.Host != "management.azure.com" {
+					if r.URL.Path == "/openai/deployments" {
+						return azureTestReply(404, `{}`, tc.region)
+					}
 					return azureTestReply(200, `{"data":[{"id":"base"}]}`, tc.region)
 				}
 				if strings.HasSuffix(r.URL.Path, "/deployments") {
@@ -166,7 +178,12 @@ func TestAzureDiscoveryPartialResults(t *testing.T) {
 	}
 	for _, body := range []string{`{"data":[]}`, `{"unexpected":true}`} {
 		options := azureTestOptions(t)
-		client := &http.Client{Transport: azureTestTransport(func(*http.Request) (*http.Response, error) { return azureTestReply(200, body, "") })}
+		client := &http.Client{Transport: azureTestTransport(func(r *http.Request) (*http.Response, error) {
+			if r.URL.Path == "/openai/deployments" {
+				return azureTestReply(404, `{}`, "")
+			}
+			return azureTestReply(200, body, "")
+		})}
 		result, err := discoverAzure(context.Background(), options, client)
 		require.NoError(t, err)
 		require.Empty(t, result.Region)
@@ -212,6 +229,7 @@ func TestAzureDiscoveryRejectsCredentialRedirectsAndInvalidPagination(t *testing
 	}
 	options := azureTestOptions(t)
 	calls := 0
+	options.Target = "models"
 	client := &http.Client{Transport: azureTestTransport(func(r *http.Request) (*http.Response, error) {
 		calls++
 		response, _ := azureTestReply(302, "", "")

@@ -61,7 +61,11 @@ import {
 import ModelSelectModal from './ModelSelectModal';
 import AzureDiscoveryFields, { AzureModelDiscoveryStatus } from './AzureDiscoveryFields';
 import { useAzureDiscovery } from '../../../../hooks/channels/useAzureDiscovery';
-import { applyAzureDiscoveryResult, azureConnectionDraft } from '../../../../hooks/channels/azureDiscovery';
+import {
+  applyAzureDiscoveryResult,
+  azureConnectionDraft,
+  getAzureDiscoveryModelConfig,
+} from '../../../../hooks/channels/azureDiscovery';
 import SingleModelSelectModal from './SingleModelSelectModal';
 import OllamaModelModal from './OllamaModelModal';
 import CodexOAuthModal from './CodexOAuthModal';
@@ -245,6 +249,7 @@ const EditChannelModal = (props) => {
     azure_resource_id: '',
     azure_region: '',
     azure_region_source: '',
+    azure_auto_model_mapping: true,
     // 仅 Vertex: 密钥格式（存入 settings.vertex_key_type）
     vertex_key_type: 'json',
     // 仅 AWS: 密钥格式和区域（存入 settings.aws_key_type 和 settings.aws_region）
@@ -320,7 +325,7 @@ const EditChannelModal = (props) => {
     canOverride: isRoot(),
     onResult: (result, target) => {
       if (target !== 'region' && !result.model_error) {
-        setFetchedModels(result.models || []);
+        setFetchedModels(getAzureDiscoveryModelConfig(inputs, result).models);
       }
       setInputs((current) => applyAzureDiscoveryResult(current, result, target));
     },
@@ -692,6 +697,7 @@ const EditChannelModal = (props) => {
     if (
       name === 'base_url' &&
       value.endsWith('/v1') &&
+      inputs.type !== 3 &&
       inputs.type !== TYPESAFE_CHANNEL_TYPE &&
       inputs.type !== MIMO_CHANNEL_TYPE &&
       inputs.type !== BILIBILI_CHANNEL_TYPE &&
@@ -715,7 +721,7 @@ const EditChannelModal = (props) => {
         next.azure_region_source = '';
         let settings;
         try { settings = JSON.parse(inputs.settings || '{}'); } catch { settings = {}; }
-        next.settings = JSON.stringify({ ...settings, azure_region: '', azure_region_source: '' });
+        next.settings = JSON.stringify({ ...settings, azure_region: '', azure_region_source: '', azure_deployment_models: {} });
       }
       return next;
     });
@@ -1303,6 +1309,8 @@ const EditChannelModal = (props) => {
       data.azure_resource_id = bilibiliSettings.azure_resource_id || '';
       data.azure_region = bilibiliSettings.azure_region || '';
       data.azure_region_source = bilibiliSettings.azure_region_source || '';
+      data.azure_auto_model_mapping =
+        bilibiliSettings.azure_auto_model_mapping !== false;
       setSavedAzureDraft({ channelId, json: JSON.stringify(azureConnectionDraft(data)) });
       initialBaseUrlRef.current = data.base_url || '';
       data.clear_key = false;
@@ -1365,7 +1373,9 @@ const EditChannelModal = (props) => {
       const result = await azureDiscovery.discover('models');
       if (!result || result.model_error) return null;
       if (!silent) setModelModalVisible(true);
-      return result.models;
+      return options.rawDeploymentIDs
+        ? result.models
+        : getAzureDiscoveryModelConfig(inputs, result).models;
     }
     setLoading(true);
     const models = [];
@@ -1507,9 +1517,17 @@ const EditChannelModal = (props) => {
       return;
     }
 
-    let modelsToUse = fetchedModels;
+    let modelsToUse =
+      inputs.type === 3
+        ? azureDiscovery.result?.model_error
+          ? []
+          : azureDiscovery.result?.models || []
+        : fetchedModels;
     if (!Array.isArray(modelsToUse) || modelsToUse.length === 0) {
-      const fetched = await fetchUpstreamModelList('models', { silent: true });
+      const fetched = await fetchUpstreamModelList('models', {
+        silent: true,
+        rawDeploymentIDs: inputs.type === 3,
+      });
       if (Array.isArray(fetched)) {
         modelsToUse = fetched;
       }
@@ -1653,9 +1671,12 @@ const EditChannelModal = (props) => {
   useEffect(() => {
     const modelMap = new Map();
 
-    const availableOptions = inputs.type === 3 && azureDiscovery.result?.model_source
-      ? (azureDiscovery.result.models || []).map((value) => ({ key: value, label: value, value }))
-      : originModelOptions;
+    const availableOptions =
+      inputs.type === 3 && azureDiscovery.result?.model_source
+        ? getAzureDiscoveryModelConfig(inputs, azureDiscovery.result).models.map(
+            (value) => ({ key: value, label: value, value }),
+          )
+        : originModelOptions;
     availableOptions.forEach((option) => {
       const v = (option.value || '').trim();
       if (!modelMap.has(v)) {
@@ -1696,7 +1717,15 @@ const EditChannelModal = (props) => {
     });
 
     setModelOptions(optionsWithIcon);
-  }, [originModelOptions, inputs.models, inputs.type, azureDiscovery.result, t]);
+  }, [
+    originModelOptions,
+    inputs.models,
+    inputs.type,
+    inputs.azure_auto_model_mapping,
+    inputs.model_mapping,
+    azureDiscovery.result,
+    t,
+  ]);
 
   useEffect(() => {
     fetchModels().then();
@@ -2390,11 +2419,19 @@ const EditChannelModal = (props) => {
       settings.azure_resource_id = (inputs.azure_resource_id || '').trim();
       settings.azure_region = inputs.azure_region || '';
       settings.azure_region_source = inputs.azure_region_source || '';
+      settings.azure_auto_model_mapping = inputs.azure_auto_model_mapping !== false;
+      try {
+        settings.azure_deployment_models =
+          JSON.parse(inputs.settings || '{}').azure_deployment_models || {};
+      } catch {
+        settings.azure_deployment_models = {};
+      }
     }
     localInputs.settings = JSON.stringify(settings);
     delete localInputs.azure_resource_id;
     delete localInputs.azure_region;
     delete localInputs.azure_region_source;
+    delete localInputs.azure_auto_model_mapping;
 
     // 清理不需要发送到后端的字段
     delete localInputs.force_format;
@@ -4369,9 +4406,9 @@ const EditChannelModal = (props) => {
                             <Form.Input
                               field='azure_responses_version'
                               label={t(
-                                '默认 Responses API 版本，为空则使用上方版本',
+                                'Responses API 版本（留空使用 v1）',
                               )}
-                              placeholder={t('例如：preview')}
+                              placeholder={t('留空使用 v1；旧版接口可填写日期版本')}
                               onChange={(value) =>
                                 handleChannelOtherSettingsChange(
                                   'azure_responses_version',
@@ -4385,6 +4422,35 @@ const EditChannelModal = (props) => {
                             inputs={inputs}
                             discovery={azureDiscovery}
                             canOverride={isRoot()}
+                            onAutoModelMappingChange={(value) => {
+                              handleChannelOtherSettingsChange(
+                                'azure_auto_model_mapping',
+                                value,
+                              );
+                              if (
+                                azureDiscovery.result &&
+                                !azureDiscovery.result.model_error
+                              ) {
+                                const nextInputs = {
+                                  ...inputs,
+                                  azure_auto_model_mapping: value,
+                                };
+                                setFetchedModels(
+                                  getAzureDiscoveryModelConfig(
+                                    nextInputs,
+                                    azureDiscovery.result,
+                                  ).models,
+                                );
+                                if (value)
+                                  setInputs((current) =>
+                                    applyAzureDiscoveryResult(
+                                      current,
+                                      azureDiscovery.result,
+                                      'models',
+                                    ),
+                                  );
+                              }
+                            }}
                             onResourceIDChange={(value) => {
                               handleChannelOtherSettingsChange('azure_resource_id', value);
                               setInputs((current) => applyAzureDiscoveryResult(current, {}, 'region'));

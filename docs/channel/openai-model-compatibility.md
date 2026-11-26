@@ -34,7 +34,18 @@
 
 Pro、Codex、Chat、搜索和 o 系列是单独的能力记录，不继承普通型号的推理档位。对于来源没有明确说明的档位集合，不增加本地拒绝规则。不存在的模型名、第三方名称和未登记的未来快照保留原有请求内容。
 
-## 官方来源
+## Azure 渠道（2026-11-25）
+
+Azure 的模型字段使用部署 ID。部署发现将 ID 与底层模型名称一起返回，编辑窗口将对应关系保存在 `settings.azure_deployment_models`；默认开启的模型映射将原始模型名重定向到部署 ID。关闭自动映射后，协议与参数判断仍使用这份部署元数据。已有渠道重新获取模型并保存即可补齐。
+
+- Chat 使用配置的日期 API 版本；Endpoint 以 `/openai/v1` 结尾时使用 v1 路径。Responses 默认使用 `/openai/v1/responses`，无需 `api-version`；显式填写日期版本可使用旧 `/openai/responses` 接口。不会重复拼接 SDK 路径。
+- Azure 能力表单独登记 GPT-6、6.1、6.2 及微软文档中的快照。Chat 的 token 上限、参数覆盖后的兼容处理、工具请求转 Responses 同时用于正式请求和测活。部署 ID 中的点号和 `-high` 等后缀保留；仅旧渠道未映射且无部署元数据时沿用原点号兼容规则。
+- Claude 使用 Foundry `/anthropic/v1/messages`、`x-api-key` 和 `anthropic-version`。Azure 公共资源主机转换为同资源的 `.services.ai.azure.com`；自定义代理域名和路径前缀保留。Chat 可以转换为 Messages，Responses 跨协议调用使用项目的 IR 转换开关，JSON/SSE 均保留对应返回格式。
+- 显式测活保留 Azure 认证；GPT 与 Claude 的限额响应头均可展示 TPM/RPM。模型目录回退不会自动填入未部署的模型。
+
+依据：[Azure 推理模型参数及工具支持](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/reasoning)、[v1 API 生命周期](https://learn.microsoft.com/en-us/azure/foundry/openai/api-version-lifecycle)、[Foundry Claude REST](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-claude)。
+
+## OpenAI 官方来源
 
 - [最新模型参数兼容与工具调用](https://developers.openai.com/api/docs/guides/latest-model#gpt-6-astra-update-api-and-model-parameters)
 - [Chat Completions 参数](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)

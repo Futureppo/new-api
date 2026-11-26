@@ -10,6 +10,14 @@ import (
 
 // GetEndpointTypesByChannelType returns the preferred endpoint types for a channel/model pair.
 func GetEndpointTypesByChannelType(channelType int, modelName string) []constant.EndpointType {
+	if channelType == constant.ChannelTypeAzure {
+		if strings.HasPrefix(modelName, "claude-") {
+			return []constant.EndpointType{constant.EndpointTypeAnthropic, constant.EndpointTypeOpenAI, constant.EndpointTypeOpenAIResponse}
+		}
+		if _, _, caps, known := openaimodel.ResolveAzure(modelName); known && caps.ResponsesOnly {
+			return []constant.EndpointType{constant.EndpointTypeOpenAIResponse}
+		}
+	}
 	if channelType == constant.ChannelTypeMistral && strings.HasPrefix(strings.ToLower(modelName), "mistral-moderation-") {
 		return []constant.EndpointType{constant.EndpointTypeModerations}
 	}

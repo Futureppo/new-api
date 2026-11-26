@@ -22,6 +22,7 @@ import {
   applyAzureDiscoveryResult,
   azureConnectionDraft,
   createAzureDiscoveryRunner,
+  getAzureDiscoveryModelConfig,
 } from './azureDiscovery';
 
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -112,6 +113,39 @@ describe('Azure discovery lifecycle', () => {
 });
 
 describe('Azure form updates', () => {
+  test('persists deployment metadata with mapping off and keeps it on partial failures', () => {
+    const inputs = {
+      models: ['manual'],
+      azure_auto_model_mapping: false,
+      settings: '{"azure_responses_version":"v1"}',
+    };
+    const result = {
+      model_source: 'deployments',
+      models: ['opaque'],
+      deployments: [{ id: 'opaque', model: 'claude-opus-5' }],
+    };
+    const next = applyAzureDiscoveryResult(inputs, result, 'models');
+    expect(next.models).toEqual(['manual']);
+    expect(JSON.parse(next.settings)).toEqual({
+      azure_responses_version: 'v1',
+      azure_deployment_models: { opaque: 'claude-opus-5' },
+    });
+    expect(
+      JSON.parse(
+        applyAzureDiscoveryResult(next, { model_error: 'timeout' }, 'models')
+          .settings,
+      ).azure_deployment_models,
+    ).toEqual({ opaque: 'claude-opus-5' });
+    expect(
+      JSON.parse(
+        applyAzureDiscoveryResult(
+          next,
+          { ...result, models: [], deployments: [] },
+          'models',
+        ).settings,
+      ).azure_deployment_models,
+    ).toEqual({});
+  });
   const response = {
     models: ['deployment'],
     model_source: 'deployments',
@@ -127,6 +161,7 @@ describe('Azure form updates', () => {
     expect(next.models).toEqual(['deployment']);
     expect(JSON.parse(next.settings)).toEqual({
       azure_responses_version: 'preview',
+      azure_deployment_models: {},
       azure_region: 'eastus',
       azure_region_source: 'resource',
     });
@@ -190,6 +225,140 @@ describe('Azure form updates', () => {
       proxy: '',
       header_override: '',
       resource_id: '',
+    });
+  });
+});
+
+describe('Azure deployment model redirects', () => {
+  const result = {
+    model_source: 'deployments',
+    models: ['dep-astra', 'dep-sol', 'sol61'],
+    deployments: [
+      { id: 'dep-astra', model: 'gpt-6-astra' },
+      { id: 'dep-sol', model: 'gpt-6-sol' },
+      { id: 'sol61', model: 'gpt-6.1-sol' },
+    ],
+    region: 'East US 2',
+    region_source: 'response_header',
+  };
+
+  test('defaults on and fills original names plus deployment redirects', () => {
+    const next = applyAzureDiscoveryResult(
+      { models: [], model_mapping: '' },
+      result,
+      'all',
+    );
+    expect(next.models).toEqual(['gpt-6-astra', 'gpt-6-sol', 'gpt-6.1-sol']);
+    expect(JSON.parse(next.model_mapping)).toEqual({
+      'gpt-6-astra': 'dep-astra',
+      'gpt-6-sol': 'dep-sol',
+      'gpt-6.1-sol': 'sol61',
+    });
+    expect(next.azure_region).toBe('East US 2');
+    expect(getAzureDiscoveryModelConfig(next, result).models).toEqual(
+      next.models,
+    );
+  });
+
+  test('disabled mode fills deployment IDs and preserves manual redirects', () => {
+    const original = {
+      models: [],
+      azure_auto_model_mapping: false,
+      model_mapping: '{"manual":"keep"}',
+    };
+    const next = applyAzureDiscoveryResult(original, result, 'all');
+    expect(next.models).toEqual(result.models);
+    expect(next.model_mapping).toBe(original.model_mapping);
+  });
+
+  test('merges without replacing models or manual mappings', () => {
+    const next = applyAzureDiscoveryResult(
+      {
+        models: ['custom'],
+        model_mapping: '{"gpt-6-astra":"manual-deployment","custom":"keep"}',
+      },
+      result,
+      'models',
+    );
+    expect(next.models).toEqual(['custom']);
+    expect(JSON.parse(next.model_mapping)).toEqual({
+      'gpt-6-astra': 'manual-deployment',
+      custom: 'keep',
+      'gpt-6-sol': 'dep-sol',
+      'gpt-6.1-sol': 'sol61',
+    });
+    expect(getAzureDiscoveryModelConfig(next, result).models).toContain(
+      'dep-astra',
+    );
+  });
+
+  test('keeps ambiguous deployments until an existing mapping selects one', () => {
+    const duplicate = {
+      model_source: 'deployments',
+      models: ['a', 'b'],
+      deployments: [
+        { id: 'a', model: 'gpt-6-sol' },
+        { id: 'b', model: 'gpt-6-sol' },
+      ],
+    };
+    expect(getAzureDiscoveryModelConfig({}, duplicate)).toEqual({
+      models: ['a', 'b'],
+      model_mapping: '',
+    });
+    expect(
+      getAzureDiscoveryModelConfig(
+        { model_mapping: '{"gpt-6-sol":"b"}' },
+        duplicate,
+      ).models,
+    ).toEqual(['a', 'gpt-6-sol']);
+  });
+
+  test('does not overwrite invalid mapping JSON or invent metadata', () => {
+    for (const model_mapping of ['{', 'null', '[]']) {
+      expect(getAzureDiscoveryModelConfig({ model_mapping }, result)).toEqual({
+        models: result.models,
+        model_mapping,
+      });
+    }
+    expect(
+      getAzureDiscoveryModelConfig({}, { ...result, deployments: [] }).models,
+    ).toEqual(result.models);
+  });
+
+  test('catalogs, errors and region queries never add redirects', () => {
+    for (const response of [
+      { ...result, model_source: 'catalog' },
+      { ...result, model_error: '503' },
+    ]) {
+      expect(
+        applyAzureDiscoveryResult(
+          { models: [], model_mapping: '' },
+          response,
+          'all',
+        ).model_mapping,
+      ).toBe('');
+    }
+    expect(
+      applyAzureDiscoveryResult(
+        { models: [], model_mapping: '' },
+        result,
+        'region',
+      ).model_mapping,
+    ).toBe('');
+  });
+
+  test('avoids redirecting another deployment ID or adding self redirects', () => {
+    const collision = {
+      model_source: 'deployments',
+      models: ['model', 'other', 'same'],
+      deployments: [
+        { id: 'other', model: 'model' },
+        { id: 'same', model: 'same' },
+      ],
+    };
+    expect(getAzureDiscoveryModelConfig({}, collision)).toEqual({
+      models: collision.models,
+      model_mapping: '',
     });
   });
 });

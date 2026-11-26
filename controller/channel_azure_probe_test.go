@@ -41,6 +41,9 @@ func TestAzureChannelProbeTokensAndRateLimits(t *testing.T) {
 		{name: "luna auto", requested: "gpt-6-luna", upstream: "gpt-6-luna"},
 		{name: "luna chat", requested: "gpt-6-luna", upstream: "gpt-6-luna", endpoint: "openai"},
 		{name: "mapped alias", requested: "my-model", upstream: "gpt-6-luna"},
+		{name: "terra", requested: "gpt-6.1-terra", upstream: "gpt-6.1-terra"},
+		{name: "sol 6.2", requested: "gpt-6.2-sol", upstream: "gpt-6.2-sol"},
+		{name: "mapped terra", requested: "gpt-6.1-terra", upstream: "dep.terra-high"},
 		{name: "stream", requested: "gpt-6-luna", upstream: "gpt-6-luna", stream: true},
 		{name: "legacy", requested: "gpt-4o", upstream: "gpt-4o"},
 		{name: "explicit zero override", requested: "my-model", upstream: "gpt-6-luna", override: `{"max_tokens":40,"max_completion_tokens":0}`},
@@ -149,4 +152,54 @@ func TestAzureChannelRateLimitMissingHeaders(t *testing.T) {
 	channel := &model.Channel{Type: constant.ChannelTypeAzure}
 	require.Nil(t, extractChannelRateLimitInfo(channel, "gpt-6-luna", http.Header{}))
 	require.Nil(t, extractChannelRateLimitInfo(nil, "gpt-6-luna", http.Header{}))
+}
+
+func TestAzureClaudeProbeAndExplicitEndpointAuthentication(t *testing.T) {
+	db := setupChannelRangeTestDB(t)
+	oldLogEnabled := common.LogConsumeEnabled
+	common.LogConsumeEnabled = false
+	t.Cleanup(func() { common.LogConsumeEnabled = oldLogEnabled })
+	service.InitHttpClient()
+	settings, err := common.Marshal(dto.UserSetting{AcceptUnsetRatioModel: true})
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&model.User{Id: 1, Username: "azure-claude-probe", Group: "default", Status: common.UserStatusEnabled, Setting: string(settings)}).Error)
+	for _, endpoint := range []string{"", "anthropic"} {
+		t.Run(endpoint, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				require.Equal(t, "/anthropic/v1/messages", r.URL.Path)
+				require.Equal(t, "test-key", r.Header.Get("x-api-key"))
+				require.Empty(t, r.Header.Get("Authorization"))
+				var request map[string]any
+				require.NoError(t, common.DecodeJson(r.Body, &request))
+				require.Equal(t, "opaque", request["model"])
+				require.Contains(t, request, "max_tokens")
+				w.Header().Set("anthropic-ratelimit-requests-limit", "60")
+				w.Header().Set("anthropic-ratelimit-tokens-limit", "50000")
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{"id":"msg_1","type":"message","role":"assistant","model":"opaque","content":[{"type":"text","text":"hi"}],"stop_reason":"end_turn","usage":{"input_tokens":1,"output_tokens":1}}`)
+			}))
+			defer server.Close()
+			channel := &model.Channel{Type: constant.ChannelTypeAzure, Key: "test-key", Status: common.ChannelStatusEnabled, Name: "azure-claude", Models: "opaque", Group: "default", BaseURL: &server.URL}
+			channel.SetOtherSettings(dto.ChannelOtherSettings{AzureDeploymentModels: map[string]string{"opaque": "claude-opus-5"}})
+			require.NoError(t, db.Create(channel).Error)
+			router := gin.New()
+			router.GET("/api/channel/test/:id", TestChannel)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/channel/test/"+strconv.Itoa(channel.Id)+"?model=opaque&endpoint_type="+endpoint, nil))
+			var result struct {
+				Success   bool                  `json:"success"`
+				RateLimit *channelRateLimitInfo `json:"rate_limit"`
+			}
+			require.NoError(t, common.Unmarshal(w.Body.Bytes(), &result))
+			require.True(t, result.Success, w.Body.String())
+			require.NotNil(t, result.RateLimit)
+			require.Equal(t, "azure", result.RateLimit.Provider)
+			require.Equal(t, "60", result.RateLimit.LimitRequests)
+			require.Equal(t, "50000", result.RateLimit.LimitTokens)
+			require.Eventually(t, func() bool {
+				var saved model.Channel
+				return db.First(&saved, channel.Id).Error == nil && saved.TestTime != 0
+			}, time.Second, 10*time.Millisecond)
+		})
+	}
 }

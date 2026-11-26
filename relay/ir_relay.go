@@ -68,6 +68,10 @@ func resolveTargetIRSpec(c *gin.Context, info *relaycommon.RelayInfo, adaptor ch
 	if info == nil || adaptor == nil || sourceFormat == ir.FormatUnknown {
 		return irTargetSpec{}, false
 	}
+	if relaycommon.IsAzureClaude(info) {
+		return irTargetSpec{Format: ir.FormatAnthropic, RelayMode: relayconstant.RelayModeChatCompletions,
+			URLPath: "/v1/messages", RelayFormat: types.RelayFormatClaude, ClearStreamOptions: true}, true
+	}
 
 	// Channels with bespoke transport / wrapping stay on their dedicated paths.
 	switch info.ChannelType {
@@ -217,7 +221,7 @@ func resolveTargetIRSpec(c *gin.Context, info *relaycommon.RelayInfo, adaptor ch
 	case constant.APITypeOpenAI:
 		// Official OpenAI Chat (including Chat->Responses) stays on its official compatibility path
 		// to preserve prompt_cache_breakpoint & audio validation contracts.
-		if info.ChannelType == constant.ChannelTypeOpenAI && sourceFormat == ir.FormatOpenAIChat {
+		if (info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure) && sourceFormat == ir.FormatOpenAIChat {
 			return irTargetSpec{}, false
 		}
 		if sourceFormat == ir.FormatOpenAIResponses {
@@ -492,7 +496,7 @@ func tryIRCrossProtocolRelay(
 		}
 	}
 
-	if info.ChannelType == constant.ChannelTypeOpenAI {
+	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
 		if spec.Format == ir.FormatOpenAIResponses {
 			targetJSON, err = normalizeOfficialResponsesRequest(info, targetJSON)
 			if err != nil {
@@ -641,6 +645,10 @@ func finalizeIRTargetRequestJSON(raw []byte, info *relaycommon.RelayInfo, spec i
 
 func applyIRModelSuffixAdaptation(raw []byte, info *relaycommon.RelayInfo, spec irTargetSpec) ([]byte, error) {
 	if info == nil || info.ChannelMeta == nil {
+		return raw, nil
+	}
+	// Azure's model field is a deployment ID, including any literal suffix.
+	if info.ChannelType == constant.ChannelTypeAzure {
 		return raw, nil
 	}
 	modelName := info.UpstreamModelName

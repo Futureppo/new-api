@@ -26,6 +26,17 @@ import (
 // protocol at the original channel's base URL, key, mapping and overrides.
 // The returned copy is only used by this test; the saved channel is never changed.
 func channelForExplicitEndpointTest(source *model.Channel, endpoint constant.EndpointType, modelName string) (*model.Channel, bool, error) {
+	if source.Type == constant.ChannelTypeAzure {
+		// Azure protocols all require the resource URL and api-key/x-api-key;
+		// changing the channel type would silently switch to Bearer authentication.
+		switch endpoint {
+		case constant.EndpointTypeOpenAI, constant.EndpointTypeAnthropic,
+			constant.EndpointTypeOpenAIResponse, constant.EndpointTypeOpenAIResponseCompact,
+			constant.EndpointTypeEmbeddings, constant.EndpointTypeImageGeneration,
+			constant.EndpointTypeAudioSpeech, constant.EndpointTypeAudioTranscription:
+			return source, false, nil
+		}
+	}
 	protocolType := constant.ChannelTypeOpenAI
 	native := false
 	switch endpoint {

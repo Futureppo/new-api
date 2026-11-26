@@ -1,5 +1,10 @@
 {
   "translation": {
+    "Responses API 版本（留空使用 v1）": "Version de l’API Responses (v1 si vide)",
+    "留空使用 v1；旧版接口可填写日期版本": "Laisser vide pour v1 ; indiquer une version datée pour l’ancienne API",
+    "自动映射 Azure 部署名称": "Associer automatiquement les noms de déploiement Azure",
+    "获取部署后，使用原始模型名并自动添加到部署 ID 的重定向，保留已有重定向。": "Après récupération des déploiements, utiliser les noms des modèles et ajouter des redirections vers les ID de déploiement en conservant les redirections existantes.",
+    "Azure 管理授权不可用，已改用 API Key 查询。": "L’autorisation de gestion Azure est indisponible. Les requêtes utilisent désormais la clé API.",
     "剩余：{{requests}} 次请求 / {{tokens}} token": "Restant : {{requests}} requêtes / {{tokens}} tokens",
     "规则必须是 JSON 对象": "Les règles doivent être un objet JSON",
     "关键词不能为空": "Les mots-clés ne peuvent pas être vides",

@@ -26,31 +26,86 @@ export const azureConnectionDraft = (inputs) => ({
   resource_id: inputs.azure_resource_id || '',
 });
 
+export const getAzureDiscoveryModelConfig = (inputs, result) => {
+  const models = result?.models || [];
+  const unchanged = { models, model_mapping: inputs.model_mapping || '' };
+  if (
+    inputs.azure_auto_model_mapping === false ||
+    result?.model_source !== 'deployments' ||
+    result.model_error
+  )
+    return unchanged;
+  let mapping;
+  try {
+    mapping = JSON.parse(inputs.model_mapping || '{}');
+  } catch {
+    return unchanged;
+  }
+  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping))
+    return unchanged;
+
+  const deploymentIDs = new Set(models);
+  const byModel = new Map();
+  for (const deployment of result.deployments || []) {
+    const name = deployment.model?.trim();
+    if (!name || !deploymentIDs.has(deployment.id)) continue;
+    if (!byModel.has(name)) byModel.set(name, new Set());
+    byModel.get(name).add(deployment.id);
+  }
+  const aliases = new Map();
+  let changed = false;
+  for (const [name, ids] of byModel) {
+    const existing = Object.prototype.hasOwnProperty.call(mapping, name);
+    // Keep manual routes. Multiple deployments need an explicit selection;
+    // otherwise expose their IDs so every deployment remains selectable.
+    const id = existing ? mapping[name] : ids.size === 1 ? [...ids][0] : null;
+    if (!ids.has(id) || (name !== id && deploymentIDs.has(name))) continue;
+    aliases.set(id, name);
+    if (!existing && name !== id) {
+      mapping = { ...mapping, [name]: id };
+      changed = true;
+    }
+  }
+  return {
+    models: [...new Set(models.map((id) => aliases.get(id) || id))],
+    model_mapping: changed
+      ? JSON.stringify(mapping, null, 2)
+      : unchanged.model_mapping,
+  };
+};
+
 export const applyAzureDiscoveryResult = (inputs, result, target) => {
   const next = { ...inputs };
+  let settings;
+  try {
+    settings = JSON.parse(inputs.settings || '{}');
+  } catch {
+    settings = {};
+  }
   if (
     target !== 'region' &&
     result.model_source === 'deployments' &&
-    !result.model_error &&
-    !inputs.models?.length
+    !result.model_error
   ) {
-    next.models = result.models || [];
+    const config = getAzureDiscoveryModelConfig(inputs, result);
+    if (!inputs.models?.length) next.models = config.models;
+    next.model_mapping = config.model_mapping;
+    settings.azure_deployment_models = Object.fromEntries(
+      (result.deployments || [])
+        .filter(({ id, model }) => id && model)
+        .map(({ id, model }) => [id, model]),
+    );
   }
   if (target !== 'models' && !result.region_error) {
     next.azure_region = result.region || '';
     next.azure_region_source = result.region_source || '';
-    let settings;
-    try {
-      settings = JSON.parse(inputs.settings || '{}');
-    } catch {
-      settings = {};
-    }
-    next.settings = JSON.stringify({
+    settings = {
       ...settings,
       azure_region: next.azure_region,
       azure_region_source: next.azure_region_source,
-    });
+    };
   }
+  next.settings = JSON.stringify(settings);
   return next;
 };
 

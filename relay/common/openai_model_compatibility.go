@@ -23,13 +23,17 @@ func NormalizeOpenAIRequest(body []byte, responses bool) ([]byte, string, bool, 
 	if !known {
 		return body, identity.Model, false, nil
 	}
+	return normalizeOpenAIModelRequest(body, model, suffixEffort, capabilities, responses)
+}
+
+// model is the wire identity. Azure passes the deployment ID here while using
+// the underlying model's capabilities; normalization must never rename a deployment.
+func normalizeOpenAIModelRequest(body []byte, model, suffixEffort string, capabilities openaimodel.Capabilities, responses bool) ([]byte, string, bool, error) {
 	var fields map[string]json.RawMessage
 	if err := common.Unmarshal(body, &fields); err != nil {
 		return nil, "", false, err
 	}
-	if model != identity.Model {
-		fields["model"], _ = common.Marshal(model)
-	}
+	fields["model"], _ = common.Marshal(model)
 	var effort string
 	var hasTools bool
 	if responses {

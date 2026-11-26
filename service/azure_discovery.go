@@ -18,6 +18,10 @@ import (
 const azureManagementOrigin = "https://management.azure.com"
 const azureManagementVersion = "2024-10-01"
 
+// Pin key-authenticated deployment listing to the legacy authoring API.
+// The configured inference version still applies to the model catalog.
+const azureDeploymentListVersion = "2023-03-15-preview"
+
 type AzureDiscoveryOptions struct {
 	BaseURL, Key, APIVersion, Proxy string
 	ResourceID, ManagementToken     string
@@ -25,15 +29,21 @@ type AzureDiscoveryOptions struct {
 	Headers                         http.Header
 }
 
+type AzureDeployment struct {
+	ID    string `json:"id"`
+	Model string `json:"model"`
+}
+
 // ModelError and RegionError are independent: either query may succeed alone.
 type AzureDiscoveryResult struct {
-	Models             []string `json:"models"`
-	ModelSource        string   `json:"model_source"`
-	ModelError         string   `json:"model_error"`
-	Region             string   `json:"region"`
-	RegionSource       string   `json:"region_source"`
-	RegionError        string   `json:"region_error"`
-	ManagementFallback bool     `json:"management_fallback"`
+	Models             []string          `json:"models"`
+	Deployments        []AzureDeployment `json:"deployments,omitempty"`
+	ModelSource        string            `json:"model_source"`
+	ModelError         string            `json:"model_error"`
+	Region             string            `json:"region"`
+	RegionSource       string            `json:"region_source"`
+	RegionError        string            `json:"region_error"`
+	ManagementFallback bool              `json:"management_fallback"`
 }
 
 func DiscoverAzure(ctx context.Context, options AzureDiscoveryOptions) (AzureDiscoveryResult, error) {
@@ -69,21 +79,30 @@ func discoverAzure(ctx context.Context, options AzureDiscoveryOptions, client *h
 	wantModels := options.Target != "region"
 	wantRegion := options.Target != "models"
 	managed := options.ManagementToken != ""
-	needCatalog := wantModels && !managed
+	needDataDeployments := wantModels && !managed
+	needCatalog := false
 	managementHeaders := make(http.Header)
 	managementHeaders.Set("Authorization", "Bearer "+options.ManagementToken)
+	dataHeaders := options.Headers.Clone()
+	if dataHeaders == nil {
+		dataHeaders = make(http.Header)
+	}
+	if _, exists := dataHeaders[http.CanonicalHeaderKey("api-key")]; !exists {
+		dataHeaders.Set("api-key", options.Key)
+	}
 
 	if wantModels && managed {
 		result.ModelSource = "deployments"
-		models, denied, fetchErr := azureDeploymentNames(ctx, client, resourcePath, managementHeaders)
+		deployments, denied, fetchErr := azureManagementDeployments(ctx, client, resourcePath, managementHeaders)
 		if denied {
 			result.ManagementFallback = true
 			managed = false
-			needCatalog = true
+			needDataDeployments = true
 		} else if fetchErr != nil {
 			result.ModelError = fetchErr.Error()
 		} else {
-			result.Models = models
+			result.Deployments = deployments
+			result.Models = azureDeploymentIDs(deployments)
 		}
 	}
 	if wantRegion && managed {
@@ -105,6 +124,22 @@ func discoverAzure(ctx context.Context, options AzureDiscoveryOptions, client *h
 			}
 		}
 	}
+	if needDataDeployments {
+		result.ModelSource = "deployments"
+		deployments, region, unsupported, fetchErr := azureDataDeployments(ctx, client, base, dataHeaders)
+		if wantRegion && result.Region == "" && result.RegionError == "" && region != "" {
+			result.Region = region
+			result.RegionSource = "response_header"
+		}
+		if unsupported {
+			needCatalog = true
+		} else if fetchErr != nil {
+			result.ModelError = fetchErr.Error()
+		} else {
+			result.Deployments = deployments
+			result.Models = azureDeploymentIDs(deployments)
+		}
+	}
 	// A successful deployment listing (including an empty list) never becomes a catalog.
 	needHeader := wantRegion && result.Region == "" && result.RegionError == ""
 	if needCatalog || needHeader {
@@ -115,17 +150,8 @@ func discoverAzure(ctx context.Context, options AzureDiscoveryOptions, client *h
 		if version == "" {
 			version = constant.AzureDefaultAPIVersion
 		}
-		base.Path = strings.TrimRight(base.Path, "/") + "/openai/models"
-		base.RawPath = ""
-		base.RawQuery = url.Values{"api-version": {version}}.Encode()
-		headers := options.Headers.Clone()
-		if headers == nil {
-			headers = make(http.Header)
-		}
-		if _, exists := headers[http.CanonicalHeaderKey("api-key")]; !exists {
-			headers.Set("api-key", options.Key)
-		}
-		body, responseHeaders, _, fetchErr := azureDiscoveryGET(ctx, client, base.String(), headers)
+		address := azureDiscoveryDataURL(base, "models", version)
+		body, responseHeaders, _, fetchErr := azureDiscoveryGET(ctx, client, address.String(), dataHeaders)
 		if fetchErr != nil {
 			if needCatalog {
 				result.ModelError = fetchErr.Error()
@@ -160,6 +186,68 @@ func discoverAzure(ctx context.Context, options AzureDiscoveryOptions, client *h
 	return result, nil
 }
 
+func azureDiscoveryDataURL(base *url.URL, operation, version string) *url.URL {
+	address := *base
+	path := strings.TrimRight(address.Path, "/")
+	path = strings.TrimSuffix(path, "/openai/v1")
+	path = strings.TrimSuffix(path, "/openai")
+	address.Path = path + "/openai/" + operation
+	address.RawPath = ""
+	address.RawQuery = url.Values{"api-version": {version}}.Encode()
+	return &address
+}
+
+func azureDataDeployments(ctx context.Context, client *http.Client, base *url.URL, headers http.Header) ([]AzureDeployment, string, bool, error) {
+	address := azureDiscoveryDataURL(base, "deployments", azureDeploymentListVersion)
+	next := address.String()
+	entries := []AzureDeployment{}
+	region := ""
+	seen := make(map[string]bool)
+	for page := 0; next != ""; page++ {
+		parsed, err := url.Parse(next)
+		if err != nil {
+			return nil, region, false, fmt.Errorf("Azure 部署分页地址无效")
+		}
+		parsed = address.ResolveReference(parsed)
+		if parsed.Scheme != address.Scheme || !strings.EqualFold(parsed.Host, address.Host) || parsed.User != nil || parsed.Fragment != "" || parsed.EscapedPath() != address.EscapedPath() || parsed.Query().Get("api-version") != azureDeploymentListVersion {
+			return nil, region, false, fmt.Errorf("Azure 部署分页地址无效")
+		}
+		next = parsed.String()
+		if page >= 100 || seen[next] {
+			return nil, region, false, fmt.Errorf("Azure 部署分页超出限制或重复")
+		}
+		seen[next] = true
+		body, responseHeaders, status, err := azureDiscoveryGET(ctx, client, next, headers)
+		if region == "" {
+			region = strings.TrimSpace(responseHeaders.Get("x-ms-region"))
+		}
+		if err != nil {
+			// Only an unavailable list endpoint falls back to the model catalog.
+			// Authentication, service errors and pagination failures stay visible.
+			unsupported := page == 0 && (status == http.StatusNotFound || status == http.StatusMethodNotAllowed || status == http.StatusGone)
+			return nil, region, unsupported, err
+		}
+		var deployments struct {
+			Data *[]struct {
+				ID     string `json:"id"`
+				Model  string `json:"model"`
+				Status string `json:"status"`
+			} `json:"data"`
+			NextLink string `json:"nextLink"`
+		}
+		if common.Unmarshal(body, &deployments) != nil || deployments.Data == nil {
+			return nil, region, false, fmt.Errorf("无法解析 Azure 部署清单")
+		}
+		for _, deployment := range *deployments.Data {
+			if strings.EqualFold(deployment.Status, "succeeded") {
+				entries = append(entries, AzureDeployment{ID: deployment.ID, Model: deployment.Model})
+			}
+		}
+		next = deployments.NextLink
+	}
+	return azureUniqueDeployments(entries), region, false, nil
+}
+
 func azureResourcePath(resourceID string) (string, error) {
 	parts := strings.Split(strings.Trim(strings.TrimSpace(resourceID), "/"), "/")
 	if len(parts) != 8 || !strings.EqualFold(parts[0], "subscriptions") || !strings.EqualFold(parts[2], "resourceGroups") || !strings.EqualFold(parts[4], "providers") || !strings.EqualFold(parts[5], "Microsoft.CognitiveServices") || !strings.EqualFold(parts[6], "accounts") {
@@ -174,8 +262,8 @@ func azureResourcePath(resourceID string) (string, error) {
 	return "/" + strings.Join(parts, "/"), nil
 }
 
-func azureDeploymentNames(ctx context.Context, client *http.Client, resourcePath string, headers http.Header) ([]string, bool, error) {
-	names := []string{}
+func azureManagementDeployments(ctx context.Context, client *http.Client, resourcePath string, headers http.Header) ([]AzureDeployment, bool, error) {
+	entries := []AzureDeployment{}
 	next := azureManagementOrigin + resourcePath + "/deployments?api-version=" + azureManagementVersion
 	seen := make(map[string]bool)
 	for page := 0; next != ""; page++ {
@@ -196,6 +284,9 @@ func azureDeploymentNames(ctx context.Context, client *http.Client, resourcePath
 				Name       string `json:"name"`
 				Properties struct {
 					ProvisioningState string `json:"provisioningState"`
+					Model             struct {
+						Name string `json:"name"`
+					} `json:"model"`
 				} `json:"properties"`
 			} `json:"value"`
 			NextLink string `json:"nextLink"`
@@ -205,12 +296,35 @@ func azureDeploymentNames(ctx context.Context, client *http.Client, resourcePath
 		}
 		for _, deployment := range *deployments.Value {
 			if strings.EqualFold(deployment.Properties.ProvisioningState, "Succeeded") {
-				names = append(names, deployment.Name)
+				entries = append(entries, AzureDeployment{ID: deployment.Name, Model: deployment.Properties.Model.Name})
 			}
 		}
 		next = deployments.NextLink
 	}
-	return azureUniqueModels(names), false, nil
+	return azureUniqueDeployments(entries), false, nil
+}
+
+func azureUniqueDeployments(entries []AzureDeployment) []AzureDeployment {
+	result := make([]AzureDeployment, 0, len(entries))
+	seen := make(map[string]bool)
+	for _, entry := range entries {
+		entry.ID = strings.TrimSpace(entry.ID)
+		entry.Model = strings.TrimSpace(entry.Model)
+		if entry.ID != "" && !seen[entry.ID] {
+			seen[entry.ID] = true
+			result = append(result, entry)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
+	return result
+}
+
+func azureDeploymentIDs(entries []AzureDeployment) []string {
+	names := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		names = append(names, entry.ID)
+	}
+	return names
 }
 
 func azureUniqueModels(models []string) []string {

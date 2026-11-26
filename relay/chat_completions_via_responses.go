@@ -82,10 +82,16 @@ func shouldChatCompletionsUseResponses(info *relaycommon.RelayInfo) bool {
 	if info == nil {
 		return false
 	}
+	if relaycommon.IsAzureClaude(info) {
+		return false
+	}
 	if info.ChannelType == constant.ChannelTypeXunfeiMaas || info.ChannelType == constant.ChannelTypeBilibiliWeb {
 		return false // These adapters require their own request conversion.
 	}
 	model := info.OriginModelName
+	if info.ChannelType == constant.ChannelTypeAzure {
+		model = relaycommon.AzureModelName(info, info.UpstreamModelName)
+	}
 	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeOpenCode || info.ChannelType == constant.ChannelTypeOpenCodeGo {
 		model = info.UpstreamModelName
 	}
@@ -128,7 +134,7 @@ func chatCompletionsViaResponses(c *gin.Context, info *relaycommon.RelayInfo, ad
 		}
 	}
 
-	if info.ChannelType == constant.ChannelTypeOpenAI {
+	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
 		chatJSON, _, err = normalizeOfficialChatRequest(info, chatJSON)
 		if err != nil {
 			return nil, invalidOpenAIModelRequest(err)
@@ -145,7 +151,7 @@ func chatCompletionsViaResponsesBody(c *gin.Context, info *relaycommon.RelayInfo
 		return nil, types.NewError(err, types.ErrorCodeChannelParamOverrideInvalid, types.ErrOptionWithSkipRetry())
 	}
 
-	if info.ChannelType == constant.ChannelTypeOpenAI {
+	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
 		if err := openaicompat.ValidateChatRequestForResponses(&overriddenChatReq); err != nil {
 			return nil, invalidOpenAIModelRequest(err)
 		}
@@ -182,7 +188,7 @@ func chatCompletionsViaResponsesBody(c *gin.Context, info *relaycommon.RelayInfo
 	if err != nil {
 		return nil, types.NewError(err, types.ErrorCodeConvertRequestFailed, types.ErrOptionWithSkipRetry())
 	}
-	if info.ChannelType == constant.ChannelTypeOpenAI {
+	if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
 		jsonData, err = normalizeOfficialResponsesRequest(info, jsonData)
 		if err != nil {
 			return nil, invalidOpenAIModelRequest(err)

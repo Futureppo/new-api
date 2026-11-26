@@ -101,7 +101,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 	if info.RelayMode == relayconstant.RelayModeChatCompletions &&
 		!passThrough &&
 		endpoint != constant.EndpointTypeOpenAI && endpoint != constant.EndpointTypeCohereChat &&
-		info.ChannelType != constant.ChannelTypeOpenAI &&
+		info.ChannelType != constant.ChannelTypeOpenAI && info.ChannelType != constant.ChannelTypeAzure &&
 		shouldChatCompletionsUseResponses(info) {
 		applySystemPromptIfNeeded(c, info, request)
 		usage, newApiErr := chatCompletionsViaResponses(c, info, adaptor, request)
@@ -208,7 +208,7 @@ func TextHelper(c *gin.Context, info *relaycommon.RelayInfo) (newAPIError *types
 			}
 		}
 
-		if info.ChannelType == constant.ChannelTypeOpenAI && info.RelayMode == relayconstant.RelayModeChatCompletions {
+		if (info.ChannelType == constant.ChannelTypeOpenAI || (info.ChannelType == constant.ChannelTypeAzure && !relaycommon.IsAzureClaude(info))) && info.RelayMode == relayconstant.RelayModeChatCompletions {
 			var requiresResponses bool
 			jsonData, requiresResponses, err = normalizeOfficialChatRequest(info, jsonData)
 			if err != nil {

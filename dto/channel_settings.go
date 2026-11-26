@@ -69,6 +69,7 @@ type ChannelOtherSettings struct {
 	AzureResourceID                       string        `json:"azure_resource_id,omitempty"`
 	AzureRegion                           string        `json:"azure_region,omitempty"`
 	AzureRegionSource                     string        `json:"azure_region_source,omitempty"`
+	AzureAutoModelMapping                 *bool         `json:"azure_auto_model_mapping,omitempty"`
 	VertexKeyType                         VertexKeyType `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	OpenRouterEnterprise                  *bool         `json:"openrouter_enterprise,omitempty"`
 	ClaudeBetaQuery                       bool          `json:"claude_beta_query,omitempty"`         // Claude 渠道是否强制追加 ?beta=true
@@ -96,6 +97,8 @@ type ChannelOtherSettings struct {
 	UpstreamModelUpdateLastDetectedModels []string      `json:"upstream_model_update_last_detected_models,omitempty"` // 上次检测到的可加入模型
 	UpstreamModelUpdateLastRemovedModels  []string      `json:"upstream_model_update_last_removed_models,omitempty"`  // 上次检测到的可删除模型
 	UpstreamModelUpdateIgnoredModels      []string      `json:"upstream_model_update_ignored_models,omitempty"`       // 手动忽略的模型
+
+	AzureDeploymentModels map[string]string `json:"azure_deployment_models,omitempty"`
 
 	OpenRouterFreeAlphaSyncEnabled               bool              `json:"openrouter_auto_sync_free_and_alpha_models_enabled,omitempty"` // OpenRouter 是否自动维护免费及 Alpha 测试模型（以 -alpha 结尾，不限提供商）
 	OpenRouterFreeModelNameSimplificationEnabled bool              `json:"openrouter_free_model_name_simplification_enabled,omitempty"`  // 是否将 provider/model:free 简化为 model 并生成映射

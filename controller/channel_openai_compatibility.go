@@ -9,29 +9,22 @@ import (
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/openaicompat"
-	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 func useOpenAICompletionTokens(model string, channelType int) bool {
 	_, _, capabilities, known := openaimodel.Resolve(model)
+	if channelType == constant.ChannelTypeAzure {
+		_, _, capabilities, known = openaimodel.ResolveAzure(model)
+	}
 	return known && capabilities.CompletionTokens && (channelType == constant.ChannelTypeOpenAI || channelType == constant.ChannelTypeAzure || capabilities.LegacyO)
 }
 
-// Azure uses deployment names in the URL. Apply token compatibility using the
-// mapped deployment after overrides; preserve the endpoint and unrelated fields.
+// Tests use the same final-body compatibility rules as production relay.
 func prepareAzureChannelTestRequest(info *relaycommon.RelayInfo, body []byte) ([]byte, error) {
-	if info.RelayMode != relayconstant.RelayModeChatCompletions || !useOpenAICompletionTokens(info.UpstreamModelName, constant.ChannelTypeAzure) {
+	if relaycommon.IsAzureClaude(info) {
 		return body, nil
 	}
-	if tokens := gjson.GetBytes(body, "max_tokens"); tokens.Exists() && !gjson.GetBytes(body, "max_completion_tokens").Exists() {
-		var err error
-		body, err = sjson.SetRawBytes(body, "max_completion_tokens", []byte(tokens.Raw))
-		if err != nil {
-			return nil, err
-		}
-	}
-	return sjson.DeleteBytes(body, "max_tokens")
+	return prepareOpenAIChannelTestRequest(info, body)
 }
 
 func prepareOpenAIChannelTestRequest(info *relaycommon.RelayInfo, body []byte) ([]byte, error) {
@@ -39,7 +32,13 @@ func prepareOpenAIChannelTestRequest(info *relaycommon.RelayInfo, body []byte) (
 		return body, nil
 	}
 	responses := info.RelayMode == relayconstant.RelayModeResponses
-	body, model, requiresResponses, err := relaycommon.NormalizeOpenAIRequest(body, responses)
+	normalize := relaycommon.NormalizeOpenAIRequest
+	if info.ChannelType == constant.ChannelTypeAzure {
+		normalize = func(body []byte, responses bool) ([]byte, string, bool, error) {
+			return relaycommon.NormalizeAzureRequest(info, body, responses)
+		}
+	}
+	body, model, requiresResponses, err := normalize(body, responses)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +61,7 @@ func prepareOpenAIChannelTestRequest(info *relaycommon.RelayInfo, body []byte) (
 	if err != nil {
 		return nil, err
 	}
-	body, _, _, err = relaycommon.NormalizeOpenAIRequest(body, true)
+	body, _, _, err = normalize(body, true)
 	if err != nil {
 		return nil, err
 	}

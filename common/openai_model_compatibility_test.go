@@ -15,6 +15,6 @@ func TestOpenAIResponseOnlyModelBoundaries(t *testing.T) {
 	for _, model := range []string{"custom-o3-pro", "o3-pro-2099-01-01", "provider/gpt-5.5-pro", "gpt-6-astra"} {
 		require.False(t, IsOpenAIResponseOnlyModel(model), model)
 	}
-	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAI}, GetEndpointTypesByChannelType(constant.ChannelTypeAzure, "gpt-5.5-pro"))
+	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, GetEndpointTypesByChannelType(constant.ChannelTypeAzure, "gpt-5.5-pro"))
 	require.Equal(t, []constant.EndpointType{constant.EndpointTypeOpenAIResponse}, GetEndpointTypesByChannelType(constant.ChannelTypeAzure, "o3-pro-2025-06-10"))
 }
